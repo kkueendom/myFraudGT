@@ -38,6 +38,18 @@ class GTLayer(nn.Module):
         self.kHop = cfg.gt.hops
         self.bias = Parameter(torch.Tensor(self.kHop))
         self.attn_bi = Parameter(torch.empty(self.num_heads, self.kHop))
+        self.temporal_bias_enabled = (
+            global_model_type == 'SparseNodeTransformer' and
+            cfg.gt.temporal_bias != 'none'
+        )
+        self.temporal_gate_enabled = (
+            global_model_type == 'SparseNodeTransformer' and
+            cfg.gt.temporal_gate
+        )
+        self.edge_writeback_enabled = (
+            global_model_type == 'SparseNodeTransformer' and
+            cfg.gt.edge_writeback != 'none'
+        )
 
         # Residual connection
         self.skip_local = torch.nn.ParameterDict()
@@ -83,6 +95,20 @@ class GTLayer(nn.Module):
                 self.msg_weights = nn.Parameter(torch.Tensor(len(metadata[1]), H, D, D))
                 nn.init.xavier_uniform_(self.edge_weights)
                 nn.init.xavier_uniform_(self.msg_weights)
+            if self.temporal_bias_enabled:
+                self.temporal_alpha = nn.Parameter(
+                    torch.full((self.num_heads,), cfg.gt.temporal_bias_init)
+                )
+            if self.temporal_gate_enabled:
+                self.temporal_gate_alpha = nn.Parameter(
+                    torch.full((self.num_heads,), cfg.gt.temporal_gate_init)
+                )
+            if self.edge_writeback_enabled:
+                self.writeback_update = torch.nn.ModuleDict()
+                self.writeback_gate = torch.nn.ModuleDict()
+                for node_type in metadata[0]:
+                    self.writeback_update[node_type] = Linear(dim_out * 2, dim_out)
+                    self.writeback_gate[node_type] = Linear(dim_out * 2, dim_out)
         elif global_model_type == 'SparseEdgeTransformer':
             self.k_lin = torch.nn.ModuleDict()
             self.q_lin = torch.nn.ModuleDict()
@@ -134,6 +160,7 @@ class GTLayer(nn.Module):
         self.dropout_local = nn.Dropout(cfg.gnn.dropout)
         self.dropout_global = nn.Dropout(cfg.gt.dropout)
         self.dropout_attn = nn.Dropout(cfg.gt.attn_dropout)
+        self.writeback_dropout = nn.Dropout(cfg.gt.edge_writeback_dropout)
 
         # if cfg.gt.residual == 'Concat':
         #     dim_h *= 2
@@ -170,6 +197,62 @@ class GTLayer(nn.Module):
         pass
         zeros(self.attn_bi)
         # ones(self.skip)
+
+    def _collect_edge_timestamps(self, batch, edge_type_tensor, device):
+        edge_timestamps = torch.zeros(edge_type_tensor.shape[0], device=device)
+        for idx, edge_type in enumerate(batch.edge_types):
+            if hasattr(batch[edge_type], 'timestamps'):
+                mask = edge_type_tensor == idx
+                edge_timestamps[mask] = batch[edge_type].timestamps.to(
+                    device=device, dtype=torch.float32
+                )
+        return edge_timestamps
+
+    def _compute_temporal_delta(self, dst_nodes, edge_timestamps, num_nodes):
+        latest_timestamps, _ = scatter_max(
+            edge_timestamps, dst_nodes, dim=0, dim_size=num_nodes
+        )
+        delta = (latest_timestamps[dst_nodes] - edge_timestamps).clamp(min=0)
+        delta = torch.log1p(delta / max(float(cfg.gt.temporal_bias_scale), 1.0))
+        if cfg.gt.temporal_bias_clamp > 0:
+            delta = delta.clamp(max=cfg.gt.temporal_bias_clamp)
+        return delta
+
+    def _apply_edge_writeback(self, out, edge_state, src_nodes, dst_nodes,
+                              node_type_tensor, batch):
+        num_nodes = out.shape[0]
+        incoming = torch.zeros((num_nodes, edge_state.shape[-1]), device=out.device)
+        outgoing = torch.zeros_like(incoming)
+        in_count = torch.zeros(num_nodes, device=out.device)
+        out_count = torch.zeros_like(in_count)
+        edge_count = torch.ones(src_nodes.shape[0], device=out.device)
+
+        incoming.index_add_(0, dst_nodes, edge_state)
+        outgoing.index_add_(0, src_nodes, edge_state)
+        in_count.index_add_(0, dst_nodes, edge_count)
+        out_count.index_add_(0, src_nodes, edge_count)
+
+        incoming = incoming / in_count.clamp(min=1.0).unsqueeze(-1)
+        outgoing = outgoing / out_count.clamp(min=1.0).unsqueeze(-1)
+        edge_context = torch.cat((incoming, outgoing), dim=-1)
+
+        out_with_writeback = out.clone()
+        for idx, node_type in enumerate(batch.node_types):
+            mask = node_type_tensor == idx
+            if not mask.any():
+                continue
+            node_out = out[mask]
+            node_context = self.activation(
+                self.writeback_update[node_type](edge_context[mask])
+            )
+            node_context = self.writeback_dropout(node_context)
+            node_gate = torch.sigmoid(
+                self.writeback_gate[node_type](
+                    torch.cat((node_out, node_context), dim=-1)
+                )
+            )
+            out_with_writeback[mask] = node_out + node_gate * node_context
+        return out_with_writeback
 
 
     def forward(self, batch):
@@ -286,6 +369,7 @@ class GTLayer(nn.Module):
                 num_edges = edge_index.shape[1]
                 L = homo_data.x.shape[0]
                 S = homo_data.x.shape[0]
+                temporal_delta = None
 
                 if has_edge_attr:
                     # src_nodes, dst_nodes = edge_index
@@ -334,6 +418,13 @@ class GTLayer(nn.Module):
                     else:
                         src_nodes, dst_nodes = edge_index
                         num_edges = edge_index.shape[1]
+                    if (self.temporal_bias_enabled or self.temporal_gate_enabled) and cfg.gt.attn_mask == 'Edge':
+                        edge_timestamps = self._collect_edge_timestamps(
+                            batch, edge_type_tensor, q.device
+                        )
+                        temporal_delta = self._compute_temporal_delta(
+                            dst_nodes, edge_timestamps, L
+                        )
                     # Compute query and key for each edge
                     edge_q = q[:, dst_nodes, :]  # Queries for destination nodes # num_heads * num_edges * d_k
                     edge_k = k[:, src_nodes, :]  # Keys for source nodes
@@ -362,8 +453,21 @@ class GTLayer(nn.Module):
                         edge_scores = edge_scores + edge_attr
                         edge_v = edge_v * F.sigmoid(edge_gate)
                         edge_attr = edge_scores
+                    if temporal_delta is not None and self.temporal_gate_enabled:
+                        temporal_gate = torch.exp(
+                            -F.softplus(self.temporal_gate_alpha).unsqueeze(-1) *
+                            temporal_delta.unsqueeze(0)
+                        )
+                        edge_v = edge_v * temporal_gate.unsqueeze(-1)
+                        if has_edge_attr:
+                            edge_attr = edge_attr * temporal_gate.unsqueeze(-1)
                     
                     edge_scores = torch.sum(edge_scores, dim=-1) / math.sqrt(D) # num_heads * num_edges
+                    if temporal_delta is not None and self.temporal_bias_enabled:
+                        edge_scores = edge_scores - (
+                            F.softplus(self.temporal_alpha).unsqueeze(-1) *
+                            temporal_delta.unsqueeze(0)
+                        )
                     edge_scores = torch.clamp(edge_scores, min=-5, max=5)
                     if cfg.gt.attn_mask in ['kHop']:
                         edge_scores = edge_scores + attn_mask[dst_nodes, src_nodes]
@@ -396,17 +500,23 @@ class GTLayer(nn.Module):
                     out = torch.matmul(scores, v)
 
                 out = out.transpose(0,1).contiguous().view(-1, H * D)
+                if has_edge_attr:
+                    edge_state = edge_attr.transpose(0,1).contiguous().view(-1, H * D)
+                    if self.edge_writeback_enabled:
+                        out = self._apply_edge_writeback(
+                            out, edge_state, src_nodes, dst_nodes,
+                            node_type_tensor, batch
+                        )
 
                 for idx, node_type in enumerate(batch.node_types):
                     mask = node_type_tensor == idx
                     out_type = self.o_lin[node_type](out[mask, :])
                     h_attn_dict_list[node_type].append(out_type.squeeze())
                 if has_edge_attr:
-                    edge_attr = edge_attr.transpose(0,1).contiguous().view(-1, H * D)
                     for idx, edge_type_tuple in enumerate(batch.edge_types):
                         edge_type = '__'.join(edge_type_tuple)
                         mask = edge_type_tensor == idx
-                        out_type = self.oe_lin[edge_type](edge_attr[mask, :])
+                        out_type = self.oe_lin[edge_type](edge_state[mask, :])
                         edge_attr_dict[edge_type_tuple] = out_type
 
             h_attn_dict = {}
@@ -540,4 +650,3 @@ class GTLayer(nn.Module):
     # def __repr__(self):
     #     return '{}({}, {})'.format(self.__class__.__name__, self.dim_h,
     #                                self.dim_h)
-

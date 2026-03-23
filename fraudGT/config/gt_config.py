@@ -77,6 +77,20 @@ def set_cfg_gt(cfg):
     # kHop attention parameter
     cfg.gt.hops = 2
 
+    # Relative recency bias for SparseNodeTransformer attention logits.
+    cfg.gt.temporal_bias = 'none'
+    cfg.gt.temporal_bias_init = 1.0
+    cfg.gt.temporal_bias_scale = 86400.0
+    cfg.gt.temporal_bias_clamp = 30.0
+
+    # Recency-aware decay on edge messages in SparseNodeTransformer.
+    cfg.gt.temporal_gate = False
+    cfg.gt.temporal_gate_init = 1.0
+
+    # Aggregate updated edge states back into node states.
+    cfg.gt.edge_writeback = 'none'
+    cfg.gt.edge_writeback_dropout = 0.0
+
     cfg.gt.virtual_nodes = 0
 
     # BigBird model/GPS-BigBird layer.
