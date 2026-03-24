@@ -281,6 +281,9 @@ def custom_train(loggers, loaders, model, optimizer, scheduler):
             for i in range(1, num_splits):
                 eval_epoch(loggers[i], loaders[i], model,
                            split=split_names[i - 1])
+                if i == 1 and cfg.model.auto_tune_thresh and \
+                        loggers[i].task_type == 'classification_binary':
+                    cfg.model.thresh = loggers[i].find_best_threshold()
                 perf[i].append(loggers[i].write_epoch(cur_epoch))
         else:
             for i in range(1, num_splits):

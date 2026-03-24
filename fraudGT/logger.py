@@ -8,6 +8,7 @@ import torch
 from scipy.stats import stats
 from sklearn.metrics import accuracy_score, precision_score, recall_score, \
     f1_score, roc_auc_score, mean_absolute_error, mean_squared_error, \
+    precision_recall_curve, \
     confusion_matrix
 from sklearn.metrics import r2_score
 from fraudGT.graphgym.config import cfg
@@ -112,6 +113,35 @@ class CustomLogger(Logger):
         # Whether to run comparison tests of alternative score implementations.
         self.test_scores = False
 
+    def _get_binary_pred_score(self, pred_score):
+        if pred_score.ndim == 1:
+            return pred_score
+        if pred_score.shape[1] == 1:
+            return pred_score.squeeze(-1)
+        if pred_score.shape[1] == 2:
+            return pred_score.softmax(dim=-1)[:, 1]
+        raise ValueError("Binary prediction scores must have 1 or 2 columns")
+
+    def _get_pred_int(self, pred_score):
+        if pred_score.ndim > 1 and pred_score.shape[1] == 2:
+            pred_score = self._get_binary_pred_score(pred_score)
+            return (pred_score > cfg.model.thresh).long()
+        return super()._get_pred_int(pred_score)
+
+    def find_best_threshold(self):
+        true = torch.cat(self._true).squeeze(-1)
+        pred_score = self._get_binary_pred_score(torch.cat(self._pred))
+        precision_arr, recall_arr, thresholds = precision_recall_curve(
+            true.numpy(), pred_score.numpy()
+        )
+        if thresholds.size == 0:
+            return float(cfg.model.thresh)
+        f1_arr = 2 * precision_arr[:-1] * recall_arr[:-1] / np.clip(
+            precision_arr[:-1] + recall_arr[:-1], 1e-12, None
+        )
+        best_idx = int(np.nanargmax(f1_arr))
+        return float(thresholds[best_idx])
+
     # basic properties
     def basic(self):
         stats = {
@@ -128,7 +158,7 @@ class CustomLogger(Logger):
     # task properties
     def classification_binary(self):
         true = torch.cat(self._true).squeeze(-1)
-        pred_score = torch.cat(self._pred)
+        pred_score = self._get_binary_pred_score(torch.cat(self._pred))
         pred_int = self._get_pred_int(pred_score)
 
         if true.shape[0] < 1e7:  # AUROC computation for very large datasets is too slow.
@@ -156,6 +186,7 @@ class CustomLogger(Logger):
             'macro-f1': reformat(f1_score(true, pred_int, average='macro')),
             'micro-f1': reformat(f1_score(true, pred_int, average='micro')),
             'auc': reformat(auroc_score),
+            'thresh': reformat(cfg.model.thresh),
         }
         if cfg.metric_best == 'accuracy-SBM':
             res['accuracy-SBM'] = reformat(accuracy_SBM(true, pred_int))
