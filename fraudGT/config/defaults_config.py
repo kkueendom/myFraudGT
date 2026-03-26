@@ -89,4 +89,5 @@ def extended_cfg(cfg):
     cfg.gnn.jumping_knowledge = False
 
     cfg.model.loss_fun_weight = []
+    cfg.model.loss_fun_gamma = 2.0
     cfg.model.auto_tune_thresh = False
