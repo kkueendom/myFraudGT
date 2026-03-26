@@ -34,6 +34,7 @@ def extended_cfg(cfg):
     # always checkpoint the current best model based on validation performance,
     # instead, when False, follow cfg.train.eval_period checkpointing frequency.
     cfg.train.ckpt_best = False
+    cfg.train.selection_precision_weight = 0.0
 
     # Enable tqdm progress bar during training/validation/testing
     cfg.train.tqdm = False

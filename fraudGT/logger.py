@@ -188,6 +188,11 @@ class CustomLogger(Logger):
             'auc': reformat(auroc_score),
             'thresh': reformat(cfg.model.thresh),
         }
+        if cfg.train.selection_precision_weight != 0:
+            res['f1_precision'] = reformat(
+                res['f1'] +
+                cfg.train.selection_precision_weight * res['precision']
+            )
         if cfg.metric_best == 'accuracy-SBM':
             res['accuracy-SBM'] = reformat(accuracy_SBM(true, pred_int))
         return res
