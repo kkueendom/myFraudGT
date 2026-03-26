@@ -219,18 +219,22 @@ class GTLayer(nn.Module):
         return delta
 
     def _apply_edge_writeback(self, out, edge_state, src_nodes, dst_nodes,
-                              node_type_tensor, batch):
+                              node_type_tensor, batch, edge_weights=None):
         num_nodes = out.shape[0]
         incoming = torch.zeros((num_nodes, edge_state.shape[-1]), device=out.device)
         outgoing = torch.zeros_like(incoming)
         in_count = torch.zeros(num_nodes, device=out.device)
         out_count = torch.zeros_like(in_count)
-        edge_count = torch.ones(src_nodes.shape[0], device=out.device)
+        if edge_weights is None:
+            edge_weights = torch.ones(src_nodes.shape[0], device=out.device)
+        else:
+            edge_weights = edge_weights.to(out.device)
+        weighted_edge_state = edge_state * edge_weights.unsqueeze(-1)
 
-        incoming.index_add_(0, dst_nodes, edge_state)
-        outgoing.index_add_(0, src_nodes, edge_state)
-        in_count.index_add_(0, dst_nodes, edge_count)
-        out_count.index_add_(0, src_nodes, edge_count)
+        incoming.index_add_(0, dst_nodes, weighted_edge_state)
+        outgoing.index_add_(0, src_nodes, weighted_edge_state)
+        in_count.index_add_(0, dst_nodes, edge_weights)
+        out_count.index_add_(0, src_nodes, edge_weights)
 
         incoming = incoming / in_count.clamp(min=1.0).unsqueeze(-1)
         outgoing = outgoing / out_count.clamp(min=1.0).unsqueeze(-1)
@@ -393,6 +397,7 @@ class GTLayer(nn.Module):
                 q = q.transpose(0,1)
                 k = k.transpose(0,1)
                 v = v.transpose(0,1)
+                writeback_weights = None
 
                 if cfg.gt.attn_mask in ['Edge', 'kHop']:
                     if cfg.gt.attn_mask in ['kHop']:
@@ -486,6 +491,9 @@ class GTLayer(nn.Module):
 
                     # Step 4: Apply softmax
                     edge_scores = exp_scores / sum_exp_scores.gather(1, expanded_dst_nodes)
+                    writeback_weights = None
+                    if cfg.gt.edge_writeback == 'attn_mean':
+                        writeback_weights = edge_scores.mean(dim=0)
                     edge_scores = edge_scores.unsqueeze(-1)
                     edge_scores = self.dropout_attn(edge_scores)
 
@@ -505,7 +513,8 @@ class GTLayer(nn.Module):
                     if self.edge_writeback_enabled:
                         out = self._apply_edge_writeback(
                             out, edge_state, src_nodes, dst_nodes,
-                            node_type_tensor, batch
+                            node_type_tensor, batch,
+                            edge_weights=writeback_weights
                         )
 
                 for idx, node_type in enumerate(batch.node_types):
