@@ -50,6 +50,10 @@ class GTLayer(nn.Module):
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback != 'none'
         )
+        self.directional_meanmax_writeback = (
+            global_model_type == 'SparseNodeTransformer' and
+            cfg.gt.edge_writeback == 'dir_meanmax'
+        )
 
         # Residual connection
         self.skip_local = torch.nn.ParameterDict()
@@ -106,8 +110,13 @@ class GTLayer(nn.Module):
             if self.edge_writeback_enabled:
                 self.writeback_update = torch.nn.ModuleDict()
                 self.writeback_gate = torch.nn.ModuleDict()
+                writeback_context_dim = dim_out * (
+                    4 if self.directional_meanmax_writeback else 2
+                )
                 for node_type in metadata[0]:
-                    self.writeback_update[node_type] = Linear(dim_out * 2, dim_out)
+                    self.writeback_update[node_type] = Linear(
+                        writeback_context_dim, dim_out
+                    )
                     self.writeback_gate[node_type] = Linear(dim_out * 2, dim_out)
         elif global_model_type == 'SparseEdgeTransformer':
             self.k_lin = torch.nn.ModuleDict()
@@ -238,7 +247,26 @@ class GTLayer(nn.Module):
 
         incoming = incoming / in_count.clamp(min=1.0).unsqueeze(-1)
         outgoing = outgoing / out_count.clamp(min=1.0).unsqueeze(-1)
-        edge_context = torch.cat((incoming, outgoing), dim=-1)
+        if self.directional_meanmax_writeback:
+            incoming_max, _ = scatter_max(
+                edge_state, dst_nodes, dim=0, dim_size=num_nodes
+            )
+            outgoing_max, _ = scatter_max(
+                edge_state, src_nodes, dim=0, dim_size=num_nodes
+            )
+            incoming_max = torch.where(
+                torch.isfinite(incoming_max), incoming_max,
+                torch.zeros_like(incoming_max)
+            )
+            outgoing_max = torch.where(
+                torch.isfinite(outgoing_max), outgoing_max,
+                torch.zeros_like(outgoing_max)
+            )
+            edge_context = torch.cat(
+                (incoming, outgoing, incoming_max, outgoing_max), dim=-1
+            )
+        else:
+            edge_context = torch.cat((incoming, outgoing), dim=-1)
 
         out_with_writeback = out.clone()
         for idx, node_type in enumerate(batch.node_types):
