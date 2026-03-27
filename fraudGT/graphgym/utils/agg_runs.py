@@ -71,6 +71,39 @@ def rm_keys(dict, keys):
         dict.pop(key, None)
 
 
+def get_best_epoch(stats_list, metric_best='auto'):
+    if metric_best == 'auto':
+        metric = 'auc' if 'auc' in stats_list[0] else 'accuracy'
+    else:
+        metric = metric_best
+    performance_np = np.array([stats[metric] for stats in stats_list])
+    best_idx = int(eval("performance_np.{}()".format(cfg.metric_agg)))
+
+    topk = int(getattr(cfg.train, 'selection_topk_by_metric', 1))
+    tiebreak_metric = getattr(cfg.train, 'selection_tiebreak_metric', "")
+    tiebreak_agg = getattr(cfg.train, 'selection_tiebreak_agg', 'argmax')
+    if topk > 1 and tiebreak_metric:
+        ranked = np.argsort(performance_np)
+        if cfg.metric_agg == 'argmax':
+            candidate_idx = ranked[-topk:]
+        elif cfg.metric_agg == 'argmin':
+            candidate_idx = ranked[:topk]
+        else:
+            raise ValueError(f'Unsupported metric aggregation: {cfg.metric_agg}')
+        secondary_values = np.array([stats_list[idx][tiebreak_metric]
+                                     for idx in candidate_idx])
+        if tiebreak_agg == 'argmax':
+            best_idx = int(candidate_idx[int(secondary_values.argmax())])
+        elif tiebreak_agg == 'argmin':
+            best_idx = int(candidate_idx[int(secondary_values.argmin())])
+        else:
+            raise ValueError(
+                f'Unsupported tiebreak aggregation: {tiebreak_agg}'
+            )
+
+    return stats_list[best_idx]['epoch']
+
+
 def agg_runs(dir, metric_best='auto'):
     r'''
     Aggregate over different random seeds of a single experiment
@@ -92,16 +125,7 @@ def agg_runs(dir, metric_best='auto'):
                 dir_split = os.path.join(dir_seed, split)
                 fname_stats = os.path.join(dir_split, 'stats.json')
                 stats_list = json_to_dict_list(fname_stats)
-                if metric_best == 'auto':
-                    metric = 'auc' if 'auc' in stats_list[0] else 'accuracy'
-                else:
-                    metric = metric_best
-                performance_np = np.array(  # noqa
-                    [stats[metric] for stats in stats_list])
-                best_epoch = \
-                    stats_list[
-                        eval("performance_np.{}()".format(cfg.metric_agg))][
-                        'epoch']
+                best_epoch = get_best_epoch(stats_list, metric_best)
                 print(best_epoch)
 
             for split in os.listdir(dir_seed):

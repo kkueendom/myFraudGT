@@ -4,14 +4,9 @@ import os
 import numpy as np
 
 from fraudGT.graphgym.config import cfg
-from fraudGT.graphgym.utils.io import (
-    dict_list_to_json,
-    dict_list_to_tb,
-    dict_to_json,
-    json_to_dict_list,
-    makedirs_rm_exist,
-    string_to_python,
-)
+from fraudGT.graphgym.utils.io import (dict_list_to_json, dict_list_to_tb,
+                               dict_to_json, json_to_dict_list,
+                               makedirs_rm_exist, string_to_python)
 
 try:
     from tensorboardX import SummaryWriter
@@ -59,24 +54,54 @@ def agg_dict_list(dict_list):
 
 
 def name_to_dict(run):
-    run = run.split('-', 1)[-1]
-    cols = run.split('=')
+    cols = run.split('-')[1:]
     keys, vals = [], []
-    keys.append(cols[0])
-    for col in cols[1:-1]:
+    for col in cols:
         try:
-            val, key = col.rsplit('-', 1)
+            key, val = col.split('=')
         except Exception:
             print(col)
         keys.append(key)
         vals.append(string_to_python(val))
-    vals.append(cols[-1])
     return dict(zip(keys, vals))
 
 
 def rm_keys(dict, keys):
     for key in keys:
         dict.pop(key, None)
+
+
+def get_best_epoch(stats_list, metric_best='auto'):
+    if metric_best == 'auto':
+        metric = 'auc' if 'auc' in stats_list[0] else 'accuracy'
+    else:
+        metric = metric_best
+    performance_np = np.array([stats[metric] for stats in stats_list])
+    best_idx = int(eval("performance_np.{}()".format(cfg.metric_agg)))
+
+    topk = int(getattr(cfg.train, 'selection_topk_by_metric', 1))
+    tiebreak_metric = getattr(cfg.train, 'selection_tiebreak_metric', "")
+    tiebreak_agg = getattr(cfg.train, 'selection_tiebreak_agg', 'argmax')
+    if topk > 1 and tiebreak_metric:
+        ranked = np.argsort(performance_np)
+        if cfg.metric_agg == 'argmax':
+            candidate_idx = ranked[-topk:]
+        elif cfg.metric_agg == 'argmin':
+            candidate_idx = ranked[:topk]
+        else:
+            raise ValueError(f'Unsupported metric aggregation: {cfg.metric_agg}')
+        secondary_values = np.array([stats_list[idx][tiebreak_metric]
+                                     for idx in candidate_idx])
+        if tiebreak_agg == 'argmax':
+            best_idx = int(candidate_idx[int(secondary_values.argmax())])
+        elif tiebreak_agg == 'argmin':
+            best_idx = int(candidate_idx[int(secondary_values.argmin())])
+        else:
+            raise ValueError(
+                f'Unsupported tiebreak aggregation: {tiebreak_agg}'
+            )
+
+    return stats_list[best_idx]['epoch']
 
 
 def agg_runs(dir, metric_best='auto'):
@@ -100,16 +125,7 @@ def agg_runs(dir, metric_best='auto'):
                 dir_split = os.path.join(dir_seed, split)
                 fname_stats = os.path.join(dir_split, 'stats.json')
                 stats_list = json_to_dict_list(fname_stats)
-                if metric_best == 'auto':
-                    metric = 'auc' if 'auc' in stats_list[0] else 'accuracy'
-                else:
-                    metric = metric_best
-                performance_np = np.array(  # noqa
-                    [stats[metric] for stats in stats_list])
-                best_epoch = \
-                    stats_list[
-                        eval("performance_np.{}()".format(cfg.metric_agg))][
-                        'epoch']
+                best_epoch = get_best_epoch(stats_list, metric_best)
                 print(best_epoch)
 
             for split in os.listdir(dir_seed):
@@ -160,3 +176,96 @@ def agg_runs(dir, metric_best='auto'):
         dict_to_json(value, fname)
     logging.info('Results aggregated across runs saved in {}'.format(
         os.path.join(dir, 'agg')))
+
+
+def agg_batch(dir, metric_best='auto'):
+    r'''
+    Aggregate across results from multiple experiments via grid search
+
+    Args:
+        dir (str): Directory of the results, containing multiple experiments
+        metric_best (str, optional): The metric for selecting the best
+        validation performance. Options: auto, accuracy, auc.
+
+    '''
+    import pandas as pd
+    results = {'train': [], 'val': [], 'test': []}
+    for run in os.listdir(dir):
+        if run != 'agg':
+            dict_name = name_to_dict(run)
+            dir_run = os.path.join(dir, run, 'agg')
+            if os.path.isdir(dir_run):
+                for split in os.listdir(dir_run):
+                    dir_split = os.path.join(dir_run, split)
+                    fname_stats = os.path.join(dir_split, 'best.json')
+                    dict_stats = json_to_dict_list(fname_stats)[
+                        -1]  # get best val epoch
+                    rm_keys(dict_stats,
+                            ['lr', 'lr_std', 'eta', 'eta_std', 'params_std'])
+                    results[split].append({**dict_name, **dict_stats})
+    dir_out = os.path.join(dir, 'agg')
+    makedirs_rm_exist(dir_out)
+    for key in results:
+        if len(results[key]) > 0:
+            results[key] = pd.DataFrame(results[key])
+            results[key] = results[key].sort_values(
+                list(dict_name.keys()), ascending=[True] * len(dict_name))
+            fname = os.path.join(dir_out, '{}_best.csv'.format(key))
+            results[key].to_csv(fname, index=False)
+
+    results = {'train': [], 'val': [], 'test': []}
+    for run in os.listdir(dir):
+        if run != 'agg':
+            dict_name = name_to_dict(run)
+            dir_run = os.path.join(dir, run, 'agg')
+            if os.path.isdir(dir_run):
+                for split in os.listdir(dir_run):
+                    dir_split = os.path.join(dir_run, split)
+                    fname_stats = os.path.join(dir_split, 'stats.json')
+                    dict_stats = json_to_dict_list(fname_stats)[
+                        -1]  # get last epoch
+                    rm_keys(dict_stats,
+                            ['lr', 'lr_std', 'eta', 'eta_std', 'params_std'])
+                    results[split].append({**dict_name, **dict_stats})
+    dir_out = os.path.join(dir, 'agg')
+    for key in results:
+        if len(results[key]) > 0:
+            results[key] = pd.DataFrame(results[key])
+            results[key] = results[key].sort_values(
+                list(dict_name.keys()), ascending=[True] * len(dict_name))
+            fname = os.path.join(dir_out, '{}.csv'.format(key))
+            results[key].to_csv(fname, index=False)
+
+    results = {'train': [], 'val': [], 'test': []}
+    for run in os.listdir(dir):
+        if run != 'agg':
+            dict_name = name_to_dict(run)
+            dir_run = os.path.join(dir, run, 'agg')
+            if os.path.isdir(dir_run):
+                for split in os.listdir(dir_run):
+                    dir_split = os.path.join(dir_run, split)
+                    fname_stats = os.path.join(dir_split, 'stats.json')
+                    dict_stats = json_to_dict_list(
+                        fname_stats)  # get best epoch
+                    if metric_best == 'auto':
+                        metric = 'auc' if 'auc' in dict_stats[0] \
+                            else 'accuracy'
+                    else:
+                        metric = metric_best
+                    performance_np = np.array(  # noqa
+                        [stats[metric] for stats in dict_stats])
+                    dict_stats = dict_stats[eval("performance_np.{}()".format(
+                        cfg.metric_agg))]
+                    rm_keys(dict_stats,
+                            ['lr', 'lr_std', 'eta', 'eta_std', 'params_std'])
+                    results[split].append({**dict_name, **dict_stats})
+    dir_out = os.path.join(dir, 'agg')
+    for key in results:
+        if len(results[key]) > 0:
+            results[key] = pd.DataFrame(results[key])
+            results[key] = results[key].sort_values(
+                list(dict_name.keys()), ascending=[True] * len(dict_name))
+            fname = os.path.join(dir_out, '{}_bestepoch.csv'.format(key))
+            results[key].to_csv(fname, index=False)
+
+    print('Results aggregated across models saved in {}'.format(dir_out))

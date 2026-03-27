@@ -35,6 +35,9 @@ def extended_cfg(cfg):
     # instead, when False, follow cfg.train.eval_period checkpointing frequency.
     cfg.train.ckpt_best = False
     cfg.train.selection_precision_weight = 0.0
+    cfg.train.selection_topk_by_metric = 1
+    cfg.train.selection_tiebreak_metric = ""
+    cfg.train.selection_tiebreak_agg = "argmax"
 
     # Enable tqdm progress bar during training/validation/testing
     cfg.train.tqdm = False

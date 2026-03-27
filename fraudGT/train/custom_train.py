@@ -34,6 +34,38 @@ def check_grad(model):
         #     elif torch.isinf(param.grad).any():
         #         print(f'{name} has Inf gradients')
 
+def get_best_epoch(val_perf):
+    best_epoch = int(np.array([vp['loss'] for vp in val_perf]).argmin())
+    if cfg.metric_best == 'auto':
+        return best_epoch
+
+    metric = cfg.metric_best
+    primary_values = np.array([vp[metric] for vp in val_perf])
+    best_epoch = int(getattr(primary_values, cfg.metric_agg)())
+
+    topk = int(getattr(cfg.train, 'selection_topk_by_metric', 1))
+    tiebreak_metric = getattr(cfg.train, 'selection_tiebreak_metric', "")
+    tiebreak_agg = getattr(cfg.train, 'selection_tiebreak_agg', 'argmax')
+    if topk <= 1 or not tiebreak_metric:
+        return best_epoch
+
+    ranked = np.argsort(primary_values)
+    if cfg.metric_agg == 'argmax':
+        candidate_idx = ranked[-topk:]
+    elif cfg.metric_agg == 'argmin':
+        candidate_idx = ranked[:topk]
+    else:
+        raise ValueError(f'Unsupported metric aggregation: {cfg.metric_agg}')
+
+    secondary_values = np.array([val_perf[idx][tiebreak_metric]
+                                 for idx in candidate_idx])
+    if tiebreak_agg == 'argmax':
+        return int(candidate_idx[int(secondary_values.argmax())])
+    if tiebreak_agg == 'argmin':
+        return int(candidate_idx[int(secondary_values.argmin())])
+    raise ValueError(f'Unsupported tiebreak aggregation: {tiebreak_agg}')
+
+
 # def train_epoch(logger, loader, model, optimizer, scheduler, batch_accumulation):
 #     model.train()
 #     optimizer.zero_grad()
@@ -305,13 +337,10 @@ def custom_train(loggers, loaders, model, optimizer, scheduler):
 
         # Log current best stats on eval epoch.
         if is_eval_epoch(cur_epoch, start_epoch):
-            best_epoch = np.array([vp['loss'] for vp in val_perf]).argmin()
+            best_epoch = get_best_epoch(val_perf)
             best_train = best_val = best_test = ""
             if cfg.metric_best != 'auto':
-                # Select again based on val perf of `cfg.metric_best`.
                 m = cfg.metric_best
-                best_epoch = getattr(np.array([vp[m] for vp in val_perf]),
-                                     cfg.metric_agg)()
                 if m in perf[0][best_epoch]:
                     best_train = f"train_{m}: {perf[0][best_epoch][m]:.4f}"
                 else:
@@ -523,13 +552,10 @@ def multi_stage_train(loggers, loaders, model, optimizer, scheduler):
 
             # Log current best stats on eval epoch.
             if is_eval_epoch(cur_epoch, start_epoch):
-                best_epoch = np.array([vp['loss'] for vp in val_perf]).argmin()
+                best_epoch = get_best_epoch(val_perf)
                 best_train = best_val = best_test = ""
                 if cfg.metric_best != 'auto':
-                    # Select again based on val perf of `cfg.metric_best`.
                     m = cfg.metric_best
-                    best_epoch = getattr(np.array([vp[m] for vp in val_perf]),
-                                        cfg.metric_agg)()
                     if m in perf[0][best_epoch]:
                         best_train = f"train_{m}: {perf[0][best_epoch][m]:.4f}"
                     else:
