@@ -66,6 +66,14 @@ class GTLayer(nn.Module):
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmax_dualgate'
         )
+        self.directional_meanspike_dualgate_writeback = (
+            global_model_type == 'SparseNodeTransformer' and
+            cfg.gt.edge_writeback == 'dir_meanspike_dualgate'
+        )
+        self.directional_dualgate_writeback = (
+            self.directional_meanmax_dualgate_writeback or
+            self.directional_meanspike_dualgate_writeback
+        )
 
         # Residual connection
         self.skip_local = torch.nn.ParameterDict()
@@ -130,11 +138,11 @@ class GTLayer(nn.Module):
                         self.directional_meanmax_writeback or
                         self.directional_meanspike_writeback or
                         self.directional_meantail_writeback or
-                        self.directional_meanmax_dualgate_writeback
+                        self.directional_dualgate_writeback
                     ) else 2
                 )
                 for node_type in metadata[0]:
-                    if self.directional_meanmax_dualgate_writeback:
+                    if self.directional_dualgate_writeback:
                         self.writeback_mean_update[node_type] = Linear(
                             dim_out * 2, dim_out
                         )
@@ -143,6 +151,9 @@ class GTLayer(nn.Module):
                         )
                         self.writeback_anomaly_gate[node_type] = Linear(
                             dim_out * 3, dim_out
+                        )
+                        nn.init.constant_(
+                            self.writeback_anomaly_gate[node_type].bias, -2.0
                         )
                     else:
                         self.writeback_update[node_type] = Linear(
@@ -282,7 +293,7 @@ class GTLayer(nn.Module):
             self.directional_meanmax_writeback or
             self.directional_meanspike_writeback or
             self.directional_meantail_writeback or
-            self.directional_meanmax_dualgate_writeback
+            self.directional_dualgate_writeback
         ):
             incoming_max, _ = scatter_max(
                 edge_state, dst_nodes, dim=0, dim_size=num_nodes
@@ -306,6 +317,11 @@ class GTLayer(nn.Module):
                 mean_context_raw = torch.cat((incoming, outgoing), dim=-1)
                 anomaly_context_raw = torch.cat(
                     (incoming_max, outgoing_max), dim=-1
+                )
+            elif self.directional_meanspike_dualgate_writeback:
+                mean_context_raw = torch.cat((incoming, outgoing), dim=-1)
+                anomaly_context_raw = torch.cat(
+                    (incoming_max - incoming, outgoing_max - outgoing), dim=-1
                 )
             elif self.directional_meanspike_writeback:
                 # Encode how much each direction deviates from its typical edge state.
@@ -342,7 +358,7 @@ class GTLayer(nn.Module):
             if not mask.any():
                 continue
             node_out = out[mask]
-            if self.directional_meanmax_dualgate_writeback:
+            if self.directional_dualgate_writeback:
                 mean_context = self.activation(
                     self.writeback_mean_update[node_type](
                         mean_context_raw[mask]
