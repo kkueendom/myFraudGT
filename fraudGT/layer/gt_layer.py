@@ -54,6 +54,10 @@ class GTLayer(nn.Module):
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmax'
         )
+        self.directional_meanspike_writeback = (
+            global_model_type == 'SparseNodeTransformer' and
+            cfg.gt.edge_writeback == 'dir_meanspike'
+        )
 
         # Residual connection
         self.skip_local = torch.nn.ParameterDict()
@@ -111,7 +115,10 @@ class GTLayer(nn.Module):
                 self.writeback_update = torch.nn.ModuleDict()
                 self.writeback_gate = torch.nn.ModuleDict()
                 writeback_context_dim = dim_out * (
-                    4 if self.directional_meanmax_writeback else 2
+                    4 if (
+                        self.directional_meanmax_writeback or
+                        self.directional_meanspike_writeback
+                    ) else 2
                 )
                 for node_type in metadata[0]:
                     self.writeback_update[node_type] = Linear(
@@ -247,7 +254,7 @@ class GTLayer(nn.Module):
 
         incoming = incoming / in_count.clamp(min=1.0).unsqueeze(-1)
         outgoing = outgoing / out_count.clamp(min=1.0).unsqueeze(-1)
-        if self.directional_meanmax_writeback:
+        if self.directional_meanmax_writeback or self.directional_meanspike_writeback:
             incoming_max, _ = scatter_max(
                 edge_state, dst_nodes, dim=0, dim_size=num_nodes
             )
@@ -262,9 +269,17 @@ class GTLayer(nn.Module):
                 torch.isfinite(outgoing_max), outgoing_max,
                 torch.zeros_like(outgoing_max)
             )
-            edge_context = torch.cat(
-                (incoming, outgoing, incoming_max, outgoing_max), dim=-1
-            )
+            if self.directional_meanmax_writeback:
+                edge_context = torch.cat(
+                    (incoming, outgoing, incoming_max, outgoing_max), dim=-1
+                )
+            else:
+                # Encode how much each direction deviates from its typical edge state.
+                incoming_spike = incoming_max - incoming
+                outgoing_spike = outgoing_max - outgoing
+                edge_context = torch.cat(
+                    (incoming, outgoing, incoming_spike, outgoing_spike), dim=-1
+                )
         else:
             edge_context = torch.cat((incoming, outgoing), dim=-1)
 
