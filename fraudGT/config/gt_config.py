@@ -90,7 +90,8 @@ def set_cfg_gt(cfg):
     # Aggregate updated edge states back into node states.
     # Options used in our experiments: none, mean, attn_mean,
     # dir_meanmax, dir_meanspike, dir_meantail,
-    # dir_meanmax_dualgate, dir_meanspike_dualgate
+    # dir_meanmax_dualgate, dir_meanspike_dualgate,
+    # dir_meanmax_scaled
     cfg.gt.edge_writeback = 'none'
     cfg.gt.edge_writeback_dropout = 0.0
 

@@ -62,6 +62,10 @@ class GTLayer(nn.Module):
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meantail'
         )
+        self.directional_meanmax_scaled_writeback = (
+            global_model_type == 'SparseNodeTransformer' and
+            cfg.gt.edge_writeback == 'dir_meanmax_scaled'
+        )
         self.directional_meanmax_dualgate_writeback = (
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmax_dualgate'
@@ -138,9 +142,14 @@ class GTLayer(nn.Module):
                         self.directional_meanmax_writeback or
                         self.directional_meanspike_writeback or
                         self.directional_meantail_writeback or
+                        self.directional_meanmax_scaled_writeback or
                         self.directional_dualgate_writeback
                     ) else 2
                 )
+                if self.directional_meanmax_scaled_writeback:
+                    self.writeback_anomaly_scale = nn.Parameter(
+                        torch.full((2,), math.log(0.25 / 0.75))
+                    )
                 for node_type in metadata[0]:
                     if self.directional_dualgate_writeback:
                         self.writeback_mean_update[node_type] = Linear(
@@ -293,6 +302,7 @@ class GTLayer(nn.Module):
             self.directional_meanmax_writeback or
             self.directional_meanspike_writeback or
             self.directional_meantail_writeback or
+            self.directional_meanmax_scaled_writeback or
             self.directional_dualgate_writeback
         ):
             incoming_max, _ = scatter_max(
@@ -312,6 +322,17 @@ class GTLayer(nn.Module):
             if self.directional_meanmax_writeback:
                 edge_context = torch.cat(
                     (incoming, outgoing, incoming_max, outgoing_max), dim=-1
+                )
+            elif self.directional_meanmax_scaled_writeback:
+                anomaly_scale = torch.sigmoid(self.writeback_anomaly_scale)
+                edge_context = torch.cat(
+                    (
+                        incoming,
+                        outgoing,
+                        anomaly_scale[0] * incoming_max,
+                        anomaly_scale[1] * outgoing_max,
+                    ),
+                    dim=-1
                 )
             elif self.directional_meanmax_dualgate_writeback:
                 mean_context_raw = torch.cat((incoming, outgoing), dim=-1)
