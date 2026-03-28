@@ -58,6 +58,10 @@ class GTLayer(nn.Module):
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanspike'
         )
+        self.directional_meantail_writeback = (
+            global_model_type == 'SparseNodeTransformer' and
+            cfg.gt.edge_writeback == 'dir_meantail'
+        )
 
         # Residual connection
         self.skip_local = torch.nn.ParameterDict()
@@ -117,7 +121,8 @@ class GTLayer(nn.Module):
                 writeback_context_dim = dim_out * (
                     4 if (
                         self.directional_meanmax_writeback or
-                        self.directional_meanspike_writeback
+                        self.directional_meanspike_writeback or
+                        self.directional_meantail_writeback
                     ) else 2
                 )
                 for node_type in metadata[0]:
@@ -254,7 +259,11 @@ class GTLayer(nn.Module):
 
         incoming = incoming / in_count.clamp(min=1.0).unsqueeze(-1)
         outgoing = outgoing / out_count.clamp(min=1.0).unsqueeze(-1)
-        if self.directional_meanmax_writeback or self.directional_meanspike_writeback:
+        if (
+            self.directional_meanmax_writeback or
+            self.directional_meanspike_writeback or
+            self.directional_meantail_writeback
+        ):
             incoming_max, _ = scatter_max(
                 edge_state, dst_nodes, dim=0, dim_size=num_nodes
             )
@@ -273,12 +282,31 @@ class GTLayer(nn.Module):
                 edge_context = torch.cat(
                     (incoming, outgoing, incoming_max, outgoing_max), dim=-1
                 )
-            else:
+            elif self.directional_meanspike_writeback:
                 # Encode how much each direction deviates from its typical edge state.
                 incoming_spike = incoming_max - incoming
                 outgoing_spike = outgoing_max - outgoing
                 edge_context = torch.cat(
                     (incoming, outgoing, incoming_spike, outgoing_spike), dim=-1
+                )
+            else:
+                incoming_tail = torch.zeros_like(incoming)
+                outgoing_tail = torch.zeros_like(outgoing)
+                incoming_tail_edges = F.relu(edge_state - incoming[dst_nodes])
+                outgoing_tail_edges = F.relu(edge_state - outgoing[src_nodes])
+                if edge_weights is not None:
+                    incoming_tail_edges = (
+                        incoming_tail_edges * edge_weights.unsqueeze(-1)
+                    )
+                    outgoing_tail_edges = (
+                        outgoing_tail_edges * edge_weights.unsqueeze(-1)
+                    )
+                incoming_tail.index_add_(0, dst_nodes, incoming_tail_edges)
+                outgoing_tail.index_add_(0, src_nodes, outgoing_tail_edges)
+                incoming_tail = incoming_tail / in_count.clamp(min=1.0).unsqueeze(-1)
+                outgoing_tail = outgoing_tail / out_count.clamp(min=1.0).unsqueeze(-1)
+                edge_context = torch.cat(
+                    (incoming, outgoing, incoming_tail, outgoing_tail), dim=-1
                 )
         else:
             edge_context = torch.cat((incoming, outgoing), dim=-1)
