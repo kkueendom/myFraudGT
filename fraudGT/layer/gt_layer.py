@@ -83,6 +83,10 @@ class GTLayer(nn.Module):
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxadd'
         )
+        self.directional_meanmaxcount_writeback = (
+            global_model_type == 'SparseNodeTransformer' and
+            cfg.gt.edge_writeback == 'dir_meanmaxcount'
+        )
         self.directional_meanmax_dualgate_writeback = (
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmax_dualgate'
@@ -164,6 +168,7 @@ class GTLayer(nn.Module):
                         self.directional_meantopk_writeback or
                         self.directional_meanmaxmix_writeback or
                         self.directional_meanmaxadd_writeback or
+                        self.directional_meanmaxcount_writeback or
                         self.directional_dualgate_writeback
                     ) else 2
                 )
@@ -178,6 +183,13 @@ class GTLayer(nn.Module):
                 if self.directional_meanmaxadd_writeback:
                     self.writeback_anomaly_add = nn.Parameter(
                         torch.full((1,), math.log(0.35 / 0.65))
+                    )
+                if self.directional_meanmaxcount_writeback:
+                    self.writeback_count_scale = nn.Parameter(
+                        torch.full((2,), 1.5)
+                    )
+                    self.writeback_count_bias = nn.Parameter(
+                        torch.full((2,), -2.0)
                     )
                 for node_type in metadata[0]:
                     if (
@@ -374,6 +386,7 @@ class GTLayer(nn.Module):
             self.directional_meantopk_writeback or
             self.directional_meanmaxmix_writeback or
             self.directional_meanmaxadd_writeback or
+            self.directional_meanmaxcount_writeback or
             self.directional_dualgate_writeback
         ):
             if self.directional_meansoftmax_writeback:
@@ -426,6 +439,27 @@ class GTLayer(nn.Module):
                 if self.directional_meanmax_writeback:
                     edge_context = torch.cat(
                         (incoming, outgoing, incoming_max, outgoing_max), dim=-1
+                    )
+                elif self.directional_meanmaxcount_writeback:
+                    count_context = torch.stack(
+                        (
+                            torch.log1p(in_count.clamp(min=0.0)),
+                            torch.log1p(out_count.clamp(min=0.0)),
+                        ),
+                        dim=-1
+                    )
+                    count_gate = torch.sigmoid(
+                        count_context * self.writeback_count_scale +
+                        self.writeback_count_bias
+                    )
+                    edge_context = torch.cat(
+                        (
+                            incoming,
+                            outgoing,
+                            count_gate[:, 0].unsqueeze(-1) * incoming_max,
+                            count_gate[:, 1].unsqueeze(-1) * outgoing_max,
+                        ),
+                        dim=-1
                     )
                 elif self.directional_meanmaxmix_writeback:
                     anomaly_scores = weighted_edge_state.norm(dim=-1)
