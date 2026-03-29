@@ -71,6 +71,10 @@ class GTLayer(nn.Module):
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meansoftmax'
         )
+        self.directional_meantopk_writeback = (
+            global_model_type == 'SparseNodeTransformer' and
+            cfg.gt.edge_writeback == 'dir_meantopk'
+        )
         self.directional_meanmax_dualgate_writeback = (
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmax_dualgate'
@@ -149,6 +153,7 @@ class GTLayer(nn.Module):
                         self.directional_meantail_writeback or
                         self.directional_meanmax_scaled_writeback or
                         self.directional_meansoftmax_writeback or
+                        self.directional_meantopk_writeback or
                         self.directional_dualgate_writeback
                     ) else 2
                 )
@@ -284,6 +289,32 @@ class GTLayer(nn.Module):
             delta = delta.clamp(max=cfg.gt.temporal_bias_clamp)
         return delta
 
+    def _group_topk_mean(self, edge_values, group_nodes, group_scores, num_nodes):
+        topk = max(int(cfg.gt.edge_writeback_topk), 1)
+        selected_sum = torch.zeros(
+            (num_nodes, edge_values.shape[-1]), device=edge_values.device
+        )
+        selected_count = torch.zeros(num_nodes, device=edge_values.device)
+        working_scores = group_scores.clone()
+
+        for _ in range(topk):
+            max_scores, max_indices = scatter_max(
+                working_scores, group_nodes, dim=0, dim_size=num_nodes
+            )
+            valid_groups = torch.isfinite(max_scores)
+            if not valid_groups.any():
+                break
+            valid_nodes = valid_groups.nonzero(as_tuple=False).view(-1)
+            selected_edges = max_indices[valid_nodes]
+            selected_sum.index_add_(0, valid_nodes, edge_values[selected_edges])
+            selected_count.index_add_(
+                0, valid_nodes,
+                torch.ones_like(valid_nodes, dtype=edge_values.dtype)
+            )
+            working_scores[selected_edges] = float('-inf')
+
+        return selected_sum / selected_count.clamp(min=1.0).unsqueeze(-1)
+
     def _apply_edge_writeback(self, out, edge_state, src_nodes, dst_nodes,
                               node_type_tensor, batch, edge_weights=None):
         num_nodes = out.shape[0]
@@ -310,6 +341,7 @@ class GTLayer(nn.Module):
             self.directional_meantail_writeback or
             self.directional_meanmax_scaled_writeback or
             self.directional_meansoftmax_writeback or
+            self.directional_meantopk_writeback or
             self.directional_dualgate_writeback
         ):
             if self.directional_meansoftmax_writeback:
@@ -332,6 +364,17 @@ class GTLayer(nn.Module):
                 )
                 edge_context = torch.cat(
                     (incoming, outgoing, incoming_focus, outgoing_focus), dim=-1
+                )
+            elif self.directional_meantopk_writeback:
+                anomaly_scores = weighted_edge_state.norm(dim=-1)
+                incoming_topk = self._group_topk_mean(
+                    weighted_edge_state, dst_nodes, anomaly_scores, num_nodes
+                )
+                outgoing_topk = self._group_topk_mean(
+                    weighted_edge_state, src_nodes, anomaly_scores, num_nodes
+                )
+                edge_context = torch.cat(
+                    (incoming, outgoing, incoming_topk, outgoing_topk), dim=-1
                 )
             else:
                 incoming_max, _ = scatter_max(
