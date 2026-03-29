@@ -12,6 +12,7 @@ from torch_geometric.data import HeteroData
 from torch_geometric.nn.inits import glorot, zeros, ones, reset
 from torch_geometric.nn import (Linear, MLP, HeteroConv, GraphConv, SAGEConv, GINConv, GINEConv, \
                                 GATConv)
+from torch_geometric.utils import softmax as pyg_softmax
 from fraudGT.timer import runtime_stats_cuda, is_performance_stats_enabled, enable_runtime_stats, disable_runtime_stats
 
 
@@ -65,6 +66,10 @@ class GTLayer(nn.Module):
         self.directional_meanmax_scaled_writeback = (
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmax_scaled'
+        )
+        self.directional_meansoftmax_writeback = (
+            global_model_type == 'SparseNodeTransformer' and
+            cfg.gt.edge_writeback == 'dir_meansoftmax'
         )
         self.directional_meanmax_dualgate_writeback = (
             global_model_type == 'SparseNodeTransformer' and
@@ -143,6 +148,7 @@ class GTLayer(nn.Module):
                         self.directional_meanspike_writeback or
                         self.directional_meantail_writeback or
                         self.directional_meanmax_scaled_writeback or
+                        self.directional_meansoftmax_writeback or
                         self.directional_dualgate_writeback
                     ) else 2
                 )
@@ -303,73 +309,96 @@ class GTLayer(nn.Module):
             self.directional_meanspike_writeback or
             self.directional_meantail_writeback or
             self.directional_meanmax_scaled_writeback or
+            self.directional_meansoftmax_writeback or
             self.directional_dualgate_writeback
         ):
-            incoming_max, _ = scatter_max(
-                edge_state, dst_nodes, dim=0, dim_size=num_nodes
-            )
-            outgoing_max, _ = scatter_max(
-                edge_state, src_nodes, dim=0, dim_size=num_nodes
-            )
-            incoming_max = torch.where(
-                torch.isfinite(incoming_max), incoming_max,
-                torch.zeros_like(incoming_max)
-            )
-            outgoing_max = torch.where(
-                torch.isfinite(outgoing_max), outgoing_max,
-                torch.zeros_like(outgoing_max)
-            )
-            if self.directional_meanmax_writeback:
+            if self.directional_meansoftmax_writeback:
+                anomaly_scores = weighted_edge_state.norm(dim=-1)
+                incoming_focus_weights = pyg_softmax(
+                    anomaly_scores, dst_nodes, num_nodes=num_nodes
+                )
+                outgoing_focus_weights = pyg_softmax(
+                    anomaly_scores, src_nodes, num_nodes=num_nodes
+                )
+                incoming_focus = torch.zeros_like(incoming)
+                outgoing_focus = torch.zeros_like(outgoing)
+                incoming_focus.index_add_(
+                    0, dst_nodes,
+                    weighted_edge_state * incoming_focus_weights.unsqueeze(-1)
+                )
+                outgoing_focus.index_add_(
+                    0, src_nodes,
+                    weighted_edge_state * outgoing_focus_weights.unsqueeze(-1)
+                )
                 edge_context = torch.cat(
-                    (incoming, outgoing, incoming_max, outgoing_max), dim=-1
-                )
-            elif self.directional_meanmax_scaled_writeback:
-                anomaly_scale = torch.sigmoid(self.writeback_anomaly_scale)
-                edge_context = torch.cat(
-                    (
-                        incoming,
-                        outgoing,
-                        anomaly_scale[0] * incoming_max,
-                        anomaly_scale[1] * outgoing_max,
-                    ),
-                    dim=-1
-                )
-            elif self.directional_meanmax_dualgate_writeback:
-                mean_context_raw = torch.cat((incoming, outgoing), dim=-1)
-                anomaly_context_raw = torch.cat(
-                    (incoming_max, outgoing_max), dim=-1
-                )
-            elif self.directional_meanspike_dualgate_writeback:
-                mean_context_raw = torch.cat((incoming, outgoing), dim=-1)
-                anomaly_context_raw = torch.cat(
-                    (incoming_max - incoming, outgoing_max - outgoing), dim=-1
-                )
-            elif self.directional_meanspike_writeback:
-                # Encode how much each direction deviates from its typical edge state.
-                incoming_spike = incoming_max - incoming
-                outgoing_spike = outgoing_max - outgoing
-                edge_context = torch.cat(
-                    (incoming, outgoing, incoming_spike, outgoing_spike), dim=-1
+                    (incoming, outgoing, incoming_focus, outgoing_focus), dim=-1
                 )
             else:
-                incoming_tail = torch.zeros_like(incoming)
-                outgoing_tail = torch.zeros_like(outgoing)
-                incoming_tail_edges = F.relu(edge_state - incoming[dst_nodes])
-                outgoing_tail_edges = F.relu(edge_state - outgoing[src_nodes])
-                if edge_weights is not None:
-                    incoming_tail_edges = (
-                        incoming_tail_edges * edge_weights.unsqueeze(-1)
-                    )
-                    outgoing_tail_edges = (
-                        outgoing_tail_edges * edge_weights.unsqueeze(-1)
-                    )
-                incoming_tail.index_add_(0, dst_nodes, incoming_tail_edges)
-                outgoing_tail.index_add_(0, src_nodes, outgoing_tail_edges)
-                incoming_tail = incoming_tail / in_count.clamp(min=1.0).unsqueeze(-1)
-                outgoing_tail = outgoing_tail / out_count.clamp(min=1.0).unsqueeze(-1)
-                edge_context = torch.cat(
-                    (incoming, outgoing, incoming_tail, outgoing_tail), dim=-1
+                incoming_max, _ = scatter_max(
+                    edge_state, dst_nodes, dim=0, dim_size=num_nodes
                 )
+                outgoing_max, _ = scatter_max(
+                    edge_state, src_nodes, dim=0, dim_size=num_nodes
+                )
+                incoming_max = torch.where(
+                    torch.isfinite(incoming_max), incoming_max,
+                    torch.zeros_like(incoming_max)
+                )
+                outgoing_max = torch.where(
+                    torch.isfinite(outgoing_max), outgoing_max,
+                    torch.zeros_like(outgoing_max)
+                )
+                if self.directional_meanmax_writeback:
+                    edge_context = torch.cat(
+                        (incoming, outgoing, incoming_max, outgoing_max), dim=-1
+                    )
+                elif self.directional_meanmax_scaled_writeback:
+                    anomaly_scale = torch.sigmoid(self.writeback_anomaly_scale)
+                    edge_context = torch.cat(
+                        (
+                            incoming,
+                            outgoing,
+                            anomaly_scale[0] * incoming_max,
+                            anomaly_scale[1] * outgoing_max,
+                        ),
+                        dim=-1
+                    )
+                elif self.directional_meanmax_dualgate_writeback:
+                    mean_context_raw = torch.cat((incoming, outgoing), dim=-1)
+                    anomaly_context_raw = torch.cat(
+                        (incoming_max, outgoing_max), dim=-1
+                    )
+                elif self.directional_meanspike_dualgate_writeback:
+                    mean_context_raw = torch.cat((incoming, outgoing), dim=-1)
+                    anomaly_context_raw = torch.cat(
+                        (incoming_max - incoming, outgoing_max - outgoing), dim=-1
+                    )
+                elif self.directional_meanspike_writeback:
+                    # Encode how much each direction deviates from its typical edge state.
+                    incoming_spike = incoming_max - incoming
+                    outgoing_spike = outgoing_max - outgoing
+                    edge_context = torch.cat(
+                        (incoming, outgoing, incoming_spike, outgoing_spike), dim=-1
+                    )
+                else:
+                    incoming_tail = torch.zeros_like(incoming)
+                    outgoing_tail = torch.zeros_like(outgoing)
+                    incoming_tail_edges = F.relu(edge_state - incoming[dst_nodes])
+                    outgoing_tail_edges = F.relu(edge_state - outgoing[src_nodes])
+                    if edge_weights is not None:
+                        incoming_tail_edges = (
+                            incoming_tail_edges * edge_weights.unsqueeze(-1)
+                        )
+                        outgoing_tail_edges = (
+                            outgoing_tail_edges * edge_weights.unsqueeze(-1)
+                        )
+                    incoming_tail.index_add_(0, dst_nodes, incoming_tail_edges)
+                    outgoing_tail.index_add_(0, src_nodes, outgoing_tail_edges)
+                    incoming_tail = incoming_tail / in_count.clamp(min=1.0).unsqueeze(-1)
+                    outgoing_tail = outgoing_tail / out_count.clamp(min=1.0).unsqueeze(-1)
+                    edge_context = torch.cat(
+                        (incoming, outgoing, incoming_tail, outgoing_tail), dim=-1
+                    )
         else:
             edge_context = torch.cat((incoming, outgoing), dim=-1)
 
