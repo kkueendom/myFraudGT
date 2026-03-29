@@ -306,6 +306,14 @@ class GTLayer(nn.Module):
                 break
             valid_nodes = valid_groups.nonzero(as_tuple=False).view(-1)
             selected_edges = max_indices[valid_nodes]
+            valid_edges = (
+                (selected_edges >= 0) &
+                (selected_edges < edge_values.shape[0])
+            )
+            if not valid_edges.any():
+                break
+            valid_nodes = valid_nodes[valid_edges]
+            selected_edges = selected_edges[valid_edges]
             selected_sum.index_add_(0, valid_nodes, edge_values[selected_edges])
             selected_count.index_add_(
                 0, valid_nodes,
