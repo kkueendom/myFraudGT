@@ -79,6 +79,10 @@ class GTLayer(nn.Module):
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanwinner'
         )
+        self.directional_meanmaxwinnermix_writeback = (
+            global_model_type == 'SparseNodeTransformer' and
+            cfg.gt.edge_writeback == 'dir_meanmaxwinnermix'
+        )
         self.directional_meanmaxmix_writeback = (
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxmix'
@@ -192,6 +196,7 @@ class GTLayer(nn.Module):
                         self.directional_meansoftmax_writeback or
                         self.directional_meantopk_writeback or
                         self.directional_meanwinner_writeback or
+                        self.directional_meanmaxwinnermix_writeback or
                         self.directional_meanmaxmix_writeback or
                         self.directional_meanmaxadd_writeback or
                         self.directional_meanmaxcount_writeback or
@@ -206,6 +211,10 @@ class GTLayer(nn.Module):
                 if self.directional_meanmax_scaled_writeback:
                     self.writeback_anomaly_scale = nn.Parameter(
                         torch.full((2,), math.log(0.25 / 0.75))
+                    )
+                if self.directional_meanmaxwinnermix_writeback:
+                    self.writeback_winner_mix = nn.Parameter(
+                        torch.full((2,), math.log(0.75 / 0.25))
                     )
                 if self.directional_meanmaxmix_writeback:
                     self.writeback_anomaly_mix = nn.Parameter(
@@ -475,6 +484,7 @@ class GTLayer(nn.Module):
             self.directional_meansoftmax_writeback or
             self.directional_meantopk_writeback or
             self.directional_meanwinner_writeback or
+            self.directional_meanmaxwinnermix_writeback or
             self.directional_meanmaxmix_writeback or
             self.directional_meanmaxadd_writeback or
             self.directional_meanmaxcount_writeback or
@@ -546,6 +556,26 @@ class GTLayer(nn.Module):
                 if self.directional_meanmax_writeback:
                     edge_context = torch.cat(
                         (incoming, outgoing, incoming_max, outgoing_max), dim=-1
+                    )
+                elif self.directional_meanmaxwinnermix_writeback:
+                    anomaly_scores = weighted_edge_state.norm(dim=-1)
+                    incoming_winner = self._group_top1_select(
+                        weighted_edge_state, dst_nodes, anomaly_scores, num_nodes
+                    )
+                    outgoing_winner = self._group_top1_select(
+                        weighted_edge_state, src_nodes, anomaly_scores, num_nodes
+                    )
+                    winner_mix = torch.sigmoid(self.writeback_winner_mix)
+                    edge_context = torch.cat(
+                        (
+                            incoming,
+                            outgoing,
+                            winner_mix[0] * incoming_max +
+                            (1.0 - winner_mix[0]) * incoming_winner,
+                            winner_mix[1] * outgoing_max +
+                            (1.0 - winner_mix[1]) * outgoing_winner,
+                        ),
+                        dim=-1
                     )
                 elif self.directional_meanmaxspikeresid_writeback:
                     edge_context = torch.cat(
