@@ -91,6 +91,10 @@ class GTLayer(nn.Module):
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxgap'
         )
+        self.directional_meanmaxspikeresid_writeback = (
+            global_model_type == 'SparseNodeTransformer' and
+            cfg.gt.edge_writeback == 'dir_meanmaxspikeresid'
+        )
         self.directional_meanmax_dualgate_writeback = (
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmax_dualgate'
@@ -162,6 +166,7 @@ class GTLayer(nn.Module):
                 self.writeback_mean_update = torch.nn.ModuleDict()
                 self.writeback_anomaly_update = torch.nn.ModuleDict()
                 self.writeback_anomaly_gate = torch.nn.ModuleDict()
+                self.writeback_spike_update = torch.nn.ModuleDict()
                 writeback_context_dim = dim_out * (
                     4 if (
                         self.directional_meanmax_writeback or
@@ -174,6 +179,7 @@ class GTLayer(nn.Module):
                         self.directional_meanmaxadd_writeback or
                         self.directional_meanmaxcount_writeback or
                         self.directional_meanmaxgap_writeback or
+                        self.directional_meanmaxspikeresid_writeback or
                         self.directional_dualgate_writeback
                     ) else 2
                 )
@@ -203,6 +209,10 @@ class GTLayer(nn.Module):
                     self.writeback_gap_bias = nn.Parameter(
                         torch.full((2,), -1.5)
                     )
+                if self.directional_meanmaxspikeresid_writeback:
+                    self.writeback_spike_residual = nn.Parameter(
+                        torch.full((1,), math.log(0.1 / 0.9))
+                    )
                 for node_type in metadata[0]:
                     if (
                         self.directional_meanmaxadd_writeback or
@@ -224,6 +234,16 @@ class GTLayer(nn.Module):
                     else:
                         self.writeback_update[node_type] = Linear(
                             writeback_context_dim, dim_out
+                        )
+                    if self.directional_meanmaxspikeresid_writeback:
+                        self.writeback_spike_update[node_type] = Linear(
+                            dim_out * 2, dim_out
+                        )
+                        nn.init.zeros_(
+                            self.writeback_spike_update[node_type].weight
+                        )
+                        nn.init.zeros_(
+                            self.writeback_spike_update[node_type].bias
                         )
                     self.writeback_gate[node_type] = Linear(dim_out * 2, dim_out)
         elif global_model_type == 'SparseEdgeTransformer':
@@ -400,6 +420,7 @@ class GTLayer(nn.Module):
             self.directional_meanmaxadd_writeback or
             self.directional_meanmaxcount_writeback or
             self.directional_meanmaxgap_writeback or
+            self.directional_meanmaxspikeresid_writeback or
             self.directional_dualgate_writeback
         ):
             if self.directional_meansoftmax_writeback:
@@ -452,6 +473,13 @@ class GTLayer(nn.Module):
                 if self.directional_meanmax_writeback:
                     edge_context = torch.cat(
                         (incoming, outgoing, incoming_max, outgoing_max), dim=-1
+                    )
+                elif self.directional_meanmaxspikeresid_writeback:
+                    edge_context = torch.cat(
+                        (incoming, outgoing, incoming_max, outgoing_max), dim=-1
+                    )
+                    spike_context_raw = torch.cat(
+                        (incoming_max - incoming, outgoing_max - outgoing), dim=-1
                     )
                 elif self.directional_meanmaxcount_writeback:
                     count_context = torch.stack(
@@ -576,7 +604,19 @@ class GTLayer(nn.Module):
             if not mask.any():
                 continue
             node_out = out[mask]
-            if self.directional_meanmaxadd_writeback:
+            if self.directional_meanmaxspikeresid_writeback:
+                node_context = self.activation(
+                    self.writeback_update[node_type](edge_context[mask])
+                )
+                spike_residual = self.activation(
+                    self.writeback_spike_update[node_type](
+                        spike_context_raw[mask]
+                    )
+                )
+                node_context = node_context + (
+                    torch.sigmoid(self.writeback_spike_residual) * spike_residual
+                )
+            elif self.directional_meanmaxadd_writeback:
                 mean_context = self.activation(
                     self.writeback_mean_update[node_type](mean_context_raw[mask])
                 )
