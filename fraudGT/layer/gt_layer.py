@@ -99,6 +99,10 @@ class GTLayer(nn.Module):
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxplusspike'
         )
+        self.directional_meanmaxsoftclip_writeback = (
+            global_model_type == 'SparseNodeTransformer' and
+            cfg.gt.edge_writeback == 'dir_meanmaxsoftclip'
+        )
         self.directional_meanmax_dualgate_writeback = (
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmax_dualgate'
@@ -185,6 +189,7 @@ class GTLayer(nn.Module):
                         self.directional_meanmaxgap_writeback or
                         self.directional_meanmaxspikeresid_writeback or
                         self.directional_meanmaxplusspike_writeback or
+                        self.directional_meanmaxsoftclip_writeback or
                         self.directional_dualgate_writeback
                     ) else 2
                 )
@@ -221,6 +226,10 @@ class GTLayer(nn.Module):
                 if self.directional_meanmaxplusspike_writeback:
                     self.writeback_spike_add = nn.Parameter(
                         torch.full((2,), math.log(0.15 / 0.85))
+                    )
+                if self.directional_meanmaxsoftclip_writeback:
+                    self.writeback_softclip_tau = nn.Parameter(
+                        torch.full((2,), 1.0)
                     )
                 for node_type in metadata[0]:
                     if (
@@ -431,6 +440,7 @@ class GTLayer(nn.Module):
             self.directional_meanmaxgap_writeback or
             self.directional_meanmaxspikeresid_writeback or
             self.directional_meanmaxplusspike_writeback or
+            self.directional_meanmaxsoftclip_writeback or
             self.directional_dualgate_writeback
         ):
             if self.directional_meansoftmax_writeback:
@@ -501,6 +511,27 @@ class GTLayer(nn.Module):
                             outgoing,
                             incoming_max + spike_add[0] * incoming_spike,
                             outgoing_max + spike_add[1] * outgoing_spike,
+                        ),
+                        dim=-1
+                    )
+                elif self.directional_meanmaxsoftclip_writeback:
+                    incoming_spike = incoming_max - incoming
+                    outgoing_spike = outgoing_max - outgoing
+                    softclip_tau = F.softplus(self.writeback_softclip_tau) + 1e-6
+                    incoming_softclip = (
+                        softclip_tau[0] *
+                        torch.tanh(incoming_spike / softclip_tau[0])
+                    )
+                    outgoing_softclip = (
+                        softclip_tau[1] *
+                        torch.tanh(outgoing_spike / softclip_tau[1])
+                    )
+                    edge_context = torch.cat(
+                        (
+                            incoming,
+                            outgoing,
+                            incoming + incoming_softclip,
+                            outgoing + outgoing_softclip,
                         ),
                         dim=-1
                     )
