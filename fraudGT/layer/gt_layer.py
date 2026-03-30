@@ -87,6 +87,10 @@ class GTLayer(nn.Module):
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxcount'
         )
+        self.directional_meanmaxgap_writeback = (
+            global_model_type == 'SparseNodeTransformer' and
+            cfg.gt.edge_writeback == 'dir_meanmaxgap'
+        )
         self.directional_meanmax_dualgate_writeback = (
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmax_dualgate'
@@ -169,6 +173,7 @@ class GTLayer(nn.Module):
                         self.directional_meanmaxmix_writeback or
                         self.directional_meanmaxadd_writeback or
                         self.directional_meanmaxcount_writeback or
+                        self.directional_meanmaxgap_writeback or
                         self.directional_dualgate_writeback
                     ) else 2
                 )
@@ -190,6 +195,13 @@ class GTLayer(nn.Module):
                     )
                     self.writeback_count_bias = nn.Parameter(
                         torch.full((2,), -2.0)
+                    )
+                if self.directional_meanmaxgap_writeback:
+                    self.writeback_gap_scale = nn.Parameter(
+                        torch.full((2,), 3.0)
+                    )
+                    self.writeback_gap_bias = nn.Parameter(
+                        torch.full((2,), -1.5)
                     )
                 for node_type in metadata[0]:
                     if (
@@ -387,6 +399,7 @@ class GTLayer(nn.Module):
             self.directional_meanmaxmix_writeback or
             self.directional_meanmaxadd_writeback or
             self.directional_meanmaxcount_writeback or
+            self.directional_meanmaxgap_writeback or
             self.directional_dualgate_writeback
         ):
             if self.directional_meansoftmax_writeback:
@@ -458,6 +471,27 @@ class GTLayer(nn.Module):
                             outgoing,
                             count_gate[:, 0].unsqueeze(-1) * incoming_max,
                             count_gate[:, 1].unsqueeze(-1) * outgoing_max,
+                        ),
+                        dim=-1
+                    )
+                elif self.directional_meanmaxgap_writeback:
+                    gap_context = torch.stack(
+                        (
+                            torch.log1p((incoming_max - incoming).norm(dim=-1)),
+                            torch.log1p((outgoing_max - outgoing).norm(dim=-1)),
+                        ),
+                        dim=-1
+                    )
+                    gap_gate = torch.sigmoid(
+                        gap_context * self.writeback_gap_scale +
+                        self.writeback_gap_bias
+                    )
+                    edge_context = torch.cat(
+                        (
+                            incoming,
+                            outgoing,
+                            gap_gate[:, 0].unsqueeze(-1) * incoming_max,
+                            gap_gate[:, 1].unsqueeze(-1) * outgoing_max,
                         ),
                         dim=-1
                     )
