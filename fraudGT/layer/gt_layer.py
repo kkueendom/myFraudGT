@@ -87,6 +87,10 @@ class GTLayer(nn.Module):
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxwinnerplus'
         )
+        self.directional_meanmaxwinnerresid_writeback = (
+            global_model_type == 'SparseNodeTransformer' and
+            cfg.gt.edge_writeback == 'dir_meanmaxwinnerresid'
+        )
         self.directional_meanmaxwinnergap_writeback = (
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxwinnergap'
@@ -195,6 +199,7 @@ class GTLayer(nn.Module):
                 self.writeback_anomaly_update = torch.nn.ModuleDict()
                 self.writeback_anomaly_gate = torch.nn.ModuleDict()
                 self.writeback_spike_update = torch.nn.ModuleDict()
+                self.writeback_winner_update = torch.nn.ModuleDict()
                 writeback_context_dim = dim_out * (
                     4 if (
                         self.directional_meanmax_writeback or
@@ -206,6 +211,7 @@ class GTLayer(nn.Module):
                         self.directional_meanwinner_writeback or
                         self.directional_meanmaxwinnermix_writeback or
                         self.directional_meanmaxwinnerplus_writeback or
+                        self.directional_meanmaxwinnerresid_writeback or
                         self.directional_meanmaxwinnergap_writeback or
                         self.directional_meanmaxmix_writeback or
                         self.directional_meanmaxadd_writeback or
@@ -229,6 +235,13 @@ class GTLayer(nn.Module):
                 if self.directional_meanmaxwinnerplus_writeback:
                     self.writeback_winner_add = nn.Parameter(
                         torch.full((2,), math.log(0.15 / 0.85))
+                    )
+                if self.directional_meanmaxwinnerresid_writeback:
+                    self.writeback_winner_add = nn.Parameter(
+                        torch.full((2,), math.log(0.15 / 0.85))
+                    )
+                    self.writeback_winner_residual = nn.Parameter(
+                        torch.full((1,), math.log(0.1 / 0.9))
                     )
                 if self.directional_meanmaxwinnergap_writeback:
                     self.writeback_winner_gap_scale = nn.Parameter(
@@ -309,6 +322,16 @@ class GTLayer(nn.Module):
                         )
                         nn.init.zeros_(
                             self.writeback_spike_update[node_type].bias
+                        )
+                    if self.directional_meanmaxwinnerresid_writeback:
+                        self.writeback_winner_update[node_type] = Linear(
+                            dim_out * 2, dim_out
+                        )
+                        nn.init.zeros_(
+                            self.writeback_winner_update[node_type].weight
+                        )
+                        nn.init.zeros_(
+                            self.writeback_winner_update[node_type].bias
                         )
                     self.writeback_gate[node_type] = Linear(dim_out * 2, dim_out)
         elif global_model_type == 'SparseEdgeTransformer':
@@ -507,6 +530,7 @@ class GTLayer(nn.Module):
             self.directional_meanwinner_writeback or
             self.directional_meanmaxwinnermix_writeback or
             self.directional_meanmaxwinnerplus_writeback or
+            self.directional_meanmaxwinnerresid_writeback or
             self.directional_meanmaxwinnergap_writeback or
             self.directional_meanmaxmix_writeback or
             self.directional_meanmaxadd_writeback or
@@ -615,6 +639,31 @@ class GTLayer(nn.Module):
                             outgoing,
                             incoming_max + winner_add[0] * (incoming_winner - incoming),
                             outgoing_max + winner_add[1] * (outgoing_winner - outgoing),
+                        ),
+                        dim=-1
+                    )
+                elif self.directional_meanmaxwinnerresid_writeback:
+                    anomaly_scores = weighted_edge_state.norm(dim=-1)
+                    incoming_winner = self._group_top1_select(
+                        weighted_edge_state, dst_nodes, anomaly_scores, num_nodes
+                    )
+                    outgoing_winner = self._group_top1_select(
+                        weighted_edge_state, src_nodes, anomaly_scores, num_nodes
+                    )
+                    winner_add = torch.sigmoid(self.writeback_winner_add)
+                    edge_context = torch.cat(
+                        (
+                            incoming,
+                            outgoing,
+                            incoming_max + winner_add[0] * (incoming_winner - incoming),
+                            outgoing_max + winner_add[1] * (outgoing_winner - outgoing),
+                        ),
+                        dim=-1
+                    )
+                    winner_context_raw = torch.cat(
+                        (
+                            incoming_winner - incoming_max,
+                            outgoing_winner - outgoing_max,
                         ),
                         dim=-1
                     )
@@ -853,6 +902,19 @@ class GTLayer(nn.Module):
                 )
                 node_context = node_context + (
                     torch.sigmoid(self.writeback_spike_residual) * spike_residual
+                )
+            elif self.directional_meanmaxwinnerresid_writeback:
+                node_context = self.activation(
+                    self.writeback_update[node_type](edge_context[mask])
+                )
+                winner_residual = self.activation(
+                    self.writeback_winner_update[node_type](
+                        winner_context_raw[mask]
+                    )
+                )
+                node_context = node_context + (
+                    torch.sigmoid(self.writeback_winner_residual) *
+                    winner_residual
                 )
             elif self.directional_meanmaxadd_writeback:
                 mean_context = self.activation(
