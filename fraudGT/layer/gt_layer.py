@@ -87,6 +87,10 @@ class GTLayer(nn.Module):
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxwinnerplus'
         )
+        self.directional_meanmaxwinnergap_writeback = (
+            global_model_type == 'SparseNodeTransformer' and
+            cfg.gt.edge_writeback == 'dir_meanmaxwinnergap'
+        )
         self.directional_meanmaxmix_writeback = (
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxmix'
@@ -202,6 +206,7 @@ class GTLayer(nn.Module):
                         self.directional_meanwinner_writeback or
                         self.directional_meanmaxwinnermix_writeback or
                         self.directional_meanmaxwinnerplus_writeback or
+                        self.directional_meanmaxwinnergap_writeback or
                         self.directional_meanmaxmix_writeback or
                         self.directional_meanmaxadd_writeback or
                         self.directional_meanmaxcount_writeback or
@@ -224,6 +229,13 @@ class GTLayer(nn.Module):
                 if self.directional_meanmaxwinnerplus_writeback:
                     self.writeback_winner_add = nn.Parameter(
                         torch.full((2,), math.log(0.15 / 0.85))
+                    )
+                if self.directional_meanmaxwinnergap_writeback:
+                    self.writeback_winner_gap_scale = nn.Parameter(
+                        torch.full((2,), 3.0)
+                    )
+                    self.writeback_winner_gap_bias = nn.Parameter(
+                        torch.full((2,), -1.5)
                     )
                 if self.directional_meanmaxmix_writeback:
                     self.writeback_anomaly_mix = nn.Parameter(
@@ -495,6 +507,7 @@ class GTLayer(nn.Module):
             self.directional_meanwinner_writeback or
             self.directional_meanmaxwinnermix_writeback or
             self.directional_meanmaxwinnerplus_writeback or
+            self.directional_meanmaxwinnergap_writeback or
             self.directional_meanmaxmix_writeback or
             self.directional_meanmaxadd_writeback or
             self.directional_meanmaxcount_writeback or
@@ -602,6 +615,38 @@ class GTLayer(nn.Module):
                             outgoing,
                             incoming_max + winner_add[0] * (incoming_winner - incoming),
                             outgoing_max + winner_add[1] * (outgoing_winner - outgoing),
+                        ),
+                        dim=-1
+                    )
+                elif self.directional_meanmaxwinnergap_writeback:
+                    anomaly_scores = weighted_edge_state.norm(dim=-1)
+                    incoming_winner = self._group_top1_select(
+                        weighted_edge_state, dst_nodes, anomaly_scores, num_nodes
+                    )
+                    outgoing_winner = self._group_top1_select(
+                        weighted_edge_state, src_nodes, anomaly_scores, num_nodes
+                    )
+                    winner_gap_context = torch.stack(
+                        (
+                            torch.log1p((incoming_winner - incoming_max).norm(dim=-1)),
+                            torch.log1p((outgoing_winner - outgoing_max).norm(dim=-1)),
+                        ),
+                        dim=-1
+                    )
+                    winner_gap_gate = torch.sigmoid(
+                        winner_gap_context * self.writeback_winner_gap_scale +
+                        self.writeback_winner_gap_bias
+                    )
+                    edge_context = torch.cat(
+                        (
+                            incoming,
+                            outgoing,
+                            incoming_max +
+                            winner_gap_gate[:, 0].unsqueeze(-1) *
+                            (incoming_winner - incoming),
+                            outgoing_max +
+                            winner_gap_gate[:, 1].unsqueeze(-1) *
+                            (outgoing_winner - outgoing),
                         ),
                         dim=-1
                     )
