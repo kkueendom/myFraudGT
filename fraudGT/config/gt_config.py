@@ -93,7 +93,8 @@ def set_cfg_gt(cfg):
     # dir_meanmax_dualgate, dir_meanspike_dualgate,
     # dir_meanmax_scaled, dir_meansoftmax, dir_meantopk, dir_meanwinner,
     # dir_meanmaxwinnermix, dir_meanmaxwinnerplus, dir_meanmaxwinnerdecomp,
-    # dir_meanmaxwinnerresid, dir_meanmaxwinnergap, dir_meanmaxwinnersoftclip,
+    # dir_meanmaxwinnercohclip, dir_meanmaxwinnerresid,
+    # dir_meanmaxwinnergap, dir_meanmaxwinnersoftclip,
     # dir_meanmaxmix, dir_meanmaxadd, dir_meanmaxcount,
     # dir_meanmaxgap, dir_meanmaxspikeresid, dir_meanmaxplusspike,
     # dir_meanmaxsoftclip, dir_meanmaxsoftmix
