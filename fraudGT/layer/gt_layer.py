@@ -87,6 +87,10 @@ class GTLayer(nn.Module):
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxwinnerplus'
         )
+        self.directional_meanmaxwinnerdecomp_writeback = (
+            global_model_type == 'SparseNodeTransformer' and
+            cfg.gt.edge_writeback == 'dir_meanmaxwinnerdecomp'
+        )
         self.directional_meanmaxwinnersoftclip_writeback = (
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxwinnersoftclip'
@@ -215,6 +219,7 @@ class GTLayer(nn.Module):
                         self.directional_meanwinner_writeback or
                         self.directional_meanmaxwinnermix_writeback or
                         self.directional_meanmaxwinnerplus_writeback or
+                        self.directional_meanmaxwinnerdecomp_writeback or
                         self.directional_meanmaxwinnersoftclip_writeback or
                         self.directional_meanmaxwinnerresid_writeback or
                         self.directional_meanmaxwinnergap_writeback or
@@ -239,6 +244,13 @@ class GTLayer(nn.Module):
                     )
                 if self.directional_meanmaxwinnerplus_writeback:
                     self.writeback_winner_add = nn.Parameter(
+                        torch.full((2,), math.log(0.15 / 0.85))
+                    )
+                if self.directional_meanmaxwinnerdecomp_writeback:
+                    self.writeback_winner_spike_add = nn.Parameter(
+                        torch.full((2,), math.log(0.15 / 0.85))
+                    )
+                    self.writeback_winner_resid_add = nn.Parameter(
                         torch.full((2,), math.log(0.15 / 0.85))
                     )
                 if self.directional_meanmaxwinnersoftclip_writeback:
@@ -542,6 +554,7 @@ class GTLayer(nn.Module):
             self.directional_meanwinner_writeback or
             self.directional_meanmaxwinnermix_writeback or
             self.directional_meanmaxwinnerplus_writeback or
+            self.directional_meanmaxwinnerdecomp_writeback or
             self.directional_meanmaxwinnersoftclip_writeback or
             self.directional_meanmaxwinnerresid_writeback or
             self.directional_meanmaxwinnergap_writeback or
@@ -652,6 +665,33 @@ class GTLayer(nn.Module):
                             outgoing,
                             incoming_max + winner_add[0] * (incoming_winner - incoming),
                             outgoing_max + winner_add[1] * (outgoing_winner - outgoing),
+                        ),
+                        dim=-1
+                    )
+                elif self.directional_meanmaxwinnerdecomp_writeback:
+                    anomaly_scores = weighted_edge_state.norm(dim=-1)
+                    incoming_winner = self._group_top1_select(
+                        weighted_edge_state, dst_nodes, anomaly_scores, num_nodes
+                    )
+                    outgoing_winner = self._group_top1_select(
+                        weighted_edge_state, src_nodes, anomaly_scores, num_nodes
+                    )
+                    spike_add = torch.sigmoid(self.writeback_winner_spike_add)
+                    resid_add = torch.sigmoid(self.writeback_winner_resid_add)
+                    incoming_spike = incoming_max - incoming
+                    outgoing_spike = outgoing_max - outgoing
+                    incoming_residual = incoming_winner - incoming_max
+                    outgoing_residual = outgoing_winner - outgoing_max
+                    edge_context = torch.cat(
+                        (
+                            incoming,
+                            outgoing,
+                            incoming +
+                            (1.0 + spike_add[0]) * incoming_spike +
+                            resid_add[0] * incoming_residual,
+                            outgoing +
+                            (1.0 + spike_add[1]) * outgoing_spike +
+                            resid_add[1] * outgoing_residual,
                         ),
                         dim=-1
                     )
