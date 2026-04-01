@@ -91,10 +91,6 @@ class GTLayer(nn.Module):
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxwinnerproj'
         )
-        self.directional_meanmaxwinnerprojseqcorr_writeback = (
-            global_model_type == 'SparseNodeTransformer' and
-            cfg.gt.edge_writeback == 'dir_meanmaxwinnerprojseqcorr'
-        )
         self.directional_meanmaxwinnerdecomp_writeback = (
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxwinnerdecomp'
@@ -220,7 +216,6 @@ class GTLayer(nn.Module):
                 self.writeback_anomaly_gate = torch.nn.ModuleDict()
                 self.writeback_spike_update = torch.nn.ModuleDict()
                 self.writeback_winner_update = torch.nn.ModuleDict()
-                self.writeback_seq_update = torch.nn.ModuleDict()
                 writeback_context_dim = dim_out * (
                     4 if (
                         self.directional_meanmax_writeback or
@@ -233,7 +228,6 @@ class GTLayer(nn.Module):
                         self.directional_meanmaxwinnermix_writeback or
                         self.directional_meanmaxwinnerplus_writeback or
                         self.directional_meanmaxwinnerproj_writeback or
-                        self.directional_meanmaxwinnerprojseqcorr_writeback or
                         self.directional_meanmaxwinnerdecomp_writeback or
                         self.directional_meanmaxwinnercohclip_writeback or
                         self.directional_meanmaxwinnersoftclip_writeback or
@@ -265,19 +259,6 @@ class GTLayer(nn.Module):
                 if self.directional_meanmaxwinnerproj_writeback:
                     self.writeback_winner_proj_add = nn.Parameter(
                         torch.full((2,), math.log(0.15 / 0.85))
-                    )
-                if self.directional_meanmaxwinnerprojseqcorr_writeback:
-                    self.writeback_winner_proj_add = nn.Parameter(
-                        torch.full((2,), math.log(0.15 / 0.85))
-                    )
-                    self.writeback_seq_residual = nn.Parameter(
-                        torch.full((1,), math.log(0.1 / 0.9))
-                    )
-                    self.writeback_seq_gru_in = nn.GRU(
-                        dim_out, dim_out, batch_first=True
-                    )
-                    self.writeback_seq_gru_out = nn.GRU(
-                        dim_out, dim_out, batch_first=True
                     )
                 if self.directional_meanmaxwinnerdecomp_writeback:
                     self.writeback_winner_spike_add = nn.Parameter(
@@ -399,16 +380,6 @@ class GTLayer(nn.Module):
                         )
                         nn.init.zeros_(
                             self.writeback_winner_update[node_type].bias
-                        )
-                    if self.directional_meanmaxwinnerprojseqcorr_writeback:
-                        self.writeback_seq_update[node_type] = Linear(
-                            dim_out * 3, dim_out
-                        )
-                        nn.init.zeros_(
-                            self.writeback_seq_update[node_type].weight
-                        )
-                        nn.init.zeros_(
-                            self.writeback_seq_update[node_type].bias
                         )
                     self.writeback_gate[node_type] = Linear(dim_out * 2, dim_out)
         elif global_model_type == 'SparseEdgeTransformer':
@@ -577,38 +548,8 @@ class GTLayer(nn.Module):
         selected[valid_nodes] = edge_values[selected_edges]
         return selected
 
-    def _group_recent_topk_sequence(self, edge_values, group_nodes,
-                                    group_timestamps, num_nodes):
-        topk = max(int(cfg.gt.edge_writeback_topk), 1)
-        sequence = torch.zeros(
-            (num_nodes, topk, edge_values.shape[-1]), device=edge_values.device
-        )
-        working_timestamps = group_timestamps.clone()
-
-        for step in range(topk):
-            max_timestamps, max_indices = scatter_max(
-                working_timestamps, group_nodes, dim=0, dim_size=num_nodes
-            )
-            valid_groups = torch.isfinite(max_timestamps)
-            if not valid_groups.any():
-                break
-            valid_nodes = valid_groups.nonzero(as_tuple=False).view(-1)
-            selected_edges = max_indices[valid_nodes]
-            valid_edges = (
-                (selected_edges >= 0) &
-                (selected_edges < edge_values.shape[0])
-            )
-            if not valid_edges.any():
-                break
-            valid_nodes = valid_nodes[valid_edges]
-            selected_edges = selected_edges[valid_edges]
-            sequence[valid_nodes, topk - step - 1] = edge_values[selected_edges]
-            working_timestamps[selected_edges] = float('-inf')
-        return sequence
-
     def _apply_edge_writeback(self, out, edge_state, src_nodes, dst_nodes,
-                              node_type_tensor, batch, edge_weights=None,
-                              edge_timestamps=None):
+                              node_type_tensor, batch, edge_weights=None):
         num_nodes = out.shape[0]
         incoming = torch.zeros((num_nodes, edge_state.shape[-1]), device=out.device)
         outgoing = torch.zeros_like(incoming)
@@ -638,7 +579,6 @@ class GTLayer(nn.Module):
             self.directional_meanmaxwinnermix_writeback or
             self.directional_meanmaxwinnerplus_writeback or
             self.directional_meanmaxwinnerproj_writeback or
-            self.directional_meanmaxwinnerprojseqcorr_writeback or
             self.directional_meanmaxwinnerdecomp_writeback or
             self.directional_meanmaxwinnercohclip_writeback or
             self.directional_meanmaxwinnersoftclip_writeback or
@@ -791,72 +731,6 @@ class GTLayer(nn.Module):
                             outgoing,
                             incoming_max + winner_proj_add[0] * incoming_proj,
                             outgoing_max + winner_proj_add[1] * outgoing_proj,
-                        ),
-                        dim=-1
-                    )
-                elif self.directional_meanmaxwinnerprojseqcorr_writeback:
-                    anomaly_scores = weighted_edge_state.norm(dim=-1)
-                    incoming_winner = self._group_top1_select(
-                        weighted_edge_state, dst_nodes, anomaly_scores, num_nodes
-                    )
-                    outgoing_winner = self._group_top1_select(
-                        weighted_edge_state, src_nodes, anomaly_scores, num_nodes
-                    )
-                    winner_proj_add = torch.sigmoid(self.writeback_winner_proj_add)
-                    incoming_spike = incoming_max - incoming
-                    outgoing_spike = outgoing_max - outgoing
-                    incoming_winner_residual = incoming_winner - incoming
-                    outgoing_winner_residual = outgoing_winner - outgoing
-                    incoming_proj_coeff = (
-                        (incoming_winner_residual * incoming_spike).sum(
-                            dim=-1, keepdim=True
-                        ) /
-                        incoming_spike.pow(2).sum(dim=-1, keepdim=True).clamp(
-                            min=1e-6
-                        )
-                    )
-                    outgoing_proj_coeff = (
-                        (outgoing_winner_residual * outgoing_spike).sum(
-                            dim=-1, keepdim=True
-                        ) /
-                        outgoing_spike.pow(2).sum(dim=-1, keepdim=True).clamp(
-                            min=1e-6
-                        )
-                    )
-                    incoming_proj = F.relu(incoming_proj_coeff) * incoming_spike
-                    outgoing_proj = F.relu(outgoing_proj_coeff) * outgoing_spike
-                    edge_context = torch.cat(
-                        (
-                            incoming,
-                            outgoing,
-                            incoming_max + winner_proj_add[0] * incoming_proj,
-                            outgoing_max + winner_proj_add[1] * outgoing_proj,
-                        ),
-                        dim=-1
-                    )
-                    if edge_timestamps is None:
-                        edge_timestamps = torch.zeros(
-                            src_nodes.shape[0], device=edge_state.device
-                        )
-                    incoming_recent = self._group_recent_topk_sequence(
-                        weighted_edge_state, dst_nodes, edge_timestamps, num_nodes
-                    )
-                    outgoing_recent = self._group_recent_topk_sequence(
-                        weighted_edge_state, src_nodes, edge_timestamps, num_nodes
-                    )
-                    _, incoming_recent_hidden = self.writeback_seq_gru_in(
-                        incoming_recent
-                    )
-                    _, outgoing_recent_hidden = self.writeback_seq_gru_out(
-                        outgoing_recent
-                    )
-                    incoming_recent_state = incoming_recent_hidden.squeeze(0)
-                    outgoing_recent_state = outgoing_recent_hidden.squeeze(0)
-                    seq_context_raw = torch.cat(
-                        (
-                            incoming_recent_state,
-                            outgoing_recent_state,
-                            incoming_recent_state * outgoing_recent_state,
                         ),
                         dim=-1
                     )
@@ -1228,18 +1102,6 @@ class GTLayer(nn.Module):
                     torch.sigmoid(self.writeback_winner_residual) *
                     winner_residual
                 )
-            elif self.directional_meanmaxwinnerprojseqcorr_writeback:
-                node_context = self.activation(
-                    self.writeback_update[node_type](edge_context[mask])
-                )
-                seq_residual = self.activation(
-                    self.writeback_seq_update[node_type](
-                        seq_context_raw[mask]
-                    )
-                )
-                node_context = node_context + (
-                    torch.sigmoid(self.writeback_seq_residual) * seq_residual
-                )
             elif self.directional_meanmaxadd_writeback:
                 mean_context = self.activation(
                     self.writeback_mean_update[node_type](mean_context_raw[mask])
@@ -1400,7 +1262,6 @@ class GTLayer(nn.Module):
                 L = homo_data.x.shape[0]
                 S = homo_data.x.shape[0]
                 temporal_delta = None
-                edge_timestamps = None
 
                 if has_edge_attr:
                     # src_nodes, dst_nodes = edge_index
@@ -1450,18 +1311,13 @@ class GTLayer(nn.Module):
                     else:
                         src_nodes, dst_nodes = edge_index
                         num_edges = edge_index.shape[1]
-                    if (
-                        self.temporal_bias_enabled or
-                        self.temporal_gate_enabled or
-                        self.directional_meanmaxwinnerprojseqcorr_writeback
-                    ) and cfg.gt.attn_mask == 'Edge':
+                    if (self.temporal_bias_enabled or self.temporal_gate_enabled) and cfg.gt.attn_mask == 'Edge':
                         edge_timestamps = self._collect_edge_timestamps(
                             batch, edge_type_tensor, q.device
                         )
-                        if self.temporal_bias_enabled or self.temporal_gate_enabled:
-                            temporal_delta = self._compute_temporal_delta(
-                                dst_nodes, edge_timestamps, L
-                            )
+                        temporal_delta = self._compute_temporal_delta(
+                            dst_nodes, edge_timestamps, L
+                        )
                     # Compute query and key for each edge
                     edge_q = q[:, dst_nodes, :]  # Queries for destination nodes # num_heads * num_edges * d_k
                     edge_k = k[:, src_nodes, :]  # Keys for source nodes
@@ -1546,8 +1402,7 @@ class GTLayer(nn.Module):
                         out = self._apply_edge_writeback(
                             out, edge_state, src_nodes, dst_nodes,
                             node_type_tensor, batch,
-                            edge_weights=writeback_weights,
-                            edge_timestamps=edge_timestamps
+                            edge_weights=writeback_weights
                         )
 
                 for idx, node_type in enumerate(batch.node_types):
