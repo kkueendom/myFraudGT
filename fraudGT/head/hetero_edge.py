@@ -18,6 +18,8 @@ class HeteroGNNEdgeHead(nn.Module):
         super().__init__()
         self.is_hetero = isinstance(dataset[0], HeteroData)
         self.edge_decoding = cfg.model.edge_decoding
+        self.use_pair_chain_head = self.edge_decoding in {'pair_chain', 'pair_chain_contextmax'}
+        self.chain_uses_context_max = self.edge_decoding == 'pair_chain_contextmax'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -26,17 +28,18 @@ class HeteroGNNEdgeHead(nn.Module):
         self.val_inds = mask_to_index(dataset['val'][cfg.dataset.task_entity].split_mask).to(cfg.device)
         self.test_inds = mask_to_index(dataset['test'][cfg.dataset.task_entity].split_mask).to(cfg.device)
 
-        if self.edge_decoding == 'pair_chain':
+        if self.use_pair_chain_head:
             self.edge_proj = MLP(dim_in * 3, dim_in,
                                  num_layers=self.head_layers,
                                  bias=True)
             self.pair_proj = MLP(dim_in * 3, dim_in,
                                  num_layers=self.head_layers,
                                  bias=True)
-            self.chain_update = MLP(dim_in * 3, dim_in,
+            chain_context_dim = dim_in * (5 if self.chain_uses_context_max else 3)
+            self.chain_update = MLP(chain_context_dim, dim_in,
                                     num_layers=self.head_layers,
                                     bias=True)
-            self.chain_gate = nn.Linear(dim_in * 3, dim_in)
+            self.chain_gate = nn.Linear(chain_context_dim, dim_in)
             self.pair_residual_alpha = nn.Parameter(
                 torch.full((1,), math.log(0.15 / 0.85))
             )
@@ -91,7 +94,35 @@ class HeteroGNNEdgeHead(nn.Module):
             successor_bank = scatter(pair_repr, pair_src, dim=0, dim_size=num_nodes, reduce='mean')
             prev_context = predecessor_bank[pair_src]
             next_context = successor_bank[pair_dst]
-            chain_input = torch.cat((prev_context, pair_repr, next_context), dim=-1)
+            if self.chain_uses_context_max:
+                predecessor_peak, _ = scatter_max(
+                    pair_repr, pair_dst, dim=0, dim_size=num_nodes
+                )
+                successor_peak, _ = scatter_max(
+                    pair_repr, pair_src, dim=0, dim_size=num_nodes
+                )
+                predecessor_peak = torch.where(
+                    torch.isfinite(predecessor_peak),
+                    predecessor_peak,
+                    torch.zeros_like(predecessor_peak)
+                )
+                successor_peak = torch.where(
+                    torch.isfinite(successor_peak),
+                    successor_peak,
+                    torch.zeros_like(successor_peak)
+                )
+                chain_input = torch.cat(
+                    (
+                        prev_context,
+                        predecessor_peak[pair_src],
+                        pair_repr,
+                        successor_peak[pair_dst],
+                        next_context,
+                    ),
+                    dim=-1,
+                )
+            else:
+                chain_input = torch.cat((prev_context, pair_repr, next_context), dim=-1)
             chain_gate = torch.sigmoid(self.chain_gate(chain_input))
             pair_repr = pair_repr + (
                 torch.sigmoid(self.chain_residual_alpha) *
@@ -131,7 +162,7 @@ class HeteroGNNEdgeHead(nn.Module):
     
         # if cfg.model.edge_decoding != 'concat':
         #     batch = self.layer_post_mp(batch)
-        if self.edge_decoding == 'pair_chain':
+        if self.use_pair_chain_head:
             return self._pair_chain_head(batch)
         pred, label = self._apply_index(batch)
         # nodes_first = pred[0]
