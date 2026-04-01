@@ -91,6 +91,10 @@ class GTLayer(nn.Module):
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxwinnerproj'
         )
+        self.directional_meanmaxwinnerprojchain_writeback = (
+            global_model_type == 'SparseNodeTransformer' and
+            cfg.gt.edge_writeback == 'dir_meanmaxwinnerprojchain'
+        )
         self.directional_meanmaxtopkprojpluswinner_writeback = (
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxtopkprojpluswinner'
@@ -220,6 +224,7 @@ class GTLayer(nn.Module):
                 self.writeback_anomaly_gate = torch.nn.ModuleDict()
                 self.writeback_spike_update = torch.nn.ModuleDict()
                 self.writeback_winner_update = torch.nn.ModuleDict()
+                self.writeback_chain_update = torch.nn.ModuleDict()
                 writeback_context_dim = dim_out * (
                     4 if (
                         self.directional_meanmax_writeback or
@@ -232,6 +237,7 @@ class GTLayer(nn.Module):
                         self.directional_meanmaxwinnermix_writeback or
                         self.directional_meanmaxwinnerplus_writeback or
                         self.directional_meanmaxwinnerproj_writeback or
+                        self.directional_meanmaxwinnerprojchain_writeback or
                         self.directional_meanmaxtopkprojpluswinner_writeback or
                         self.directional_meanmaxwinnerdecomp_writeback or
                         self.directional_meanmaxwinnercohclip_writeback or
@@ -264,6 +270,13 @@ class GTLayer(nn.Module):
                 if self.directional_meanmaxwinnerproj_writeback:
                     self.writeback_winner_proj_add = nn.Parameter(
                         torch.full((2,), math.log(0.15 / 0.85))
+                    )
+                if self.directional_meanmaxwinnerprojchain_writeback:
+                    self.writeback_winner_proj_add = nn.Parameter(
+                        torch.full((2,), math.log(0.15 / 0.85))
+                    )
+                    self.writeback_chain_add = nn.Parameter(
+                        torch.full((1,), math.log(0.1 / 0.9))
                     )
                 if self.directional_meanmaxtopkprojpluswinner_writeback:
                     self.writeback_focus_proj_add = nn.Parameter(
@@ -394,6 +407,18 @@ class GTLayer(nn.Module):
                             self.writeback_winner_update[node_type].bias
                         )
                     self.writeback_gate[node_type] = Linear(dim_out * 2, dim_out)
+                for edge_type in metadata[1]:
+                    edge_type = '__'.join(edge_type)
+                    if self.directional_meanmaxwinnerprojchain_writeback:
+                        self.writeback_chain_update[edge_type] = Linear(
+                            dim_out * 3, dim_out
+                        )
+                        nn.init.zeros_(
+                            self.writeback_chain_update[edge_type].weight
+                        )
+                        nn.init.zeros_(
+                            self.writeback_chain_update[edge_type].bias
+                        )
         elif global_model_type == 'SparseEdgeTransformer':
             self.k_lin = torch.nn.ModuleDict()
             self.q_lin = torch.nn.ModuleDict()
@@ -560,6 +585,53 @@ class GTLayer(nn.Module):
         selected[valid_nodes] = edge_values[selected_edges]
         return selected
 
+    def _apply_edge_chain_context(self, edge_state, src_nodes, dst_nodes,
+                                  edge_type_tensor, num_nodes):
+        incoming = torch.zeros(
+            (num_nodes, edge_state.shape[-1]), device=edge_state.device
+        )
+        outgoing = torch.zeros_like(incoming)
+        in_count = torch.zeros(num_nodes, device=edge_state.device)
+        out_count = torch.zeros_like(in_count)
+
+        incoming.index_add_(0, dst_nodes, edge_state)
+        outgoing.index_add_(0, src_nodes, edge_state)
+        in_count.index_add_(
+            0, dst_nodes,
+            torch.ones_like(dst_nodes, dtype=edge_state.dtype)
+        )
+        out_count.index_add_(
+            0, src_nodes,
+            torch.ones_like(src_nodes, dtype=edge_state.dtype)
+        )
+
+        incoming = incoming / in_count.clamp(min=1.0).unsqueeze(-1)
+        outgoing = outgoing / out_count.clamp(min=1.0).unsqueeze(-1)
+        prev_context = incoming[src_nodes]
+        next_context = outgoing[dst_nodes]
+        chain_edge_state = edge_state.clone()
+        chain_add = torch.sigmoid(self.writeback_chain_add)
+
+        for idx, edge_type in enumerate(self.metadata[1]):
+            edge_type = '__'.join(edge_type)
+            mask = edge_type_tensor == idx
+            if not mask.any():
+                continue
+            chain_residual = self.activation(
+                self.writeback_chain_update[edge_type](
+                    torch.cat(
+                        (
+                            prev_context[mask],
+                            edge_state[mask],
+                            next_context[mask],
+                        ),
+                        dim=-1
+                    )
+                )
+            )
+            chain_edge_state[mask] = edge_state[mask] + chain_add * chain_residual
+        return chain_edge_state
+
     def _apply_edge_writeback(self, out, edge_state, src_nodes, dst_nodes,
                               node_type_tensor, batch, edge_weights=None):
         num_nodes = out.shape[0]
@@ -591,6 +663,7 @@ class GTLayer(nn.Module):
             self.directional_meanmaxwinnermix_writeback or
             self.directional_meanmaxwinnerplus_writeback or
             self.directional_meanmaxwinnerproj_writeback or
+            self.directional_meanmaxwinnerprojchain_writeback or
             self.directional_meanmaxtopkprojpluswinner_writeback or
             self.directional_meanmaxwinnerdecomp_writeback or
             self.directional_meanmaxwinnercohclip_writeback or
@@ -707,7 +780,10 @@ class GTLayer(nn.Module):
                         ),
                         dim=-1
                     )
-                elif self.directional_meanmaxwinnerproj_writeback:
+                elif (
+                    self.directional_meanmaxwinnerproj_writeback or
+                    self.directional_meanmaxwinnerprojchain_writeback
+                ):
                     anomaly_scores = weighted_edge_state.norm(dim=-1)
                     incoming_winner = self._group_top1_select(
                         weighted_edge_state, dst_nodes, anomaly_scores, num_nodes
@@ -1490,6 +1566,10 @@ class GTLayer(nn.Module):
                 out = out.transpose(0,1).contiguous().view(-1, H * D)
                 if has_edge_attr:
                     edge_state = edge_attr.transpose(0,1).contiguous().view(-1, H * D)
+                    if self.directional_meanmaxwinnerprojchain_writeback:
+                        edge_state = self._apply_edge_chain_context(
+                            edge_state, src_nodes, dst_nodes, edge_type_tensor, L
+                        )
                     if self.edge_writeback_enabled:
                         out = self._apply_edge_writeback(
                             out, edge_state, src_nodes, dst_nodes,
