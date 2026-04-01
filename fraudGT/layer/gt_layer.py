@@ -91,6 +91,10 @@ class GTLayer(nn.Module):
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxwinnerproj'
         )
+        self.directional_meanmaxwinnerprojrelay_writeback = (
+            global_model_type == 'SparseNodeTransformer' and
+            cfg.gt.edge_writeback == 'dir_meanmaxwinnerprojrelay'
+        )
         self.directional_meanmaxtopkprojpluswinner_writeback = (
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxtopkprojpluswinner'
@@ -232,6 +236,7 @@ class GTLayer(nn.Module):
                         self.directional_meanmaxwinnermix_writeback or
                         self.directional_meanmaxwinnerplus_writeback or
                         self.directional_meanmaxwinnerproj_writeback or
+                        self.directional_meanmaxwinnerprojrelay_writeback or
                         self.directional_meanmaxtopkprojpluswinner_writeback or
                         self.directional_meanmaxwinnerdecomp_writeback or
                         self.directional_meanmaxwinnercohclip_writeback or
@@ -264,6 +269,19 @@ class GTLayer(nn.Module):
                 if self.directional_meanmaxwinnerproj_writeback:
                     self.writeback_winner_proj_add = nn.Parameter(
                         torch.full((2,), math.log(0.15 / 0.85))
+                    )
+                if self.directional_meanmaxwinnerprojrelay_writeback:
+                    self.writeback_winner_proj_add = nn.Parameter(
+                        torch.full((2,), math.log(0.15 / 0.85))
+                    )
+                    self.writeback_relay_add = nn.Parameter(
+                        torch.full((2,), math.log(0.05 / 0.95))
+                    )
+                    self.writeback_relay_scale = nn.Parameter(
+                        torch.full((1,), 2.0)
+                    )
+                    self.writeback_relay_bias = nn.Parameter(
+                        torch.full((1,), -2.0)
                     )
                 if self.directional_meanmaxtopkprojpluswinner_writeback:
                     self.writeback_focus_proj_add = nn.Parameter(
@@ -591,6 +609,7 @@ class GTLayer(nn.Module):
             self.directional_meanmaxwinnermix_writeback or
             self.directional_meanmaxwinnerplus_writeback or
             self.directional_meanmaxwinnerproj_writeback or
+            self.directional_meanmaxwinnerprojrelay_writeback or
             self.directional_meanmaxtopkprojpluswinner_writeback or
             self.directional_meanmaxwinnerdecomp_writeback or
             self.directional_meanmaxwinnercohclip_writeback or
@@ -744,6 +763,58 @@ class GTLayer(nn.Module):
                             outgoing,
                             incoming_max + winner_proj_add[0] * incoming_proj,
                             outgoing_max + winner_proj_add[1] * outgoing_proj,
+                        ),
+                        dim=-1
+                    )
+                elif self.directional_meanmaxwinnerprojrelay_writeback:
+                    anomaly_scores = weighted_edge_state.norm(dim=-1)
+                    incoming_winner = self._group_top1_select(
+                        weighted_edge_state, dst_nodes, anomaly_scores, num_nodes
+                    )
+                    outgoing_winner = self._group_top1_select(
+                        weighted_edge_state, src_nodes, anomaly_scores, num_nodes
+                    )
+                    winner_proj_add = torch.sigmoid(self.writeback_winner_proj_add)
+                    relay_add = torch.sigmoid(self.writeback_relay_add)
+                    incoming_spike = incoming_max - incoming
+                    outgoing_spike = outgoing_max - outgoing
+                    incoming_winner_residual = incoming_winner - incoming
+                    outgoing_winner_residual = outgoing_winner - outgoing
+                    incoming_proj_coeff = (
+                        (incoming_winner_residual * incoming_spike).sum(
+                            dim=-1, keepdim=True
+                        ) /
+                        incoming_spike.pow(2).sum(dim=-1, keepdim=True).clamp(
+                            min=1e-6
+                        )
+                    )
+                    outgoing_proj_coeff = (
+                        (outgoing_winner_residual * outgoing_spike).sum(
+                            dim=-1, keepdim=True
+                        ) /
+                        outgoing_spike.pow(2).sum(dim=-1, keepdim=True).clamp(
+                            min=1e-6
+                        )
+                    )
+                    incoming_proj = F.relu(incoming_proj_coeff) * incoming_spike
+                    outgoing_proj = F.relu(outgoing_proj_coeff) * outgoing_spike
+                    relay_gate = torch.sigmoid(
+                        self.writeback_relay_scale.view(1, 1) *
+                        F.cosine_similarity(
+                            incoming_proj, outgoing_proj, dim=-1, eps=1e-6
+                        ).unsqueeze(-1) +
+                        self.writeback_relay_bias.view(1, 1)
+                    )
+                    edge_context = torch.cat(
+                        (
+                            incoming,
+                            outgoing,
+                            incoming_max +
+                            winner_proj_add[0] * incoming_proj +
+                            relay_add[0] * relay_gate * outgoing_proj,
+                            outgoing_max +
+                            winner_proj_add[1] * outgoing_proj +
+                            relay_add[1] * relay_gate * incoming_proj,
                         ),
                         dim=-1
                     )
