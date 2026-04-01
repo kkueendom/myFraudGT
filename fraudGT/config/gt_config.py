@@ -99,7 +99,6 @@ def set_cfg_gt(cfg):
     # dir_meanmaxmix, dir_meanmaxadd, dir_meanmaxcount,
     # dir_meanmaxgap, dir_meanmaxspikeresid, dir_meanmaxplusspike,
     # dir_meanmaxtopkprojpluswinner,
-    # dir_meanmaxtopkprojpluswinnerdensityboost,
     # dir_meanmaxsoftclip, dir_meanmaxsoftmix
     cfg.gt.edge_writeback = 'none'
     cfg.gt.edge_writeback_dropout = 0.0
