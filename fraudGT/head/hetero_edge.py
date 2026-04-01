@@ -15,7 +15,6 @@ class HeteroGNNEdgeHead(nn.Module):
     def __init__(self, dim_in, dim_out, dataset):
         super().__init__()
         self.is_hetero = isinstance(dataset[0], HeteroData)
-        self.tri_interaction = cfg.model.edge_decoding == 'tri_interaction'
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
         # self.test_edge_inds = mask_to_index(data[cfg.dataset.task_entity].test_edge_mask).to(cfg.device)
@@ -23,8 +22,7 @@ class HeteroGNNEdgeHead(nn.Module):
         self.val_inds = mask_to_index(dataset['val'][cfg.dataset.task_entity].split_mask).to(cfg.device)
         self.test_inds = mask_to_index(dataset['test'][cfg.dataset.task_entity].split_mask).to(cfg.device)
 
-        edge_head_dim = dim_in * (6 if self.tri_interaction else 3)
-        self.layer_post_mp = MLP(edge_head_dim, dim_out,
+        self.layer_post_mp = MLP(dim_in * 3, dim_out, 
                                  num_layers=max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt),
                                  bias=True)
         # requires parameter
@@ -42,26 +40,11 @@ class HeteroGNNEdgeHead(nn.Module):
         task = cfg.dataset.task_entity
         edge_index = batch[task].edge_index
 
-        src = batch[task[0]].x[edge_index[0, mask]]
-        dst = batch[task[2]].x[edge_index[1, mask]]
-        edge_attr = batch[task].edge_attr[mask]
-
-        if self.tri_interaction:
-            pred_input = torch.cat(
-                (
-                    src,
-                    dst,
-                    edge_attr,
-                    src * dst,
-                    src * edge_attr,
-                    dst * edge_attr,
-                ),
-                dim=-1
-            )
-        else:
-            pred_input = torch.cat((src, dst, edge_attr), dim=-1)
-
-        return pred_input, batch[task].y[mask]
+        # A concatentation of source/target node embedding + edge attribute
+        return torch.cat((batch[task[0]].x[edge_index[0, mask]], 
+                          batch[task[2]].x[edge_index[1, mask]], 
+                          batch[task].edge_attr[mask]), dim=-1), \
+               batch[task].y[mask]
     
 
     def forward(self, batch):
@@ -69,7 +52,12 @@ class HeteroGNNEdgeHead(nn.Module):
         # batch.x_dict[cfg.dataset.task_entity] = self.layer_post_mp(batch.x_dict[cfg.dataset.task_entity])
         # pred, label = self._apply_index(batch)
     
+        # if cfg.model.edge_decoding != 'concat':
+        #     batch = self.layer_post_mp(batch)
         pred, label = self._apply_index(batch)
+        # nodes_first = pred[0]
+        # nodes_second = pred[1]
+        # pred = self.decode_module(nodes_first, nodes_second)
         pred = self.layer_post_mp(pred)
 
         return pred, label
