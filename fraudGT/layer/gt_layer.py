@@ -95,10 +95,6 @@ class GTLayer(nn.Module):
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxtopkprojpluswinner'
         )
-        self.directional_meanmaxtopkprojpluswinnerdensity_writeback = (
-            global_model_type == 'SparseNodeTransformer' and
-            cfg.gt.edge_writeback == 'dir_meanmaxtopkprojpluswinnerdensity'
-        )
         self.directional_meanmaxwinnerdecomp_writeback = (
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxwinnerdecomp'
@@ -237,7 +233,6 @@ class GTLayer(nn.Module):
                         self.directional_meanmaxwinnerplus_writeback or
                         self.directional_meanmaxwinnerproj_writeback or
                         self.directional_meanmaxtopkprojpluswinner_writeback or
-                        self.directional_meanmaxtopkprojpluswinnerdensity_writeback or
                         self.directional_meanmaxwinnerdecomp_writeback or
                         self.directional_meanmaxwinnercohclip_writeback or
                         self.directional_meanmaxwinnersoftclip_writeback or
@@ -271,13 +266,6 @@ class GTLayer(nn.Module):
                         torch.full((2,), math.log(0.15 / 0.85))
                     )
                 if self.directional_meanmaxtopkprojpluswinner_writeback:
-                    self.writeback_focus_proj_add = nn.Parameter(
-                        torch.full((2,), math.log(0.15 / 0.85))
-                    )
-                    self.writeback_winner_resid_add = nn.Parameter(
-                        torch.full((2,), math.log(0.1 / 0.9))
-                    )
-                if self.directional_meanmaxtopkprojpluswinnerdensity_writeback:
                     self.writeback_focus_proj_add = nn.Parameter(
                         torch.full((2,), math.log(0.15 / 0.85))
                     )
@@ -572,33 +560,6 @@ class GTLayer(nn.Module):
         selected[valid_nodes] = edge_values[selected_edges]
         return selected
 
-    def _group_topk_score_sum(self, group_scores, group_nodes, num_nodes):
-        topk = max(int(cfg.gt.edge_writeback_topk), 1)
-        selected_sum = torch.zeros(num_nodes, device=group_scores.device)
-        working_scores = group_scores.clone()
-
-        for _ in range(topk):
-            max_scores, max_indices = scatter_max(
-                working_scores, group_nodes, dim=0, dim_size=num_nodes
-            )
-            valid_groups = torch.isfinite(max_scores)
-            if not valid_groups.any():
-                break
-            valid_nodes = valid_groups.nonzero(as_tuple=False).view(-1)
-            selected_edges = max_indices[valid_nodes]
-            valid_edges = (
-                (selected_edges >= 0) &
-                (selected_edges < group_scores.shape[0])
-            )
-            if not valid_edges.any():
-                break
-            valid_nodes = valid_nodes[valid_edges]
-            selected_edges = selected_edges[valid_edges]
-            selected_sum.index_add_(0, valid_nodes, group_scores[selected_edges])
-            working_scores[selected_edges] = float('-inf')
-
-        return selected_sum
-
     def _apply_edge_writeback(self, out, edge_state, src_nodes, dst_nodes,
                               node_type_tensor, batch, edge_weights=None):
         num_nodes = out.shape[0]
@@ -631,7 +592,6 @@ class GTLayer(nn.Module):
             self.directional_meanmaxwinnerplus_writeback or
             self.directional_meanmaxwinnerproj_writeback or
             self.directional_meanmaxtopkprojpluswinner_writeback or
-            self.directional_meanmaxtopkprojpluswinnerdensity_writeback or
             self.directional_meanmaxwinnerdecomp_writeback or
             self.directional_meanmaxwinnercohclip_writeback or
             self.directional_meanmaxwinnersoftclip_writeback or
@@ -863,109 +823,6 @@ class GTLayer(nn.Module):
                             outgoing_max +
                             focus_proj_add[1] * outgoing_focus_proj +
                             winner_resid_add[1] * outgoing_winner_proj,
-                        ),
-                        dim=-1
-                    )
-                elif self.directional_meanmaxtopkprojpluswinnerdensity_writeback:
-                    anomaly_scores = weighted_edge_state.norm(dim=-1)
-                    incoming_focus = self._group_topk_mean(
-                        weighted_edge_state, dst_nodes, anomaly_scores, num_nodes
-                    )
-                    outgoing_focus = self._group_topk_mean(
-                        weighted_edge_state, src_nodes, anomaly_scores, num_nodes
-                    )
-                    incoming_winner = self._group_top1_select(
-                        weighted_edge_state, dst_nodes, anomaly_scores, num_nodes
-                    )
-                    outgoing_winner = self._group_top1_select(
-                        weighted_edge_state, src_nodes, anomaly_scores, num_nodes
-                    )
-                    incoming_focus_score = self._group_topk_score_sum(
-                        anomaly_scores, dst_nodes, num_nodes
-                    )
-                    outgoing_focus_score = self._group_topk_score_sum(
-                        anomaly_scores, src_nodes, num_nodes
-                    )
-                    incoming_total_score = torch.zeros(
-                        num_nodes, device=out.device
-                    )
-                    outgoing_total_score = torch.zeros(
-                        num_nodes, device=out.device
-                    )
-                    incoming_total_score.index_add_(0, dst_nodes, anomaly_scores)
-                    outgoing_total_score.index_add_(0, src_nodes, anomaly_scores)
-                    incoming_density = (
-                        incoming_focus_score /
-                        incoming_total_score.clamp(min=1e-6)
-                    ).clamp(max=1.0).unsqueeze(-1)
-                    outgoing_density = (
-                        outgoing_focus_score /
-                        outgoing_total_score.clamp(min=1e-6)
-                    ).clamp(max=1.0).unsqueeze(-1)
-                    focus_proj_add = torch.sigmoid(self.writeback_focus_proj_add)
-                    winner_resid_add = torch.sigmoid(self.writeback_winner_resid_add)
-                    incoming_spike = incoming_max - incoming
-                    outgoing_spike = outgoing_max - outgoing
-                    incoming_focus_residual = incoming_focus - incoming
-                    outgoing_focus_residual = outgoing_focus - outgoing
-                    incoming_winner_residual = incoming_winner - incoming
-                    outgoing_winner_residual = outgoing_winner - outgoing
-                    incoming_focus_proj_coeff = (
-                        (incoming_focus_residual * incoming_spike).sum(
-                            dim=-1, keepdim=True
-                        ) /
-                        incoming_spike.pow(2).sum(dim=-1, keepdim=True).clamp(
-                            min=1e-6
-                        )
-                    )
-                    outgoing_focus_proj_coeff = (
-                        (outgoing_focus_residual * outgoing_spike).sum(
-                            dim=-1, keepdim=True
-                        ) /
-                        outgoing_spike.pow(2).sum(dim=-1, keepdim=True).clamp(
-                            min=1e-6
-                        )
-                    )
-                    incoming_winner_proj_coeff = (
-                        (incoming_winner_residual * incoming_spike).sum(
-                            dim=-1, keepdim=True
-                        ) /
-                        incoming_spike.pow(2).sum(dim=-1, keepdim=True).clamp(
-                            min=1e-6
-                        )
-                    )
-                    outgoing_winner_proj_coeff = (
-                        (outgoing_winner_residual * outgoing_spike).sum(
-                            dim=-1, keepdim=True
-                        ) /
-                        outgoing_spike.pow(2).sum(dim=-1, keepdim=True).clamp(
-                            min=1e-6
-                        )
-                    )
-                    incoming_focus_proj = (
-                        F.relu(incoming_focus_proj_coeff) * incoming_spike
-                    )
-                    outgoing_focus_proj = (
-                        F.relu(outgoing_focus_proj_coeff) * outgoing_spike
-                    )
-                    incoming_winner_proj = (
-                        F.relu(incoming_winner_proj_coeff) * incoming_spike
-                    )
-                    outgoing_winner_proj = (
-                        F.relu(outgoing_winner_proj_coeff) * outgoing_spike
-                    )
-                    edge_context = torch.cat(
-                        (
-                            incoming,
-                            outgoing,
-                            incoming_max +
-                            focus_proj_add[0] * incoming_focus_proj +
-                            winner_resid_add[0] *
-                            incoming_density * incoming_winner_proj,
-                            outgoing_max +
-                            focus_proj_add[1] * outgoing_focus_proj +
-                            winner_resid_add[1] *
-                            outgoing_density * outgoing_winner_proj,
                         ),
                         dim=-1
                     )
