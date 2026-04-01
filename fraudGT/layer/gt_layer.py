@@ -95,10 +95,6 @@ class GTLayer(nn.Module):
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxtopkprojpluswinner'
         )
-        self.directional_meanmaxtopkprojpluswinnerflow_writeback = (
-            global_model_type == 'SparseNodeTransformer' and
-            cfg.gt.edge_writeback == 'dir_meanmaxtopkprojpluswinnerflow'
-        )
         self.directional_meanmaxwinnerdecomp_writeback = (
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxwinnerdecomp'
@@ -224,7 +220,6 @@ class GTLayer(nn.Module):
                 self.writeback_anomaly_gate = torch.nn.ModuleDict()
                 self.writeback_spike_update = torch.nn.ModuleDict()
                 self.writeback_winner_update = torch.nn.ModuleDict()
-                self.writeback_flow_update = torch.nn.ModuleDict()
                 writeback_context_dim = dim_out * (
                     4 if (
                         self.directional_meanmax_writeback or
@@ -238,7 +233,6 @@ class GTLayer(nn.Module):
                         self.directional_meanmaxwinnerplus_writeback or
                         self.directional_meanmaxwinnerproj_writeback or
                         self.directional_meanmaxtopkprojpluswinner_writeback or
-                        self.directional_meanmaxtopkprojpluswinnerflow_writeback or
                         self.directional_meanmaxwinnerdecomp_writeback or
                         self.directional_meanmaxwinnercohclip_writeback or
                         self.directional_meanmaxwinnersoftclip_writeback or
@@ -277,16 +271,6 @@ class GTLayer(nn.Module):
                     )
                     self.writeback_winner_resid_add = nn.Parameter(
                         torch.full((2,), math.log(0.1 / 0.9))
-                    )
-                if self.directional_meanmaxtopkprojpluswinnerflow_writeback:
-                    self.writeback_focus_proj_add = nn.Parameter(
-                        torch.full((2,), math.log(0.15 / 0.85))
-                    )
-                    self.writeback_winner_resid_add = nn.Parameter(
-                        torch.full((2,), math.log(0.1 / 0.9))
-                    )
-                    self.writeback_flow_residual = nn.Parameter(
-                        torch.full((1,), math.log(0.1 / 0.9))
                     )
                 if self.directional_meanmaxwinnerdecomp_writeback:
                     self.writeback_winner_spike_add = nn.Parameter(
@@ -408,16 +392,6 @@ class GTLayer(nn.Module):
                         )
                         nn.init.zeros_(
                             self.writeback_winner_update[node_type].bias
-                        )
-                    if self.directional_meanmaxtopkprojpluswinnerflow_writeback:
-                        self.writeback_flow_update[node_type] = Linear(
-                            dim_out * 3, dim_out
-                        )
-                        nn.init.zeros_(
-                            self.writeback_flow_update[node_type].weight
-                        )
-                        nn.init.zeros_(
-                            self.writeback_flow_update[node_type].bias
                         )
                     self.writeback_gate[node_type] = Linear(dim_out * 2, dim_out)
         elif global_model_type == 'SparseEdgeTransformer':
@@ -618,7 +592,6 @@ class GTLayer(nn.Module):
             self.directional_meanmaxwinnerplus_writeback or
             self.directional_meanmaxwinnerproj_writeback or
             self.directional_meanmaxtopkprojpluswinner_writeback or
-            self.directional_meanmaxtopkprojpluswinnerflow_writeback or
             self.directional_meanmaxwinnerdecomp_writeback or
             self.directional_meanmaxwinnercohclip_writeback or
             self.directional_meanmaxwinnersoftclip_writeback or
@@ -850,97 +823,6 @@ class GTLayer(nn.Module):
                             outgoing_max +
                             focus_proj_add[1] * outgoing_focus_proj +
                             winner_resid_add[1] * outgoing_winner_proj,
-                        ),
-                        dim=-1
-                    )
-                elif self.directional_meanmaxtopkprojpluswinnerflow_writeback:
-                    anomaly_scores = weighted_edge_state.norm(dim=-1)
-                    incoming_focus = self._group_topk_mean(
-                        weighted_edge_state, dst_nodes, anomaly_scores, num_nodes
-                    )
-                    outgoing_focus = self._group_topk_mean(
-                        weighted_edge_state, src_nodes, anomaly_scores, num_nodes
-                    )
-                    incoming_winner = self._group_top1_select(
-                        weighted_edge_state, dst_nodes, anomaly_scores, num_nodes
-                    )
-                    outgoing_winner = self._group_top1_select(
-                        weighted_edge_state, src_nodes, anomaly_scores, num_nodes
-                    )
-                    focus_proj_add = torch.sigmoid(self.writeback_focus_proj_add)
-                    winner_resid_add = torch.sigmoid(self.writeback_winner_resid_add)
-                    incoming_spike = incoming_max - incoming
-                    outgoing_spike = outgoing_max - outgoing
-                    incoming_focus_residual = incoming_focus - incoming
-                    outgoing_focus_residual = outgoing_focus - outgoing
-                    incoming_winner_residual = incoming_winner - incoming
-                    outgoing_winner_residual = outgoing_winner - outgoing
-                    incoming_focus_proj_coeff = (
-                        (incoming_focus_residual * incoming_spike).sum(
-                            dim=-1, keepdim=True
-                        ) /
-                        incoming_spike.pow(2).sum(dim=-1, keepdim=True).clamp(
-                            min=1e-6
-                        )
-                    )
-                    outgoing_focus_proj_coeff = (
-                        (outgoing_focus_residual * outgoing_spike).sum(
-                            dim=-1, keepdim=True
-                        ) /
-                        outgoing_spike.pow(2).sum(dim=-1, keepdim=True).clamp(
-                            min=1e-6
-                        )
-                    )
-                    incoming_winner_proj_coeff = (
-                        (incoming_winner_residual * incoming_spike).sum(
-                            dim=-1, keepdim=True
-                        ) /
-                        incoming_spike.pow(2).sum(dim=-1, keepdim=True).clamp(
-                            min=1e-6
-                        )
-                    )
-                    outgoing_winner_proj_coeff = (
-                        (outgoing_winner_residual * outgoing_spike).sum(
-                            dim=-1, keepdim=True
-                        ) /
-                        outgoing_spike.pow(2).sum(dim=-1, keepdim=True).clamp(
-                            min=1e-6
-                        )
-                    )
-                    incoming_focus_proj = (
-                        F.relu(incoming_focus_proj_coeff) * incoming_spike
-                    )
-                    outgoing_focus_proj = (
-                        F.relu(outgoing_focus_proj_coeff) * outgoing_spike
-                    )
-                    incoming_winner_proj = (
-                        F.relu(incoming_winner_proj_coeff) * incoming_spike
-                    )
-                    outgoing_winner_proj = (
-                        F.relu(outgoing_winner_proj_coeff) * outgoing_spike
-                    )
-                    incoming_anomaly = (
-                        focus_proj_add[0] * incoming_focus_proj +
-                        winner_resid_add[0] * incoming_winner_proj
-                    )
-                    outgoing_anomaly = (
-                        focus_proj_add[1] * outgoing_focus_proj +
-                        winner_resid_add[1] * outgoing_winner_proj
-                    )
-                    edge_context = torch.cat(
-                        (
-                            incoming,
-                            outgoing,
-                            incoming_max + incoming_anomaly,
-                            outgoing_max + outgoing_anomaly,
-                        ),
-                        dim=-1
-                    )
-                    flow_context_raw = torch.cat(
-                        (
-                            incoming_anomaly * outgoing_anomaly,
-                            incoming_anomaly * outgoing,
-                            outgoing_anomaly * incoming,
                         ),
                         dim=-1
                     )
@@ -1311,19 +1193,6 @@ class GTLayer(nn.Module):
                 node_context = node_context + (
                     torch.sigmoid(self.writeback_winner_residual) *
                     winner_residual
-                )
-            elif self.directional_meanmaxtopkprojpluswinnerflow_writeback:
-                node_context = self.activation(
-                    self.writeback_update[node_type](edge_context[mask])
-                )
-                flow_residual = self.activation(
-                    self.writeback_flow_update[node_type](
-                        flow_context_raw[mask]
-                    )
-                )
-                node_context = node_context + (
-                    torch.sigmoid(self.writeback_flow_residual) *
-                    flow_residual
                 )
             elif self.directional_meanmaxadd_writeback:
                 mean_context = self.activation(
