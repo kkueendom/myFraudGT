@@ -800,8 +800,8 @@ class GTLayer(nn.Module):
                     outgoing_proj = F.relu(outgoing_proj_coeff) * outgoing_spike
                     incoming_line = torch.zeros_like(incoming)
                     outgoing_line = torch.zeros_like(outgoing)
-                    valid_incoming = in_count > 0
-                    valid_outgoing = out_count > 0
+                    valid_incoming = torch.isfinite(incoming_winner_scores)
+                    valid_outgoing = torch.isfinite(outgoing_winner_scores)
                     if valid_incoming.any():
                         winner_src_nodes = src_nodes[incoming_winner_indices[valid_incoming]]
                         incoming_line[valid_incoming] = incoming[winner_src_nodes]
