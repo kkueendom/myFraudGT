@@ -91,10 +91,6 @@ class GTLayer(nn.Module):
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxwinnerproj'
         )
-        self.directional_meanmaxwinnerprojline_writeback = (
-            global_model_type == 'SparseNodeTransformer' and
-            cfg.gt.edge_writeback == 'dir_meanmaxwinnerprojline'
-        )
         self.directional_meanmaxtopkprojpluswinner_writeback = (
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxtopkprojpluswinner'
@@ -236,7 +232,6 @@ class GTLayer(nn.Module):
                         self.directional_meanmaxwinnermix_writeback or
                         self.directional_meanmaxwinnerplus_writeback or
                         self.directional_meanmaxwinnerproj_writeback or
-                        self.directional_meanmaxwinnerprojline_writeback or
                         self.directional_meanmaxtopkprojpluswinner_writeback or
                         self.directional_meanmaxwinnerdecomp_writeback or
                         self.directional_meanmaxwinnercohclip_writeback or
@@ -269,13 +264,6 @@ class GTLayer(nn.Module):
                 if self.directional_meanmaxwinnerproj_writeback:
                     self.writeback_winner_proj_add = nn.Parameter(
                         torch.full((2,), math.log(0.15 / 0.85))
-                    )
-                if self.directional_meanmaxwinnerprojline_writeback:
-                    self.writeback_winner_proj_add = nn.Parameter(
-                        torch.full((2,), math.log(0.15 / 0.85))
-                    )
-                    self.writeback_winner_line_add = nn.Parameter(
-                        torch.full((2,), math.log(0.1 / 0.9))
                     )
                 if self.directional_meanmaxtopkprojpluswinner_writeback:
                     self.writeback_focus_proj_add = nn.Parameter(
@@ -603,7 +591,6 @@ class GTLayer(nn.Module):
             self.directional_meanmaxwinnermix_writeback or
             self.directional_meanmaxwinnerplus_writeback or
             self.directional_meanmaxwinnerproj_writeback or
-            self.directional_meanmaxwinnerprojline_writeback or
             self.directional_meanmaxtopkprojpluswinner_writeback or
             self.directional_meanmaxwinnerdecomp_writeback or
             self.directional_meanmaxwinnercohclip_writeback or
@@ -757,67 +744,6 @@ class GTLayer(nn.Module):
                             outgoing,
                             incoming_max + winner_proj_add[0] * incoming_proj,
                             outgoing_max + winner_proj_add[1] * outgoing_proj,
-                        ),
-                        dim=-1
-                    )
-                elif self.directional_meanmaxwinnerprojline_writeback:
-                    anomaly_scores = weighted_edge_state.norm(dim=-1)
-                    incoming_winner = self._group_top1_select(
-                        weighted_edge_state, dst_nodes, anomaly_scores, num_nodes
-                    )
-                    outgoing_winner = self._group_top1_select(
-                        weighted_edge_state, src_nodes, anomaly_scores, num_nodes
-                    )
-                    incoming_winner_scores, incoming_winner_indices = scatter_max(
-                        anomaly_scores, dst_nodes, dim=0, dim_size=num_nodes
-                    )
-                    outgoing_winner_scores, outgoing_winner_indices = scatter_max(
-                        anomaly_scores, src_nodes, dim=0, dim_size=num_nodes
-                    )
-                    winner_proj_add = torch.sigmoid(self.writeback_winner_proj_add)
-                    winner_line_add = torch.sigmoid(self.writeback_winner_line_add)
-                    incoming_spike = incoming_max - incoming
-                    outgoing_spike = outgoing_max - outgoing
-                    incoming_winner_residual = incoming_winner - incoming
-                    outgoing_winner_residual = outgoing_winner - outgoing
-                    incoming_proj_coeff = (
-                        (incoming_winner_residual * incoming_spike).sum(
-                            dim=-1, keepdim=True
-                        ) /
-                        incoming_spike.pow(2).sum(dim=-1, keepdim=True).clamp(
-                            min=1e-6
-                        )
-                    )
-                    outgoing_proj_coeff = (
-                        (outgoing_winner_residual * outgoing_spike).sum(
-                            dim=-1, keepdim=True
-                        ) /
-                        outgoing_spike.pow(2).sum(dim=-1, keepdim=True).clamp(
-                            min=1e-6
-                        )
-                    )
-                    incoming_proj = F.relu(incoming_proj_coeff) * incoming_spike
-                    outgoing_proj = F.relu(outgoing_proj_coeff) * outgoing_spike
-                    incoming_line = torch.zeros_like(incoming)
-                    outgoing_line = torch.zeros_like(outgoing)
-                    valid_incoming = torch.isfinite(incoming_winner_scores)
-                    valid_outgoing = torch.isfinite(outgoing_winner_scores)
-                    if valid_incoming.any():
-                        winner_src_nodes = src_nodes[incoming_winner_indices[valid_incoming]]
-                        incoming_line[valid_incoming] = incoming[winner_src_nodes]
-                    if valid_outgoing.any():
-                        winner_dst_nodes = dst_nodes[outgoing_winner_indices[valid_outgoing]]
-                        outgoing_line[valid_outgoing] = outgoing[winner_dst_nodes]
-                    edge_context = torch.cat(
-                        (
-                            incoming,
-                            outgoing,
-                            incoming_max +
-                            winner_proj_add[0] * incoming_proj +
-                            winner_line_add[0] * (incoming_line - incoming),
-                            outgoing_max +
-                            winner_proj_add[1] * outgoing_proj +
-                            winner_line_add[1] * (outgoing_line - outgoing),
                         ),
                         dim=-1
                     )
