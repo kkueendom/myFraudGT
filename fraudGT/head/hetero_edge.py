@@ -18,8 +18,13 @@ class HeteroGNNEdgeHead(nn.Module):
         super().__init__()
         self.is_hetero = isinstance(dataset[0], HeteroData)
         self.edge_decoding = cfg.model.edge_decoding
-        self.use_pair_chain_head = self.edge_decoding in {'pair_chain', 'pair_chain_contextresid'}
+        self.use_pair_chain_head = self.edge_decoding in {
+            'pair_chain',
+            'pair_chain_contextresid',
+            'pair_chain_edgebankshape',
+        }
         self.use_chain_context_residual = self.edge_decoding == 'pair_chain_contextresid'
+        self.use_edge_bank_shape_head = self.edge_decoding == 'pair_chain_edgebankshape'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -58,6 +63,19 @@ class HeteroGNNEdgeHead(nn.Module):
                 self.context_residual_alpha = nn.Parameter(
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
+            if self.use_edge_bank_shape_head:
+                self.edge_context_proj = MLP(dim_in * 3, dim_in,
+                                             num_layers=self.head_layers,
+                                             bias=True)
+                self.edge_local_proj = MLP(dim_in * 3, dim_in,
+                                           num_layers=self.head_layers,
+                                           bias=True)
+                self.edge_shape_proj = MLP(dim_in * 3, dim_in,
+                                           num_layers=self.head_layers,
+                                           bias=True)
+                self.edge_shape_head = MLP(dim_in * 4, dim_out,
+                                           num_layers=self.head_layers,
+                                           bias=True)
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -95,6 +113,7 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_max = torch.where(torch.isfinite(pair_max), pair_max, torch.zeros_like(pair_max))
         pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_max - pair_mean), dim=-1))
         pair_context_repr = None
+        edge_shape_repr = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -141,13 +160,80 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
+            if self.use_edge_bank_shape_head:
+                edge_scores = edge_repr.norm(dim=-1)
+                incoming_edge_weights = pyg_softmax(
+                    edge_scores, dst_nodes, num_nodes=num_nodes
+                )
+                outgoing_edge_weights = pyg_softmax(
+                    edge_scores, src_nodes, num_nodes=num_nodes
+                )
+                incoming_edge_bank = scatter(
+                    edge_repr * incoming_edge_weights.unsqueeze(-1),
+                    dst_nodes,
+                    dim=0,
+                    dim_size=num_nodes,
+                    reduce='sum'
+                )
+                outgoing_edge_bank = scatter(
+                    edge_repr * outgoing_edge_weights.unsqueeze(-1),
+                    src_nodes,
+                    dim=0,
+                    dim_size=num_nodes,
+                    reduce='sum'
+                )
+                edge_chain_repr = self.edge_context_proj(torch.cat(
+                    (
+                        incoming_edge_bank[src_nodes],
+                        outgoing_edge_bank[dst_nodes],
+                        incoming_edge_bank[src_nodes] * outgoing_edge_bank[dst_nodes],
+                    ),
+                    dim=-1,
+                ))
+                source_fanout_context = (
+                    outgoing_edge_bank[src_nodes] -
+                    edge_repr * outgoing_edge_weights.unsqueeze(-1)
+                )
+                destination_fanin_context = (
+                    incoming_edge_bank[dst_nodes] -
+                    edge_repr * incoming_edge_weights.unsqueeze(-1)
+                )
+                edge_local_repr = self.edge_local_proj(torch.cat(
+                    (
+                        source_fanout_context,
+                        destination_fanin_context,
+                        source_fanout_context * destination_fanin_context,
+                    ),
+                    dim=-1,
+                ))
+                edge_shape_repr = self.edge_shape_proj(torch.cat(
+                    (
+                        edge_chain_repr,
+                        edge_local_repr,
+                        edge_chain_repr * edge_local_repr,
+                    ),
+                    dim=-1,
+                ))
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
-        pred = self.layer_post_mp(torch.cat(
-            (edge_repr[mask], pair_edge_repr[mask], edge_repr[mask] * pair_edge_repr[mask]),
-            dim=-1
-        ))
+        if self.use_edge_bank_shape_head:
+            if edge_shape_repr is None:
+                edge_shape_repr = torch.zeros_like(edge_repr)
+            pred = self.edge_shape_head(torch.cat(
+                (
+                    edge_repr[mask],
+                    pair_edge_repr[mask],
+                    edge_shape_repr[mask],
+                    pair_edge_repr[mask] * edge_shape_repr[mask],
+                ),
+                dim=-1,
+            ))
+        else:
+            pred = self.layer_post_mp(torch.cat(
+                (edge_repr[mask], pair_edge_repr[mask], edge_repr[mask] * pair_edge_repr[mask]),
+                dim=-1
+            ))
         if self.use_chain_context_residual:
             if pair_context_repr is None:
                 pair_context_repr = torch.zeros_like(pair_repr)
