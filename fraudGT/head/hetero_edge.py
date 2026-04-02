@@ -18,16 +18,8 @@ class HeteroGNNEdgeHead(nn.Module):
         super().__init__()
         self.is_hetero = isinstance(dataset[0], HeteroData)
         self.edge_decoding = cfg.model.edge_decoding
-        self.use_pair_chain_head = self.edge_decoding in {
-            'pair_chain',
-            'pair_chain_contextresid',
-            'pair_chain_pairtimeresid',
-        }
-        self.use_chain_context_residual = self.edge_decoding in {
-            'pair_chain_contextresid',
-            'pair_chain_pairtimeresid',
-        }
-        self.use_pair_time_residual = self.edge_decoding == 'pair_chain_pairtimeresid'
+        self.use_pair_chain_head = self.edge_decoding in {'pair_chain', 'pair_chain_contextresid'}
+        self.use_chain_context_residual = self.edge_decoding == 'pair_chain_contextresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -66,16 +58,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 self.context_residual_alpha = nn.Parameter(
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
-            if self.use_pair_time_residual:
-                self.pair_time_proj = MLP(dim_in * 4 + 1, dim_in,
-                                          num_layers=self.head_layers,
-                                          bias=True)
-                self.pair_time_head = MLP(dim_in, dim_out,
-                                          num_layers=self.head_layers,
-                                          bias=True)
-                self.pair_time_residual_alpha = nn.Parameter(
-                    torch.full((1,), math.log(0.10 / 0.90))
-                )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -102,9 +84,6 @@ class HeteroGNNEdgeHead(nn.Module):
         edge_inputs, edge_index = self._edge_inputs(batch)
         src_nodes, dst_nodes = edge_index
         edge_repr = self.edge_proj(edge_inputs)
-        edge_timestamps = None
-        if self.use_pair_time_residual and hasattr(batch[task], 'timestamps'):
-            edge_timestamps = batch[task].timestamps.to(edge_repr.device).view(-1).to(edge_repr.dtype)
 
         num_dst_nodes = batch[task[2]].x.size(0)
         pair_key = src_nodes.to(torch.long) * num_dst_nodes + dst_nodes.to(torch.long)
@@ -116,7 +95,6 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_max = torch.where(torch.isfinite(pair_max), pair_max, torch.zeros_like(pair_max))
         pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_max - pair_mean), dim=-1))
         pair_context_repr = None
-        pair_time_edge_repr = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -163,53 +141,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
-            if self.use_pair_time_residual:
-                if edge_timestamps is not None:
-                    pair_latest_time, _ = scatter_max(
-                        edge_timestamps, pair_inv, dim=0, dim_size=num_pairs
-                    )
-                    pair_earliest_neg, _ = scatter_max(
-                        -edge_timestamps, pair_inv, dim=0, dim_size=num_pairs
-                    )
-                    pair_earliest_time = -pair_earliest_neg
-                    recent_gap = torch.log1p(
-                        (pair_latest_time[pair_inv] - edge_timestamps).clamp(min=0)
-                    )
-                    past_gap = torch.log1p(
-                        (edge_timestamps - pair_earliest_time[pair_inv]).clamp(min=0)
-                    )
-                    recent_weights = pyg_softmax(
-                        -recent_gap, pair_inv, num_nodes=num_pairs
-                    )
-                    past_weights = pyg_softmax(
-                        -past_gap, pair_inv, num_nodes=num_pairs
-                    )
-                    pair_recent_repr = scatter(
-                        edge_repr * recent_weights.unsqueeze(-1),
-                        pair_inv,
-                        dim=0,
-                        dim_size=num_pairs,
-                        reduce='sum'
-                    )
-                    pair_past_repr = scatter(
-                        edge_repr * past_weights.unsqueeze(-1),
-                        pair_inv,
-                        dim=0,
-                        dim_size=num_pairs,
-                        reduce='sum'
-                    )
-                    pair_time_edge_repr = self.pair_time_proj(torch.cat(
-                        (
-                            edge_repr,
-                            pair_recent_repr[pair_inv],
-                            pair_past_repr[pair_inv],
-                            pair_recent_repr[pair_inv] * pair_past_repr[pair_inv],
-                            recent_gap.unsqueeze(-1),
-                        ),
-                        dim=-1,
-                    ))
-                else:
-                    pair_time_edge_repr = torch.zeros_like(edge_repr)
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -222,11 +153,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 pair_context_repr = torch.zeros_like(pair_repr)
             context_logits = self.context_head(pair_context_repr[pair_inv][mask])
             pred = pred + torch.sigmoid(self.context_residual_alpha) * context_logits
-        if self.use_pair_time_residual:
-            if pair_time_edge_repr is None:
-                pair_time_edge_repr = torch.zeros_like(edge_repr)
-            pair_time_logits = self.pair_time_head(pair_time_edge_repr[mask])
-            pred = pred + torch.sigmoid(self.pair_time_residual_alpha) * pair_time_logits
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
