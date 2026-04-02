@@ -18,16 +18,8 @@ class HeteroGNNEdgeHead(nn.Module):
         super().__init__()
         self.is_hetero = isinstance(dataset[0], HeteroData)
         self.edge_decoding = cfg.model.edge_decoding
-        self.use_pair_chain_head = self.edge_decoding in {
-            'pair_chain',
-            'pair_chain_contextresid',
-            'pair_chain_contextdecayresid',
-        }
-        self.use_chain_context_residual = self.edge_decoding in {
-            'pair_chain_contextresid',
-            'pair_chain_contextdecayresid',
-        }
-        self.use_chain_decay_context = self.edge_decoding == 'pair_chain_contextdecayresid'
+        self.use_pair_chain_head = self.edge_decoding in {'pair_chain', 'pair_chain_contextresid'}
+        self.use_chain_context_residual = self.edge_decoding == 'pair_chain_contextresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -66,10 +58,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 self.context_residual_alpha = nn.Parameter(
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
-            if self.use_chain_decay_context:
-                self.chain_time_decay_alpha = nn.Parameter(
-                    torch.full((1,), -2.25)
-                )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -96,9 +84,6 @@ class HeteroGNNEdgeHead(nn.Module):
         edge_inputs, edge_index = self._edge_inputs(batch)
         src_nodes, dst_nodes = edge_index
         edge_repr = self.edge_proj(edge_inputs)
-        edge_timestamps = None
-        if self.use_chain_decay_context and hasattr(batch[task], 'timestamps'):
-            edge_timestamps = batch[task].timestamps.to(edge_repr.device).view(-1).to(edge_repr.dtype)
 
         num_dst_nodes = batch[task[2]].x.size(0)
         pair_key = src_nodes.to(torch.long) * num_dst_nodes + dst_nodes.to(torch.long)
@@ -110,75 +95,13 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_max = torch.where(torch.isfinite(pair_max), pair_max, torch.zeros_like(pair_max))
         pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_max - pair_mean), dim=-1))
         pair_context_repr = None
-        pair_time_mean = None
-        if edge_timestamps is not None:
-            pair_time_mean = scatter(
-                edge_timestamps,
-                pair_inv,
-                dim=0,
-                dim_size=num_pairs,
-                reduce='mean'
-            )
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
             pair_src = torch.div(pair_keys, num_dst_nodes, rounding_mode='floor')
             pair_dst = torch.remainder(pair_keys, num_dst_nodes)
-            if self.use_chain_decay_context and pair_time_mean is not None:
-                decay_rate = F.softplus(self.chain_time_decay_alpha).to(edge_repr.dtype)
-                predecessor_latest, _ = scatter_max(
-                    pair_time_mean,
-                    pair_dst,
-                    dim=0,
-                    dim_size=num_nodes
-                )
-                successor_latest, _ = scatter_max(
-                    pair_time_mean,
-                    pair_src,
-                    dim=0,
-                    dim_size=num_nodes
-                )
-                predecessor_delta = (
-                    predecessor_latest[pair_dst] - pair_time_mean
-                ).clamp(min=0)
-                successor_delta = (
-                    successor_latest[pair_src] - pair_time_mean
-                ).clamp(min=0)
-                predecessor_weight = torch.exp(
-                    -decay_rate * predecessor_delta
-                ).unsqueeze(-1)
-                successor_weight = torch.exp(
-                    -decay_rate * successor_delta
-                ).unsqueeze(-1)
-                predecessor_bank = scatter(
-                    pair_repr * predecessor_weight,
-                    pair_dst,
-                    dim=0,
-                    dim_size=num_nodes,
-                    reduce='sum'
-                ) / scatter(
-                    predecessor_weight,
-                    pair_dst,
-                    dim=0,
-                    dim_size=num_nodes,
-                    reduce='sum'
-                ).clamp(min=1e-6)
-                successor_bank = scatter(
-                    pair_repr * successor_weight,
-                    pair_src,
-                    dim=0,
-                    dim_size=num_nodes,
-                    reduce='sum'
-                ) / scatter(
-                    successor_weight,
-                    pair_src,
-                    dim=0,
-                    dim_size=num_nodes,
-                    reduce='sum'
-                ).clamp(min=1e-6)
-            else:
-                predecessor_bank = scatter(pair_repr, pair_dst, dim=0, dim_size=num_nodes, reduce='mean')
-                successor_bank = scatter(pair_repr, pair_src, dim=0, dim_size=num_nodes, reduce='mean')
+            predecessor_bank = scatter(pair_repr, pair_dst, dim=0, dim_size=num_nodes, reduce='mean')
+            successor_bank = scatter(pair_repr, pair_src, dim=0, dim_size=num_nodes, reduce='mean')
             prev_context = predecessor_bank[pair_src]
             next_context = successor_bank[pair_dst]
             chain_input = torch.cat((prev_context, pair_repr, next_context), dim=-1)
