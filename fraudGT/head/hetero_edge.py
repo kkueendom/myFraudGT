@@ -18,16 +18,8 @@ class HeteroGNNEdgeHead(nn.Module):
         super().__init__()
         self.is_hetero = isinstance(dataset[0], HeteroData)
         self.edge_decoding = cfg.model.edge_decoding
-        self.use_pair_chain_head = self.edge_decoding in {
-            'pair_chain',
-            'pair_chain_contextresid',
-            'pair_chain_contextwaveletresid',
-        }
-        self.use_chain_context_residual = self.edge_decoding in {
-            'pair_chain_contextresid',
-            'pair_chain_contextwaveletresid',
-        }
-        self.use_chain_wavelet_context = self.edge_decoding == 'pair_chain_contextwaveletresid'
+        self.use_pair_chain_head = self.edge_decoding in {'pair_chain', 'pair_chain_contextresid'}
+        self.use_chain_context_residual = self.edge_decoding == 'pair_chain_contextresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -57,8 +49,7 @@ class HeteroGNNEdgeHead(nn.Module):
                                      num_layers=self.head_layers,
                                      bias=True)
             if self.use_chain_context_residual:
-                context_dim = dim_in * (6 if self.use_chain_wavelet_context else 3)
-                self.context_proj = MLP(context_dim, dim_in,
+                self.context_proj = MLP(dim_in * 3, dim_in,
                                         num_layers=self.head_layers,
                                         bias=True)
                 self.context_head = MLP(dim_in, dim_out,
@@ -142,31 +133,14 @@ class HeteroGNNEdgeHead(nn.Module):
                     dim_size=num_nodes,
                     reduce='sum'
                 )
-                predecessor_low = predecessor_bank[pair_src]
-                successor_low = successor_bank[pair_dst]
-                predecessor_high = predecessor_focus_bank[pair_src] - predecessor_low
-                successor_high = successor_focus_bank[pair_dst] - successor_low
-                if self.use_chain_wavelet_context:
-                    pair_context_repr = self.context_proj(torch.cat(
-                        (
-                            predecessor_low,
-                            successor_low,
-                            predecessor_low * successor_low,
-                            predecessor_high,
-                            successor_high,
-                            predecessor_high * successor_high,
-                        ),
-                        dim=-1,
-                    ))
-                else:
-                    pair_context_repr = self.context_proj(torch.cat(
-                        (
-                            predecessor_focus_bank[pair_src],
-                            successor_focus_bank[pair_dst],
-                            predecessor_focus_bank[pair_src] * successor_focus_bank[pair_dst],
-                        ),
-                        dim=-1,
-                    ))
+                pair_context_repr = self.context_proj(torch.cat(
+                    (
+                        predecessor_focus_bank[pair_src],
+                        successor_focus_bank[pair_dst],
+                        predecessor_focus_bank[pair_src] * successor_focus_bank[pair_dst],
+                    ),
+                    dim=-1,
+                ))
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
