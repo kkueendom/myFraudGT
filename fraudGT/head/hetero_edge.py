@@ -18,8 +18,16 @@ class HeteroGNNEdgeHead(nn.Module):
         super().__init__()
         self.is_hetero = isinstance(dataset[0], HeteroData)
         self.edge_decoding = cfg.model.edge_decoding
-        self.use_pair_chain_head = self.edge_decoding in {'pair_chain', 'pair_chain_contextresid'}
-        self.use_chain_context_residual = self.edge_decoding == 'pair_chain_contextresid'
+        self.use_pair_chain_head = self.edge_decoding in {
+            'pair_chain',
+            'pair_chain_contextresid',
+            'pair_chain_contextpairattnresid',
+        }
+        self.use_chain_context_residual = self.edge_decoding in {
+            'pair_chain_contextresid',
+            'pair_chain_contextpairattnresid',
+        }
+        self.use_pair_attention_pool = self.edge_decoding == 'pair_chain_contextpairattnresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -35,6 +43,11 @@ class HeteroGNNEdgeHead(nn.Module):
             self.pair_proj = MLP(dim_in * 3, dim_in,
                                  num_layers=self.head_layers,
                                  bias=True)
+            if self.use_pair_attention_pool:
+                self.pair_attn_score = nn.Linear(dim_in, 1)
+                self.pair_attn_alpha = nn.Parameter(
+                    torch.full((1,), math.log(0.10 / 0.90))
+                )
             self.chain_update = MLP(dim_in * 3, dim_in,
                                     num_layers=self.head_layers,
                                     bias=True)
@@ -93,7 +106,24 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_mean = scatter(edge_repr, pair_inv, dim=0, dim_size=num_pairs, reduce='mean')
         pair_max, _ = scatter_max(edge_repr, pair_inv, dim=0, dim_size=num_pairs)
         pair_max = torch.where(torch.isfinite(pair_max), pair_max, torch.zeros_like(pair_max))
-        pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_max - pair_mean), dim=-1))
+        pair_context = pair_max - pair_mean
+        if self.use_pair_attention_pool:
+            pair_attn_scores = self.pair_attn_score(edge_repr).view(-1)
+            pair_attn_weights = pyg_softmax(
+                pair_attn_scores, pair_inv, num_nodes=num_pairs
+            )
+            pair_attn_repr = scatter(
+                edge_repr * pair_attn_weights.unsqueeze(-1),
+                pair_inv,
+                dim=0,
+                dim_size=num_pairs,
+                reduce='sum'
+            )
+            pair_context = pair_context + (
+                torch.sigmoid(self.pair_attn_alpha) *
+                (pair_attn_repr - pair_mean)
+            )
+        pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_context), dim=-1))
         pair_context_repr = None
 
         if task[0] == task[2]:
