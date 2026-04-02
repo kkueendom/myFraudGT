@@ -18,16 +18,8 @@ class HeteroGNNEdgeHead(nn.Module):
         super().__init__()
         self.is_hetero = isinstance(dataset[0], HeteroData)
         self.edge_decoding = cfg.model.edge_decoding
-        self.use_pair_chain_head = self.edge_decoding in {
-            'pair_chain',
-            'pair_chain_contextresid',
-            'pair_chain_edgepathcontextresid',
-        }
-        self.use_chain_context_residual = self.edge_decoding in {
-            'pair_chain_contextresid',
-            'pair_chain_edgepathcontextresid',
-        }
-        self.use_edge_path_stage = self.edge_decoding == 'pair_chain_edgepathcontextresid'
+        self.use_pair_chain_head = self.edge_decoding in {'pair_chain', 'pair_chain_contextresid'}
+        self.use_chain_context_residual = self.edge_decoding == 'pair_chain_contextresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -40,14 +32,6 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_proj = MLP(dim_in * 3, dim_in,
                                  num_layers=self.head_layers,
                                  bias=True)
-            if self.use_edge_path_stage:
-                self.edge_path_update = MLP(dim_in * 3, dim_in,
-                                            num_layers=self.head_layers,
-                                            bias=True)
-                self.edge_path_gate = nn.Linear(dim_in * 3, dim_in)
-                self.edge_path_alpha = nn.Parameter(
-                    torch.full((1,), math.log(0.12 / 0.88))
-                )
             self.pair_proj = MLP(dim_in * 3, dim_in,
                                  num_layers=self.head_layers,
                                  bias=True)
@@ -100,31 +84,6 @@ class HeteroGNNEdgeHead(nn.Module):
         edge_inputs, edge_index = self._edge_inputs(batch)
         src_nodes, dst_nodes = edge_index
         edge_repr = self.edge_proj(edge_inputs)
-        if self.use_edge_path_stage and task[0] == task[2]:
-            num_nodes = batch[task[0]].x.size(0)
-            incoming_edge_bank = scatter(
-                edge_repr,
-                dst_nodes,
-                dim=0,
-                dim_size=num_nodes,
-                reduce='mean'
-            )
-            outgoing_edge_bank = scatter(
-                edge_repr,
-                src_nodes,
-                dim=0,
-                dim_size=num_nodes,
-                reduce='mean'
-            )
-            path_prev = incoming_edge_bank[src_nodes]
-            path_next = outgoing_edge_bank[dst_nodes]
-            edge_path_input = torch.cat((path_prev, edge_repr, path_next), dim=-1)
-            edge_path_gate = torch.sigmoid(self.edge_path_gate(edge_path_input))
-            edge_repr = edge_repr + (
-                torch.sigmoid(self.edge_path_alpha) *
-                edge_path_gate *
-                self.edge_path_update(edge_path_input)
-            )
 
         num_dst_nodes = batch[task[2]].x.size(0)
         pair_key = src_nodes.to(torch.long) * num_dst_nodes + dst_nodes.to(torch.long)
