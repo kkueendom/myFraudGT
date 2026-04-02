@@ -18,8 +18,16 @@ class HeteroGNNEdgeHead(nn.Module):
         super().__init__()
         self.is_hetero = isinstance(dataset[0], HeteroData)
         self.edge_decoding = cfg.model.edge_decoding
-        self.use_pair_chain_head = self.edge_decoding in {'pair_chain', 'pair_chain_contextresid'}
-        self.use_chain_context_residual = self.edge_decoding == 'pair_chain_contextresid'
+        self.use_pair_chain_head = self.edge_decoding in {
+            'pair_chain',
+            'pair_chain_contextresid',
+            'pair_chain_contexttriadresid',
+        }
+        self.use_chain_context_residual = self.edge_decoding in {
+            'pair_chain_contextresid',
+            'pair_chain_contexttriadresid',
+        }
+        self.use_chain_triad_residual = self.edge_decoding == 'pair_chain_contexttriadresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -56,6 +64,23 @@ class HeteroGNNEdgeHead(nn.Module):
                                         num_layers=self.head_layers,
                                         bias=True)
                 self.context_residual_alpha = nn.Parameter(
+                    torch.full((1,), math.log(0.10 / 0.90))
+                )
+            if self.use_chain_triad_residual:
+                triad_heads = 4 if dim_in % 4 == 0 else 1
+                self.triad_attn = nn.MultiheadAttention(
+                    dim_in,
+                    triad_heads,
+                    dropout=cfg.gt.dropout,
+                    batch_first=True,
+                )
+                self.triad_proj = MLP(dim_in * 3, dim_in,
+                                      num_layers=self.head_layers,
+                                      bias=True)
+                self.triad_head = MLP(dim_in, dim_out,
+                                      num_layers=self.head_layers,
+                                      bias=True)
+                self.triad_residual_alpha = nn.Parameter(
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
         else:
@@ -95,6 +120,7 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_max = torch.where(torch.isfinite(pair_max), pair_max, torch.zeros_like(pair_max))
         pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_max - pair_mean), dim=-1))
         pair_context_repr = None
+        pair_triad_repr = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -141,6 +167,30 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
+                if self.use_chain_triad_residual:
+                    predecessor_focus = predecessor_focus_bank[pair_src]
+                    successor_focus = successor_focus_bank[pair_dst]
+                    triad_tokens = torch.stack(
+                        (predecessor_focus, pair_repr, successor_focus),
+                        dim=1,
+                    )
+                    triad_tokens, _ = self.triad_attn(
+                        triad_tokens,
+                        triad_tokens,
+                        triad_tokens,
+                        need_weights=False,
+                    )
+                    triad_center = triad_tokens[:, 1]
+                    # The triad branch models predecessor-current-successor motifs
+                    # without perturbing the main pair-chain path.
+                    pair_triad_repr = self.triad_proj(torch.cat(
+                        (
+                            triad_center,
+                            pair_repr,
+                            triad_center * pair_repr,
+                        ),
+                        dim=-1,
+                    ))
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -153,6 +203,11 @@ class HeteroGNNEdgeHead(nn.Module):
                 pair_context_repr = torch.zeros_like(pair_repr)
             context_logits = self.context_head(pair_context_repr[pair_inv][mask])
             pred = pred + torch.sigmoid(self.context_residual_alpha) * context_logits
+        if self.use_chain_triad_residual:
+            if pair_triad_repr is None:
+                pair_triad_repr = torch.zeros_like(pair_repr)
+            triad_logits = self.triad_head(pair_triad_repr[pair_inv][mask])
+            pred = pred + torch.sigmoid(self.triad_residual_alpha) * triad_logits
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
