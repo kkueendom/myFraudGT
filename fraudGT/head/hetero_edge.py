@@ -18,8 +18,16 @@ class HeteroGNNEdgeHead(nn.Module):
         super().__init__()
         self.is_hetero = isinstance(dataset[0], HeteroData)
         self.edge_decoding = cfg.model.edge_decoding
-        self.use_pair_chain_head = self.edge_decoding in {'pair_chain', 'pair_chain_contextresid'}
-        self.use_chain_context_residual = self.edge_decoding == 'pair_chain_contextresid'
+        self.use_pair_chain_head = self.edge_decoding in {
+            'pair_chain',
+            'pair_chain_contextresid',
+            'pair_chain_timeresid',
+        }
+        self.use_chain_context_residual = self.edge_decoding in {
+            'pair_chain_contextresid',
+            'pair_chain_timeresid',
+        }
+        self.use_chain_time_residual = self.edge_decoding == 'pair_chain_timeresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -58,6 +66,16 @@ class HeteroGNNEdgeHead(nn.Module):
                 self.context_residual_alpha = nn.Parameter(
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
+            if self.use_chain_time_residual:
+                self.time_context_proj = MLP(dim_in * 3 + 2, dim_in,
+                                             num_layers=self.head_layers,
+                                             bias=True)
+                self.time_context_head = MLP(dim_in, dim_out,
+                                             num_layers=self.head_layers,
+                                             bias=True)
+                self.time_context_alpha = nn.Parameter(
+                    torch.full((1,), math.log(0.10 / 0.90))
+                )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -84,6 +102,9 @@ class HeteroGNNEdgeHead(nn.Module):
         edge_inputs, edge_index = self._edge_inputs(batch)
         src_nodes, dst_nodes = edge_index
         edge_repr = self.edge_proj(edge_inputs)
+        edge_timestamps = None
+        if self.use_chain_time_residual and hasattr(batch[task], 'timestamps'):
+            edge_timestamps = batch[task].timestamps.to(edge_repr.device).view(-1).to(edge_repr.dtype)
 
         num_dst_nodes = batch[task[2]].x.size(0)
         pair_key = src_nodes.to(torch.long) * num_dst_nodes + dst_nodes.to(torch.long)
@@ -95,6 +116,16 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_max = torch.where(torch.isfinite(pair_max), pair_max, torch.zeros_like(pair_max))
         pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_max - pair_mean), dim=-1))
         pair_context_repr = None
+        pair_time_context_repr = None
+        pair_time_mean = None
+        if edge_timestamps is not None:
+            pair_time_mean = scatter(
+                edge_timestamps,
+                pair_inv,
+                dim=0,
+                dim_size=num_pairs,
+                reduce='mean'
+            )
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -111,7 +142,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 chain_gate *
                 self.chain_update(chain_input)
             )
-            if self.use_chain_context_residual:
+            if self.use_chain_context_residual or self.use_chain_time_residual:
                 pair_scores = pair_repr.norm(dim=-1)
                 predecessor_focus_weights = pyg_softmax(
                     pair_scores, pair_dst, num_nodes=num_nodes
@@ -133,14 +164,56 @@ class HeteroGNNEdgeHead(nn.Module):
                     dim_size=num_nodes,
                     reduce='sum'
                 )
-                pair_context_repr = self.context_proj(torch.cat(
-                    (
-                        predecessor_focus_bank[pair_src],
-                        successor_focus_bank[pair_dst],
-                        predecessor_focus_bank[pair_src] * successor_focus_bank[pair_dst],
-                    ),
-                    dim=-1,
-                ))
+                predecessor_focus = predecessor_focus_bank[pair_src]
+                successor_focus = successor_focus_bank[pair_dst]
+                focus_interaction = predecessor_focus * successor_focus
+                if self.use_chain_context_residual:
+                    pair_context_repr = self.context_proj(torch.cat(
+                        (
+                            predecessor_focus,
+                            successor_focus,
+                            focus_interaction,
+                        ),
+                        dim=-1,
+                    ))
+                if self.use_chain_time_residual:
+                    if pair_time_mean is not None:
+                        predecessor_focus_time_bank = scatter(
+                            pair_time_mean * predecessor_focus_weights,
+                            pair_dst,
+                            dim=0,
+                            dim_size=num_nodes,
+                            reduce='sum'
+                        )
+                        successor_focus_time_bank = scatter(
+                            pair_time_mean * successor_focus_weights,
+                            pair_src,
+                            dim=0,
+                            dim_size=num_nodes,
+                            reduce='sum'
+                        )
+                        predecessor_gap = torch.log1p(
+                            (pair_time_mean - predecessor_focus_time_bank[pair_src]).clamp(min=0)
+                        ).unsqueeze(-1)
+                        successor_gap = torch.log1p(
+                            (successor_focus_time_bank[pair_dst] - pair_time_mean).clamp(min=0)
+                        ).unsqueeze(-1)
+                    else:
+                        predecessor_gap = torch.zeros(
+                            (num_pairs, 1), device=edge_repr.device, dtype=edge_repr.dtype
+                        )
+                        successor_gap = torch.zeros_like(predecessor_gap)
+                    # Keep time as a low-init residual branch so the pair-chain path stays intact.
+                    pair_time_context_repr = self.time_context_proj(torch.cat(
+                        (
+                            predecessor_focus,
+                            successor_focus,
+                            focus_interaction,
+                            predecessor_gap,
+                            successor_gap,
+                        ),
+                        dim=-1,
+                    ))
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -153,6 +226,11 @@ class HeteroGNNEdgeHead(nn.Module):
                 pair_context_repr = torch.zeros_like(pair_repr)
             context_logits = self.context_head(pair_context_repr[pair_inv][mask])
             pred = pred + torch.sigmoid(self.context_residual_alpha) * context_logits
+        if self.use_chain_time_residual:
+            if pair_time_context_repr is None:
+                pair_time_context_repr = torch.zeros_like(pair_repr)
+            time_context_logits = self.time_context_head(pair_time_context_repr[pair_inv][mask])
+            pred = pred + torch.sigmoid(self.time_context_alpha) * time_context_logits
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
