@@ -18,8 +18,13 @@ class HeteroGNNEdgeHead(nn.Module):
         super().__init__()
         self.is_hetero = isinstance(dataset[0], HeteroData)
         self.edge_decoding = cfg.model.edge_decoding
-        self.use_pair_chain_head = self.edge_decoding in {'pair_chain', 'pair_chain_contextresid'}
+        self.use_pair_chain_head = self.edge_decoding in {
+            'pair_chain',
+            'pair_chain_contextresid',
+            'pair_chain_recentpairfuse',
+        }
         self.use_chain_context_residual = self.edge_decoding == 'pair_chain_contextresid'
+        self.use_recent_pair_fusion = self.edge_decoding == 'pair_chain_recentpairfuse'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -58,6 +63,23 @@ class HeteroGNNEdgeHead(nn.Module):
                 self.context_residual_alpha = nn.Parameter(
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
+            if self.use_recent_pair_fusion:
+                self.recent_context_proj = MLP(dim_in * 3, dim_in,
+                                               num_layers=self.head_layers,
+                                               bias=True)
+                self.recent_local_proj = MLP(dim_in * 3, dim_in,
+                                             num_layers=self.head_layers,
+                                             bias=True)
+                self.recent_shape_proj = MLP(dim_in * 3, dim_in,
+                                             num_layers=self.head_layers,
+                                             bias=True)
+                self.recent_pair_proj = MLP(dim_in * 3, dim_in,
+                                            num_layers=self.head_layers,
+                                            bias=True)
+                self.pair_recent_fuse_proj = MLP(dim_in * 3, dim_in,
+                                                 num_layers=self.head_layers,
+                                                 bias=True)
+                self.temporal_scale = nn.Parameter(torch.tensor(86400.0))
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -95,6 +117,7 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_max = torch.where(torch.isfinite(pair_max), pair_max, torch.zeros_like(pair_max))
         pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_max - pair_mean), dim=-1))
         pair_context_repr = None
+        pair_recent_repr = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -138,6 +161,100 @@ class HeteroGNNEdgeHead(nn.Module):
                         predecessor_focus_bank[pair_src],
                         successor_focus_bank[pair_dst],
                         predecessor_focus_bank[pair_src] * successor_focus_bank[pair_dst],
+                    ),
+                    dim=-1,
+                ))
+            if self.use_recent_pair_fusion and hasattr(batch[task], 'timestamps'):
+                edge_timestamps = batch[task].timestamps.to(edge_repr.device).float()
+                latest_incoming_timestamps, _ = scatter_max(
+                    edge_timestamps, dst_nodes, dim=0, dim_size=num_nodes
+                )
+                latest_outgoing_timestamps, _ = scatter_max(
+                    edge_timestamps, src_nodes, dim=0, dim_size=num_nodes
+                )
+                recent_scale = self.temporal_scale.abs().clamp(min=1.0)
+                incoming_recent_scores = -(
+                    latest_incoming_timestamps[dst_nodes] - edge_timestamps
+                ).clamp(min=0) / recent_scale
+                outgoing_recent_scores = -(
+                    latest_outgoing_timestamps[src_nodes] - edge_timestamps
+                ).clamp(min=0) / recent_scale
+                incoming_recent_weights = pyg_softmax(
+                    incoming_recent_scores, dst_nodes, num_nodes=num_nodes
+                )
+                outgoing_recent_weights = pyg_softmax(
+                    outgoing_recent_scores, src_nodes, num_nodes=num_nodes
+                )
+                incoming_recent_bank = scatter(
+                    edge_repr * incoming_recent_weights.unsqueeze(-1),
+                    dst_nodes,
+                    dim=0,
+                    dim_size=num_nodes,
+                    reduce='sum'
+                )
+                outgoing_recent_bank = scatter(
+                    edge_repr * outgoing_recent_weights.unsqueeze(-1),
+                    src_nodes,
+                    dim=0,
+                    dim_size=num_nodes,
+                    reduce='sum'
+                )
+                recent_chain_repr = self.recent_context_proj(torch.cat(
+                    (
+                        incoming_recent_bank[src_nodes],
+                        outgoing_recent_bank[dst_nodes],
+                        incoming_recent_bank[src_nodes] * outgoing_recent_bank[dst_nodes],
+                    ),
+                    dim=-1,
+                ))
+                source_recent_fanout = (
+                    outgoing_recent_bank[src_nodes] -
+                    edge_repr * outgoing_recent_weights.unsqueeze(-1)
+                )
+                destination_recent_fanin = (
+                    incoming_recent_bank[dst_nodes] -
+                    edge_repr * incoming_recent_weights.unsqueeze(-1)
+                )
+                recent_local_repr = self.recent_local_proj(torch.cat(
+                    (
+                        source_recent_fanout,
+                        destination_recent_fanin,
+                        source_recent_fanout * destination_recent_fanin,
+                    ),
+                    dim=-1,
+                ))
+                recent_edge_repr = self.recent_shape_proj(torch.cat(
+                    (
+                        recent_chain_repr,
+                        recent_local_repr,
+                        recent_chain_repr * recent_local_repr,
+                    ),
+                    dim=-1,
+                ))
+                pair_recent_mean = scatter(
+                    recent_edge_repr, pair_inv, dim=0, dim_size=num_pairs, reduce='mean'
+                )
+                pair_recent_max, _ = scatter_max(
+                    recent_edge_repr, pair_inv, dim=0, dim_size=num_pairs
+                )
+                pair_recent_max = torch.where(
+                    torch.isfinite(pair_recent_max),
+                    pair_recent_max,
+                    torch.zeros_like(pair_recent_max)
+                )
+                pair_recent_repr = self.recent_pair_proj(torch.cat(
+                    (
+                        pair_recent_mean,
+                        pair_recent_max,
+                        pair_recent_max - pair_recent_mean,
+                    ),
+                    dim=-1,
+                ))
+                pair_repr = self.pair_recent_fuse_proj(torch.cat(
+                    (
+                        pair_repr,
+                        pair_recent_repr,
+                        pair_repr * pair_recent_repr,
                     ),
                     dim=-1,
                 ))
