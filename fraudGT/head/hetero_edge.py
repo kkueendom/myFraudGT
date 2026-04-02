@@ -18,16 +18,8 @@ class HeteroGNNEdgeHead(nn.Module):
         super().__init__()
         self.is_hetero = isinstance(dataset[0], HeteroData)
         self.edge_decoding = cfg.model.edge_decoding
-        self.use_pair_chain_head = self.edge_decoding in {
-            'pair_chain',
-            'pair_chain_contextresid',
-            'pair_chain_flowmotif',
-        }
-        self.use_chain_context_residual = self.edge_decoding in {
-            'pair_chain_contextresid',
-            'pair_chain_flowmotif',
-        }
-        self.use_flow_motif_residual = self.edge_decoding == 'pair_chain_flowmotif'
+        self.use_pair_chain_head = self.edge_decoding in {'pair_chain', 'pair_chain_contextresid'}
+        self.use_chain_context_residual = self.edge_decoding == 'pair_chain_contextresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -64,16 +56,6 @@ class HeteroGNNEdgeHead(nn.Module):
                                         num_layers=self.head_layers,
                                         bias=True)
                 self.context_residual_alpha = nn.Parameter(
-                    torch.full((1,), math.log(0.10 / 0.90))
-                )
-            if self.use_flow_motif_residual:
-                self.motif_proj = MLP(dim_in * 3, dim_in,
-                                      num_layers=self.head_layers,
-                                      bias=True)
-                self.motif_head = MLP(dim_in, dim_out,
-                                      num_layers=self.head_layers,
-                                      bias=True)
-                self.motif_residual_alpha = nn.Parameter(
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
         else:
@@ -113,7 +95,6 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_max = torch.where(torch.isfinite(pair_max), pair_max, torch.zeros_like(pair_max))
         pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_max - pair_mean), dim=-1))
         pair_context_repr = None
-        pair_motif_repr = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -160,23 +141,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
-                if self.use_flow_motif_residual:
-                    source_fanout_context = (
-                        successor_focus_bank[pair_src] -
-                        pair_repr * successor_focus_weights.unsqueeze(-1)
-                    )
-                    destination_fanin_context = (
-                        predecessor_focus_bank[pair_dst] -
-                        pair_repr * predecessor_focus_weights.unsqueeze(-1)
-                    )
-                    pair_motif_repr = self.motif_proj(torch.cat(
-                        (
-                            source_fanout_context,
-                            destination_fanin_context,
-                            source_fanout_context * destination_fanin_context,
-                        ),
-                        dim=-1,
-                    ))
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -189,11 +153,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 pair_context_repr = torch.zeros_like(pair_repr)
             context_logits = self.context_head(pair_context_repr[pair_inv][mask])
             pred = pred + torch.sigmoid(self.context_residual_alpha) * context_logits
-        if self.use_flow_motif_residual:
-            if pair_motif_repr is None:
-                pair_motif_repr = torch.zeros_like(pair_repr)
-            motif_logits = self.motif_head(pair_motif_repr[pair_inv][mask])
-            pred = pred + torch.sigmoid(self.motif_residual_alpha) * motif_logits
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
