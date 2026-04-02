@@ -114,12 +114,15 @@ class HeteroGNNEdgeHead(nn.Module):
         remaining_scores = pair_timestamps.clone()
         score_floor = torch.finfo(remaining_scores.dtype).min
         time_scale = self.sequence_time_scale.abs().clamp(min=1.0)
+        remaining_mask = torch.ones_like(pair_timestamps, dtype=torch.bool)
 
         for slot in range(self.sequence_len):
             slot_scores, slot_indices = scatter_max(
                 remaining_scores, pair_nodes, dim=0, dim_size=num_nodes
             )
-            valid_nodes = slot_scores > (score_floor / 2)
+            valid_nodes = scatter(
+                remaining_mask.float(), pair_nodes, dim=0, dim_size=num_nodes, reduce='sum'
+            ) > 0
             if not valid_nodes.any():
                 break
             chosen_indices = slot_indices[valid_nodes]
@@ -132,6 +135,7 @@ class HeteroGNNEdgeHead(nn.Module):
             ).unsqueeze(-1)
             seq_bank[valid_nodes, slot] = chosen_repr * recency
             remaining_scores[chosen_indices] = score_floor
+            remaining_mask[chosen_indices] = False
 
         return seq_bank
 
