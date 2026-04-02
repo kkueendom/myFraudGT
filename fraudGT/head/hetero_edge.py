@@ -18,16 +18,8 @@ class HeteroGNNEdgeHead(nn.Module):
         super().__init__()
         self.is_hetero = isinstance(dataset[0], HeteroData)
         self.edge_decoding = cfg.model.edge_decoding
-        self.use_pair_chain_head = self.edge_decoding in {
-            'pair_chain',
-            'pair_chain_contextresid',
-            'pair_chain_contexthubresid',
-        }
-        self.use_chain_context_residual = self.edge_decoding in {
-            'pair_chain_contextresid',
-            'pair_chain_contexthubresid',
-        }
-        self.use_chain_hub_residual = self.edge_decoding == 'pair_chain_contexthubresid'
+        self.use_pair_chain_head = self.edge_decoding in {'pair_chain', 'pair_chain_contextresid'}
+        self.use_chain_context_residual = self.edge_decoding == 'pair_chain_contextresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -64,16 +56,6 @@ class HeteroGNNEdgeHead(nn.Module):
                                         num_layers=self.head_layers,
                                         bias=True)
                 self.context_residual_alpha = nn.Parameter(
-                    torch.full((1,), math.log(0.10 / 0.90))
-                )
-            if self.use_chain_hub_residual:
-                self.hub_proj = MLP(dim_in * 5, dim_in,
-                                    num_layers=self.head_layers,
-                                    bias=True)
-                self.hub_head = MLP(dim_in, dim_out,
-                                    num_layers=self.head_layers,
-                                    bias=True)
-                self.hub_residual_alpha = nn.Parameter(
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
         else:
@@ -113,7 +95,6 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_max = torch.where(torch.isfinite(pair_max), pair_max, torch.zeros_like(pair_max))
         pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_max - pair_mean), dim=-1))
         pair_context_repr = None
-        pair_hub_repr = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -160,19 +141,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
-                if self.use_chain_hub_residual:
-                    source_out_focus = successor_focus_bank[pair_src]
-                    destination_in_focus = predecessor_focus_bank[pair_dst]
-                    pair_hub_repr = self.hub_proj(torch.cat(
-                        (
-                            source_out_focus,
-                            pair_repr,
-                            destination_in_focus,
-                            source_out_focus * pair_repr,
-                            pair_repr * destination_in_focus,
-                        ),
-                        dim=-1,
-                    ))
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -185,11 +153,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 pair_context_repr = torch.zeros_like(pair_repr)
             context_logits = self.context_head(pair_context_repr[pair_inv][mask])
             pred = pred + torch.sigmoid(self.context_residual_alpha) * context_logits
-        if self.use_chain_hub_residual:
-            if pair_hub_repr is None:
-                pair_hub_repr = torch.zeros_like(pair_repr)
-            hub_logits = self.hub_head(pair_hub_repr[pair_inv][mask])
-            pred = pred + torch.sigmoid(self.hub_residual_alpha) * hub_logits
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
