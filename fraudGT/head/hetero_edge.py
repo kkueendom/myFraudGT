@@ -22,12 +22,20 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqsubgraphupdate',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqsubgraphupdate',
         }
-        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
+        self.use_sequence_context_residual = self.edge_decoding in {
+            'pair_chain_contextseqresid',
+            'pair_chain_contextseqsubgraphupdate',
+        }
+        self.use_subgraph_update = (
+            self.edge_decoding == 'pair_chain_contextseqsubgraphupdate'
+        )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -64,6 +72,14 @@ class HeteroGNNEdgeHead(nn.Module):
                                         num_layers=self.head_layers,
                                         bias=True)
                 self.context_residual_alpha = nn.Parameter(
+                    torch.full((1,), math.log(0.10 / 0.90))
+                )
+            if self.use_subgraph_update:
+                self.subgraph_update = MLP(dim_in * 7, dim_in,
+                                           num_layers=self.head_layers,
+                                           bias=True)
+                self.subgraph_gate = nn.Linear(dim_in * 7, dim_in)
+                self.subgraph_residual_alpha = nn.Parameter(
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
             if self.use_sequence_context_residual:
@@ -173,7 +189,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 chain_gate *
                 self.chain_update(chain_input)
             )
-            if self.use_chain_context_residual:
+            if self.use_chain_context_residual or self.use_subgraph_update:
                 pair_scores = pair_repr.norm(dim=-1)
                 predecessor_focus_weights = pyg_softmax(
                     pair_scores, pair_dst, num_nodes=num_nodes
@@ -195,6 +211,29 @@ class HeteroGNNEdgeHead(nn.Module):
                     dim_size=num_nodes,
                     reduce='sum'
                 )
+            if self.use_subgraph_update:
+                src_in = predecessor_focus_bank[pair_src]
+                src_out = successor_focus_bank[pair_src]
+                dst_in = predecessor_focus_bank[pair_dst]
+                dst_out = successor_focus_bank[pair_dst]
+                subgraph_input = torch.cat(
+                    (
+                        src_in,
+                        src_out,
+                        dst_in,
+                        dst_out,
+                        src_in * dst_out,
+                        src_out * dst_in,
+                        pair_repr,
+                    ),
+                    dim=-1,
+                )
+                pair_repr = pair_repr + (
+                    torch.sigmoid(self.subgraph_residual_alpha) *
+                    torch.sigmoid(self.subgraph_gate(subgraph_input)) *
+                    self.subgraph_update(subgraph_input)
+                )
+            if self.use_chain_context_residual:
                 pair_context_repr = self.context_proj(torch.cat(
                     (
                         predecessor_focus_bank[pair_src],
