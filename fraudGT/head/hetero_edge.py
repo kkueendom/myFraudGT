@@ -22,18 +22,12 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqtimeresid',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqtimeresid',
         }
-        self.use_sequence_context_residual = self.edge_decoding in {
-            'pair_chain_contextseqresid',
-            'pair_chain_contextseqtimeresid',
-        }
-        self.use_sequence_time_residual = self.edge_decoding == 'pair_chain_contextseqtimeresid'
+        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -94,12 +88,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
-                if self.use_sequence_time_residual:
-                    self.sequence_time_proj = nn.Sequential(
-                        nn.Linear(3, dim_in),
-                        nn.GELU(),
-                        nn.Linear(dim_in, dim_in),
-                    )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -123,12 +111,10 @@ class HeteroGNNEdgeHead(nn.Module):
     def _build_recent_sequence_bank(self, pair_repr, pair_nodes, pair_timestamps,
                                     num_nodes, latest_timestamps):
         seq_bank = pair_repr.new_zeros((num_nodes, self.sequence_len, pair_repr.size(-1)))
-        time_bank = pair_repr.new_zeros((num_nodes, self.sequence_len, 3))
         remaining_scores = pair_timestamps.clone()
         score_floor = torch.finfo(remaining_scores.dtype).min
         time_scale = self.sequence_time_scale.abs().clamp(min=1.0)
         remaining_mask = torch.ones_like(pair_timestamps, dtype=torch.bool)
-        previous_times = latest_timestamps.clone()
 
         for slot in range(self.sequence_len):
             slot_scores, slot_indices = scatter_max(
@@ -142,27 +128,16 @@ class HeteroGNNEdgeHead(nn.Module):
             chosen_indices = slot_indices[valid_nodes]
             chosen_times = pair_timestamps[chosen_indices]
             chosen_repr = pair_repr[chosen_indices]
-            delta = (
-                latest_timestamps[valid_nodes] - chosen_times
-            ).clamp(min=0) / time_scale
-            inter_delta = (
-                previous_times[valid_nodes] - chosen_times
-            ).clamp(min=0) / time_scale
-            recency = torch.exp(-delta).unsqueeze(-1)
+            recency = torch.exp(
+                -(
+                    latest_timestamps[valid_nodes] - chosen_times
+                ).clamp(min=0) / time_scale
+            ).unsqueeze(-1)
             seq_bank[valid_nodes, slot] = chosen_repr * recency
-            time_bank[valid_nodes, slot] = torch.stack(
-                (
-                    delta,
-                    torch.exp(-delta),
-                    inter_delta,
-                ),
-                dim=-1,
-            )
             remaining_scores[chosen_indices] = score_floor
             remaining_mask[chosen_indices] = False
-            previous_times[valid_nodes] = chosen_times
 
-        return seq_bank, time_bank
+        return seq_bank
 
     def _pair_chain_head(self, batch):
         task = cfg.dataset.task_entity
@@ -254,28 +229,17 @@ class HeteroGNNEdgeHead(nn.Module):
                     incoming_latest,
                     torch.zeros_like(incoming_latest),
                 )
-                outgoing_sequence_bank, outgoing_time_bank = self._build_recent_sequence_bank(
+                outgoing_sequence_bank = self._build_recent_sequence_bank(
                     pair_repr, pair_src, pair_timestamps, num_nodes, outgoing_latest
                 )
-                incoming_sequence_bank, incoming_time_bank = self._build_recent_sequence_bank(
+                incoming_sequence_bank = self._build_recent_sequence_bank(
                     pair_repr, pair_dst, pair_timestamps, num_nodes, incoming_latest
                 )
-                outgoing_tokens = outgoing_sequence_bank[pair_src]
-                incoming_tokens = incoming_sequence_bank[pair_dst]
-                if self.use_sequence_time_residual:
-                    outgoing_temporal_tokens = self.sequence_time_proj(
-                        outgoing_time_bank[pair_src].reshape(-1, 3)
-                    ).view(-1, self.sequence_len, pair_repr.size(-1))
-                    incoming_temporal_tokens = self.sequence_time_proj(
-                        incoming_time_bank[pair_dst].reshape(-1, 3)
-                    ).view(-1, self.sequence_len, pair_repr.size(-1))
-                    outgoing_tokens = outgoing_tokens + outgoing_temporal_tokens
-                    incoming_tokens = incoming_tokens + incoming_temporal_tokens
                 outgoing_state = self.outgoing_sequence_encoder(
-                    outgoing_tokens
+                    outgoing_sequence_bank[pair_src]
                 )[1].squeeze(0)
                 incoming_state = self.incoming_sequence_encoder(
-                    incoming_tokens
+                    incoming_sequence_bank[pair_dst]
                 )[1].squeeze(0)
                 pair_sequence_repr = self.sequence_proj(torch.cat(
                     (
