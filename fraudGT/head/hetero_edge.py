@@ -22,20 +22,12 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqpathattnresid',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqpathattnresid',
         }
-        self.use_sequence_context_residual = self.edge_decoding in {
-            'pair_chain_contextseqresid',
-            'pair_chain_contextseqpathattnresid',
-        }
-        self.use_sequence_path_attention_residual = (
-            self.edge_decoding == 'pair_chain_contextseqpathattnresid'
-        )
+        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -96,23 +88,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
-                if self.use_sequence_path_attention_residual:
-                    self.path_attention_token = nn.Linear(dim_in * 3, dim_in)
-                    self.path_attention_query = nn.Linear(dim_in, dim_in)
-                    self.path_context_attention = nn.MultiheadAttention(
-                        embed_dim=dim_in,
-                        num_heads=4,
-                        batch_first=True,
-                    )
-                    self.path_attention_proj = MLP(dim_in * 3, dim_in,
-                                                   num_layers=self.head_layers,
-                                                   bias=True)
-                    self.path_attention_head = MLP(dim_in, dim_out,
-                                                   num_layers=self.head_layers,
-                                                   bias=True)
-                    self.path_attention_residual_alpha = nn.Parameter(
-                        torch.full((1,), math.log(0.05 / 0.95))
-                    )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -182,7 +157,6 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_max - pair_mean), dim=-1))
         pair_context_repr = None
         pair_sequence_repr = None
-        pair_path_attention_repr = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -275,31 +249,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
-                if self.use_sequence_path_attention_residual:
-                    pair_center_bank = pair_repr.unsqueeze(1).expand(-1, self.sequence_len, -1)
-                    path_tokens = self.path_attention_token(torch.cat(
-                        (
-                            outgoing_sequence_bank[pair_src],
-                            pair_center_bank,
-                            incoming_sequence_bank[pair_dst],
-                        ),
-                        dim=-1,
-                    ))
-                    path_query = self.path_attention_query(pair_sequence_repr).unsqueeze(1)
-                    path_context = self.path_context_attention(
-                        path_query,
-                        path_tokens,
-                        path_tokens,
-                        need_weights=False,
-                    )[0].squeeze(1)
-                    pair_path_attention_repr = self.path_attention_proj(torch.cat(
-                        (
-                            pair_sequence_repr,
-                            path_context,
-                            pair_sequence_repr * path_context,
-                        ),
-                        dim=-1,
-                    ))
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -317,15 +266,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 pair_sequence_repr = torch.zeros_like(pair_repr)
             sequence_logits = self.sequence_head(pair_sequence_repr[pair_inv][mask])
             pred = pred + torch.sigmoid(self.sequence_residual_alpha) * sequence_logits
-            if self.use_sequence_path_attention_residual:
-                if pair_path_attention_repr is None:
-                    pair_path_attention_repr = torch.zeros_like(pair_repr)
-                path_attention_logits = self.path_attention_head(
-                    pair_path_attention_repr[pair_inv][mask]
-                )
-                pred = pred + (
-                    torch.sigmoid(self.path_attention_residual_alpha) * path_attention_logits
-                )
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
