@@ -22,20 +22,12 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqdiffaddresid',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqdiffaddresid',
         }
-        self.use_sequence_context_residual = self.edge_decoding in {
-            'pair_chain_contextseqresid',
-            'pair_chain_contextseqdiffaddresid',
-        }
-        self.use_sequence_diff_add_residual = (
-            self.edge_decoding == 'pair_chain_contextseqdiffaddresid'
-        )
+        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -96,21 +88,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
-                if self.use_sequence_diff_add_residual:
-                    self.difference_sequence_encoder = nn.GRU(
-                        input_size=dim_in,
-                        hidden_size=dim_in,
-                        batch_first=True,
-                    )
-                    self.sequence_diff_proj = MLP(dim_in * 3, dim_in,
-                                                  num_layers=self.head_layers,
-                                                  bias=True)
-                    self.sequence_diff_head = MLP(dim_in, dim_out,
-                                                  num_layers=self.head_layers,
-                                                  bias=True)
-                    self.sequence_diff_residual_alpha = nn.Parameter(
-                        torch.full((1,), math.log(0.05 / 0.95))
-                    )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -180,7 +157,6 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_max - pair_mean), dim=-1))
         pair_context_repr = None
         pair_sequence_repr = None
-        pair_sequence_diff_repr = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -273,21 +249,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
-                if self.use_sequence_diff_add_residual:
-                    difference_tokens = torch.abs(
-                        outgoing_sequence_bank[pair_src] - incoming_sequence_bank[pair_dst]
-                    )
-                    difference_state = self.difference_sequence_encoder(
-                        difference_tokens
-                    )[1].squeeze(0)
-                    pair_sequence_diff_repr = self.sequence_diff_proj(torch.cat(
-                        (
-                            difference_state,
-                            torch.abs(outgoing_state - incoming_state),
-                            pair_sequence_repr,
-                        ),
-                        dim=-1,
-                    ))
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -305,15 +266,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 pair_sequence_repr = torch.zeros_like(pair_repr)
             sequence_logits = self.sequence_head(pair_sequence_repr[pair_inv][mask])
             pred = pred + torch.sigmoid(self.sequence_residual_alpha) * sequence_logits
-            if self.use_sequence_diff_add_residual:
-                if pair_sequence_diff_repr is None:
-                    pair_sequence_diff_repr = torch.zeros_like(pair_repr)
-                sequence_diff_logits = self.sequence_diff_head(
-                    pair_sequence_diff_repr[pair_inv][mask]
-                )
-                pred = pred + (
-                    torch.sigmoid(self.sequence_diff_residual_alpha) * sequence_diff_logits
-                )
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
