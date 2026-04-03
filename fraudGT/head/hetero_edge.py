@@ -22,12 +22,20 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqwaveletresid',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqwaveletresid',
         }
-        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
+        self.use_sequence_context_residual = self.edge_decoding in {
+            'pair_chain_contextseqresid',
+            'pair_chain_contextseqwaveletresid',
+        }
+        self.use_sequence_wavelet_residual = (
+            self.edge_decoding == 'pair_chain_contextseqwaveletresid'
+        )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -88,6 +96,26 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
+                if self.use_sequence_wavelet_residual:
+                    self.low_frequency_encoder = nn.GRU(
+                        input_size=dim_in,
+                        hidden_size=dim_in,
+                        batch_first=True,
+                    )
+                    self.high_frequency_encoder = nn.GRU(
+                        input_size=dim_in,
+                        hidden_size=dim_in,
+                        batch_first=True,
+                    )
+                    self.sequence_wavelet_proj = MLP(dim_in * 4, dim_in,
+                                                     num_layers=self.head_layers,
+                                                     bias=True)
+                    self.sequence_wavelet_head = MLP(dim_in, dim_out,
+                                                     num_layers=self.head_layers,
+                                                     bias=True)
+                    self.sequence_wavelet_residual_alpha = nn.Parameter(
+                        torch.full((1,), math.log(0.05 / 0.95))
+                    )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -139,6 +167,15 @@ class HeteroGNNEdgeHead(nn.Module):
 
         return seq_bank
 
+    def _build_wavelet_sequence_bank(self, sequence_bank):
+        paired_steps = sequence_bank[:, :sequence_bank.size(1) // 2 * 2]
+        if paired_steps.size(1) == 0:
+            zeros = sequence_bank.new_zeros((sequence_bank.size(0), 1, sequence_bank.size(-1)))
+            return zeros, zeros
+        low_bank = 0.5 * (paired_steps[:, 0::2] + paired_steps[:, 1::2])
+        high_bank = 0.5 * (paired_steps[:, 0::2] - paired_steps[:, 1::2])
+        return low_bank, high_bank
+
     def _pair_chain_head(self, batch):
         task = cfg.dataset.task_entity
         mask = self._edge_mask(batch)
@@ -157,6 +194,7 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_max - pair_mean), dim=-1))
         pair_context_repr = None
         pair_sequence_repr = None
+        pair_sequence_wavelet_repr = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -249,6 +287,34 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
+                if self.use_sequence_wavelet_residual:
+                    outgoing_low_bank, outgoing_high_bank = self._build_wavelet_sequence_bank(
+                        outgoing_sequence_bank[pair_src]
+                    )
+                    incoming_low_bank, incoming_high_bank = self._build_wavelet_sequence_bank(
+                        incoming_sequence_bank[pair_dst]
+                    )
+                    outgoing_low_state = self.low_frequency_encoder(
+                        outgoing_low_bank
+                    )[1].squeeze(0)
+                    incoming_low_state = self.low_frequency_encoder(
+                        incoming_low_bank
+                    )[1].squeeze(0)
+                    outgoing_high_state = self.high_frequency_encoder(
+                        outgoing_high_bank
+                    )[1].squeeze(0)
+                    incoming_high_state = self.high_frequency_encoder(
+                        incoming_high_bank
+                    )[1].squeeze(0)
+                    pair_sequence_wavelet_repr = self.sequence_wavelet_proj(torch.cat(
+                        (
+                            outgoing_low_state,
+                            incoming_low_state,
+                            outgoing_high_state,
+                            incoming_high_state,
+                        ),
+                        dim=-1,
+                    ))
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -266,6 +332,16 @@ class HeteroGNNEdgeHead(nn.Module):
                 pair_sequence_repr = torch.zeros_like(pair_repr)
             sequence_logits = self.sequence_head(pair_sequence_repr[pair_inv][mask])
             pred = pred + torch.sigmoid(self.sequence_residual_alpha) * sequence_logits
+            if self.use_sequence_wavelet_residual:
+                if pair_sequence_wavelet_repr is None:
+                    pair_sequence_wavelet_repr = torch.zeros_like(pair_repr)
+                sequence_wavelet_logits = self.sequence_wavelet_head(
+                    pair_sequence_wavelet_repr[pair_inv][mask]
+                )
+                pred = pred + (
+                    torch.sigmoid(self.sequence_wavelet_residual_alpha) *
+                    sequence_wavelet_logits
+                )
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
