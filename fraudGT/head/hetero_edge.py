@@ -22,20 +22,12 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqchainattnresid',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqchainattnresid',
         }
-        self.use_sequence_context_residual = self.edge_decoding in {
-            'pair_chain_contextseqresid',
-            'pair_chain_contextseqchainattnresid',
-        }
-        self.use_sequence_chain_attention_residual = (
-            self.edge_decoding == 'pair_chain_contextseqchainattnresid'
-        )
+        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -96,27 +88,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
-                if self.use_sequence_chain_attention_residual:
-                    self.chain_attention_query = nn.Linear(dim_in, dim_in)
-                    self.predecessor_attention = nn.MultiheadAttention(
-                        embed_dim=dim_in,
-                        num_heads=4,
-                        batch_first=True,
-                    )
-                    self.successor_attention = nn.MultiheadAttention(
-                        embed_dim=dim_in,
-                        num_heads=4,
-                        batch_first=True,
-                    )
-                    self.chain_attention_proj = MLP(dim_in * 4, dim_in,
-                                                    num_layers=self.head_layers,
-                                                    bias=True)
-                    self.chain_attention_head = MLP(dim_in, dim_out,
-                                                    num_layers=self.head_layers,
-                                                    bias=True)
-                    self.chain_attention_residual_alpha = nn.Parameter(
-                        torch.full((1,), math.log(0.05 / 0.95))
-                    )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -186,7 +157,6 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_max - pair_mean), dim=-1))
         pair_context_repr = None
         pair_sequence_repr = None
-        pair_chain_attention_repr = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -279,29 +249,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
-                if self.use_sequence_chain_attention_residual:
-                    chain_query = self.chain_attention_query(pair_sequence_repr).unsqueeze(1)
-                    predecessor_context = self.predecessor_attention(
-                        chain_query,
-                        incoming_sequence_bank[pair_src],
-                        incoming_sequence_bank[pair_src],
-                        need_weights=False,
-                    )[0].squeeze(1)
-                    successor_context = self.successor_attention(
-                        chain_query,
-                        outgoing_sequence_bank[pair_dst],
-                        outgoing_sequence_bank[pair_dst],
-                        need_weights=False,
-                    )[0].squeeze(1)
-                    pair_chain_attention_repr = self.chain_attention_proj(torch.cat(
-                        (
-                            pair_sequence_repr,
-                            predecessor_context,
-                            successor_context,
-                            predecessor_context * successor_context,
-                        ),
-                        dim=-1,
-                    ))
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -319,15 +266,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 pair_sequence_repr = torch.zeros_like(pair_repr)
             sequence_logits = self.sequence_head(pair_sequence_repr[pair_inv][mask])
             pred = pred + torch.sigmoid(self.sequence_residual_alpha) * sequence_logits
-            if self.use_sequence_chain_attention_residual:
-                if pair_chain_attention_repr is None:
-                    pair_chain_attention_repr = torch.zeros_like(pair_repr)
-                chain_attention_logits = self.chain_attention_head(
-                    pair_chain_attention_repr[pair_inv][mask]
-                )
-                pred = pred + (
-                    torch.sigmoid(self.chain_attention_residual_alpha) * chain_attention_logits
-                )
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
