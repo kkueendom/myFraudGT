@@ -22,18 +22,12 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqdiffresid',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqdiffresid',
         }
-        self.use_sequence_context_residual = self.edge_decoding in {
-            'pair_chain_contextseqresid',
-            'pair_chain_contextseqdiffresid',
-        }
-        self.use_sequence_diff_residual = self.edge_decoding == 'pair_chain_contextseqdiffresid'
+        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -94,15 +88,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
-                if self.use_sequence_diff_residual:
-                    self.difference_sequence_encoder = nn.GRU(
-                        input_size=dim_in,
-                        hidden_size=dim_in,
-                        batch_first=True,
-                    )
-                    self.sequence_diff_proj = MLP(dim_in * 4, dim_in,
-                                                  num_layers=self.head_layers,
-                                                  bias=True)
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -256,31 +241,14 @@ class HeteroGNNEdgeHead(nn.Module):
                 incoming_state = self.incoming_sequence_encoder(
                     incoming_sequence_bank[pair_dst]
                 )[1].squeeze(0)
-                if self.use_sequence_diff_residual:
-                    difference_tokens = torch.abs(
-                        outgoing_sequence_bank[pair_src] - incoming_sequence_bank[pair_dst]
-                    )
-                    difference_state = self.difference_sequence_encoder(
-                        difference_tokens
-                    )[1].squeeze(0)
-                    pair_sequence_repr = self.sequence_diff_proj(torch.cat(
-                        (
-                            outgoing_state,
-                            incoming_state,
-                            difference_state,
-                            outgoing_state * incoming_state,
-                        ),
-                        dim=-1,
-                    ))
-                else:
-                    pair_sequence_repr = self.sequence_proj(torch.cat(
-                        (
-                            outgoing_state,
-                            incoming_state,
-                            outgoing_state * incoming_state,
-                        ),
-                        dim=-1,
-                    ))
+                pair_sequence_repr = self.sequence_proj(torch.cat(
+                    (
+                        outgoing_state,
+                        incoming_state,
+                        outgoing_state * incoming_state,
+                    ),
+                    dim=-1,
+                ))
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
