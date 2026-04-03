@@ -22,12 +22,18 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqcrossresid',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqcrossresid',
         }
-        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
+        self.use_sequence_context_residual = self.edge_decoding in {
+            'pair_chain_contextseqresid',
+            'pair_chain_contextseqcrossresid',
+        }
+        self.use_sequence_cross_residual = self.edge_decoding == 'pair_chain_contextseqcrossresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -88,6 +94,22 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
+                if self.use_sequence_cross_residual:
+                    self.sequence_cross_attn = nn.MultiheadAttention(
+                        embed_dim=dim_in,
+                        num_heads=4,
+                        dropout=0.1,
+                        batch_first=True,
+                    )
+                    self.sequence_reverse_cross_attn = nn.MultiheadAttention(
+                        embed_dim=dim_in,
+                        num_heads=4,
+                        dropout=0.1,
+                        batch_first=True,
+                    )
+                    self.sequence_cross_alpha = nn.Parameter(
+                        torch.full((1,), math.log(0.10 / 0.90))
+                    )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -235,11 +257,23 @@ class HeteroGNNEdgeHead(nn.Module):
                 incoming_sequence_bank = self._build_recent_sequence_bank(
                     pair_repr, pair_dst, pair_timestamps, num_nodes, incoming_latest
                 )
+                outgoing_tokens = outgoing_sequence_bank[pair_src]
+                incoming_tokens = incoming_sequence_bank[pair_dst]
+                if self.use_sequence_cross_residual:
+                    cross_alpha = torch.sigmoid(self.sequence_cross_alpha)
+                    outgoing_aligned, _ = self.sequence_cross_attn(
+                        outgoing_tokens, incoming_tokens, incoming_tokens
+                    )
+                    incoming_aligned, _ = self.sequence_reverse_cross_attn(
+                        incoming_tokens, outgoing_tokens, outgoing_tokens
+                    )
+                    outgoing_tokens = outgoing_tokens + cross_alpha * outgoing_aligned
+                    incoming_tokens = incoming_tokens + cross_alpha * incoming_aligned
                 outgoing_state = self.outgoing_sequence_encoder(
-                    outgoing_sequence_bank[pair_src]
+                    outgoing_tokens
                 )[1].squeeze(0)
                 incoming_state = self.incoming_sequence_encoder(
-                    incoming_sequence_bank[pair_dst]
+                    incoming_tokens
                 )[1].squeeze(0)
                 pair_sequence_repr = self.sequence_proj(torch.cat(
                     (
