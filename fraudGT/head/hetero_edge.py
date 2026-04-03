@@ -22,20 +22,12 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqpathbiresid',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqpathbiresid',
         }
-        self.use_sequence_context_residual = self.edge_decoding in {
-            'pair_chain_contextseqresid',
-            'pair_chain_contextseqpathbiresid',
-        }
-        self.use_sequence_path_bi_residual = (
-            self.edge_decoding == 'pair_chain_contextseqpathbiresid'
-        )
+        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -96,23 +88,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
-                if self.use_sequence_path_bi_residual:
-                    self.path_bi_token = nn.Linear(dim_in * 3, dim_in)
-                    self.path_bi_encoder = nn.GRU(
-                        input_size=dim_in,
-                        hidden_size=dim_in // 2,
-                        batch_first=True,
-                        bidirectional=True,
-                    )
-                    self.path_bi_proj = MLP(dim_in * 3, dim_in,
-                                            num_layers=self.head_layers,
-                                            bias=True)
-                    self.path_bi_head = MLP(dim_in, dim_out,
-                                            num_layers=self.head_layers,
-                                            bias=True)
-                    self.path_bi_residual_alpha = nn.Parameter(
-                        torch.full((1,), math.log(0.05 / 0.95))
-                    )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -182,7 +157,6 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_max - pair_mean), dim=-1))
         pair_context_repr = None
         pair_sequence_repr = None
-        pair_path_bi_repr = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -275,26 +249,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
-                if self.use_sequence_path_bi_residual:
-                    pair_center_bank = pair_repr.unsqueeze(1).expand(-1, self.sequence_len, -1)
-                    path_tokens = self.path_bi_token(torch.cat(
-                        (
-                            outgoing_sequence_bank[pair_src],
-                            pair_center_bank,
-                            incoming_sequence_bank[pair_dst],
-                        ),
-                        dim=-1,
-                    ))
-                    path_hidden = self.path_bi_encoder(path_tokens)[1]
-                    path_hidden = path_hidden.transpose(0, 1).reshape(path_tokens.size(0), -1)
-                    pair_path_bi_repr = self.path_bi_proj(torch.cat(
-                        (
-                            pair_sequence_repr,
-                            path_hidden,
-                            pair_sequence_repr * path_hidden,
-                        ),
-                        dim=-1,
-                    ))
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -312,15 +266,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 pair_sequence_repr = torch.zeros_like(pair_repr)
             sequence_logits = self.sequence_head(pair_sequence_repr[pair_inv][mask])
             pred = pred + torch.sigmoid(self.sequence_residual_alpha) * sequence_logits
-            if self.use_sequence_path_bi_residual:
-                if pair_path_bi_repr is None:
-                    pair_path_bi_repr = torch.zeros_like(pair_repr)
-                path_bi_logits = self.path_bi_head(
-                    pair_path_bi_repr[pair_inv][mask]
-                )
-                pred = pred + (
-                    torch.sigmoid(self.path_bi_residual_alpha) * path_bi_logits
-                )
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
