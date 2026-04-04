@@ -22,20 +22,12 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqmoeresid',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqmoeresid',
         }
-        self.use_sequence_context_residual = self.edge_decoding in {
-            'pair_chain_contextseqresid',
-            'pair_chain_contextseqmoeresid',
-        }
-        self.use_sequence_moe_residual = (
-            self.edge_decoding == 'pair_chain_contextseqmoeresid'
-        )
+        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -96,20 +88,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
-                if self.use_sequence_moe_residual:
-                    self.source_balance_proj = MLP(dim_in * 3, dim_in,
-                                                   num_layers=self.head_layers,
-                                                   bias=True)
-                    self.dest_balance_proj = MLP(dim_in * 3, dim_in,
-                                                 num_layers=self.head_layers,
-                                                 bias=True)
-                    self.balance_expert_proj = MLP(dim_in * 4, dim_in,
-                                                   num_layers=self.head_layers,
-                                                   bias=True)
-                    self.sequence_moe_gate = nn.Linear(dim_in * 3, dim_in)
-                    self.sequence_moe_proj = MLP(dim_in * 3, dim_in,
-                                                 num_layers=self.head_layers,
-                                                 bias=True)
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -271,55 +249,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
-                if self.use_sequence_moe_residual:
-                    src_in_state = self.incoming_sequence_encoder(
-                        incoming_sequence_bank[pair_src]
-                    )[1].squeeze(0)
-                    dst_out_state = self.outgoing_sequence_encoder(
-                        outgoing_sequence_bank[pair_dst]
-                    )[1].squeeze(0)
-                    source_balance_repr = self.source_balance_proj(torch.cat(
-                        (
-                            outgoing_state - src_in_state,
-                            outgoing_state + src_in_state,
-                            outgoing_state * src_in_state,
-                        ),
-                        dim=-1,
-                    ))
-                    dest_balance_repr = self.dest_balance_proj(torch.cat(
-                        (
-                            incoming_state - dst_out_state,
-                            incoming_state + dst_out_state,
-                            incoming_state * dst_out_state,
-                        ),
-                        dim=-1,
-                    ))
-                    balance_expert_repr = self.balance_expert_proj(torch.cat(
-                        (
-                            source_balance_repr,
-                            dest_balance_repr,
-                            source_balance_repr * dest_balance_repr,
-                            pair_sequence_repr,
-                        ),
-                        dim=-1,
-                    ))
-                    moe_gate_input = torch.cat(
-                        (
-                            pair_sequence_repr,
-                            balance_expert_repr,
-                            pair_sequence_repr * balance_expert_repr,
-                        ),
-                        dim=-1,
-                    )
-                    expert_gate = torch.sigmoid(self.sequence_moe_gate(moe_gate_input))
-                    pair_sequence_repr = self.sequence_moe_proj(torch.cat(
-                        (
-                            expert_gate * pair_sequence_repr,
-                            (1.0 - expert_gate) * balance_expert_repr,
-                            pair_sequence_repr,
-                        ),
-                        dim=-1,
-                    ))
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
