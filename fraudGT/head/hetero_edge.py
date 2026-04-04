@@ -22,20 +22,12 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqmultiscale',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqmultiscale',
         }
-        self.use_sequence_context_residual = self.edge_decoding in {
-            'pair_chain_contextseqresid',
-            'pair_chain_contextseqmultiscale',
-        }
-        self.use_multiscale_sequence = (
-            self.edge_decoding == 'pair_chain_contextseqmultiscale'
-        )
+        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -96,27 +88,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
-                if self.use_multiscale_sequence:
-                    self.slow_outgoing_sequence_encoder = nn.GRU(
-                        input_size=dim_in,
-                        hidden_size=dim_in,
-                        batch_first=True,
-                    )
-                    self.slow_incoming_sequence_encoder = nn.GRU(
-                        input_size=dim_in,
-                        hidden_size=dim_in,
-                        batch_first=True,
-                    )
-                    self.multiscale_sequence_proj = MLP(dim_in * 4, dim_in,
-                                                        num_layers=self.head_layers,
-                                                        bias=True)
-                    self.multiscale_sequence_head = MLP(dim_in, dim_out,
-                                                        num_layers=self.head_layers,
-                                                        bias=True)
-                    self.multiscale_residual_alpha = nn.Parameter(
-                        torch.full((1,), math.log(0.10 / 0.90))
-                    )
-                    self.slow_sequence_scale = nn.Parameter(torch.tensor(86400.0 * 4.0))
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -138,13 +109,11 @@ class HeteroGNNEdgeHead(nn.Module):
                           batch[task].edge_attr), dim=-1), edge_index
 
     def _build_recent_sequence_bank(self, pair_repr, pair_nodes, pair_timestamps,
-                                    num_nodes, latest_timestamps, time_scale=None):
+                                    num_nodes, latest_timestamps):
         seq_bank = pair_repr.new_zeros((num_nodes, self.sequence_len, pair_repr.size(-1)))
         remaining_scores = pair_timestamps.clone()
         score_floor = torch.finfo(remaining_scores.dtype).min
-        if time_scale is None:
-            time_scale = self.sequence_time_scale
-        time_scale = time_scale.abs().clamp(min=1.0)
+        time_scale = self.sequence_time_scale.abs().clamp(min=1.0)
         remaining_mask = torch.ones_like(pair_timestamps, dtype=torch.bool)
 
         for slot in range(self.sequence_len):
@@ -188,7 +157,6 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_max - pair_mean), dim=-1))
         pair_context_repr = None
         pair_sequence_repr = None
-        pair_multiscale_repr = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -281,38 +249,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
-                if self.use_multiscale_sequence:
-                    slow_outgoing_sequence_bank = self._build_recent_sequence_bank(
-                        pair_repr,
-                        pair_src,
-                        pair_timestamps,
-                        num_nodes,
-                        outgoing_latest,
-                        self.slow_sequence_scale,
-                    )
-                    slow_incoming_sequence_bank = self._build_recent_sequence_bank(
-                        pair_repr,
-                        pair_dst,
-                        pair_timestamps,
-                        num_nodes,
-                        incoming_latest,
-                        self.slow_sequence_scale,
-                    )
-                    slow_outgoing_state = self.slow_outgoing_sequence_encoder(
-                        slow_outgoing_sequence_bank[pair_src]
-                    )[1].squeeze(0)
-                    slow_incoming_state = self.slow_incoming_sequence_encoder(
-                        slow_incoming_sequence_bank[pair_dst]
-                    )[1].squeeze(0)
-                    pair_multiscale_repr = self.multiscale_sequence_proj(torch.cat(
-                        (
-                            pair_sequence_repr,
-                            slow_outgoing_state,
-                            slow_incoming_state,
-                            slow_outgoing_state * slow_incoming_state,
-                        ),
-                        dim=-1,
-                    ))
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -330,16 +266,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 pair_sequence_repr = torch.zeros_like(pair_repr)
             sequence_logits = self.sequence_head(pair_sequence_repr[pair_inv][mask])
             pred = pred + torch.sigmoid(self.sequence_residual_alpha) * sequence_logits
-            if self.use_multiscale_sequence:
-                if pair_multiscale_repr is None:
-                    pair_multiscale_repr = torch.zeros_like(pair_repr)
-                multiscale_logits = self.multiscale_sequence_head(
-                    pair_multiscale_repr[pair_inv][mask]
-                )
-                pred = pred + (
-                    torch.sigmoid(self.multiscale_residual_alpha) *
-                    multiscale_logits
-                )
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
