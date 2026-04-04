@@ -22,12 +22,20 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqsubgraphmoeresid',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqsubgraphmoeresid',
         }
-        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
+        self.use_sequence_context_residual = self.edge_decoding in {
+            'pair_chain_contextseqresid',
+            'pair_chain_contextseqsubgraphmoeresid',
+        }
+        self.use_sequence_subgraph_moe = (
+            self.edge_decoding == 'pair_chain_contextseqsubgraphmoeresid'
+        )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -66,6 +74,14 @@ class HeteroGNNEdgeHead(nn.Module):
                 self.context_residual_alpha = nn.Parameter(
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
+                if self.use_sequence_subgraph_moe:
+                    self.subgraph_expert_proj = MLP(dim_in * 7, dim_in,
+                                                    num_layers=self.head_layers,
+                                                    bias=True)
+                    self.sequence_subgraph_gate = nn.Linear(dim_in * 3, dim_in)
+                    self.sequence_subgraph_proj = MLP(dim_in * 3, dim_in,
+                                                      num_layers=self.head_layers,
+                                                      bias=True)
             if self.use_sequence_context_residual:
                 self.sequence_len = 4
                 self.outgoing_sequence_encoder = nn.GRU(
@@ -157,6 +173,7 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_max - pair_mean), dim=-1))
         pair_context_repr = None
         pair_sequence_repr = None
+        pair_subgraph_expert_repr = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -195,6 +212,23 @@ class HeteroGNNEdgeHead(nn.Module):
                     dim_size=num_nodes,
                     reduce='sum'
                 )
+                if self.use_sequence_subgraph_moe:
+                    src_in = predecessor_focus_bank[pair_src]
+                    src_out = successor_focus_bank[pair_src]
+                    dst_in = predecessor_focus_bank[pair_dst]
+                    dst_out = successor_focus_bank[pair_dst]
+                    pair_subgraph_expert_repr = self.subgraph_expert_proj(torch.cat(
+                        (
+                            src_in,
+                            src_out,
+                            dst_in,
+                            dst_out,
+                            src_in * dst_out,
+                            src_out * dst_in,
+                            pair_repr,
+                        ),
+                        dim=-1,
+                    ))
                 pair_context_repr = self.context_proj(torch.cat(
                     (
                         predecessor_focus_bank[pair_src],
@@ -249,6 +283,26 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
+                if self.use_sequence_subgraph_moe:
+                    if pair_subgraph_expert_repr is None:
+                        pair_subgraph_expert_repr = torch.zeros_like(pair_sequence_repr)
+                    moe_gate_input = torch.cat(
+                        (
+                            pair_sequence_repr,
+                            pair_subgraph_expert_repr,
+                            pair_sequence_repr * pair_subgraph_expert_repr,
+                        ),
+                        dim=-1,
+                    )
+                    expert_gate = torch.sigmoid(self.sequence_subgraph_gate(moe_gate_input))
+                    pair_sequence_repr = self.sequence_subgraph_proj(torch.cat(
+                        (
+                            expert_gate * pair_sequence_repr,
+                            (1.0 - expert_gate) * pair_subgraph_expert_repr,
+                            pair_sequence_repr,
+                        ),
+                        dim=-1,
+                    ))
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
