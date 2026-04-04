@@ -22,20 +22,12 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqdeltagated',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqdeltagated',
         }
-        self.use_sequence_context_residual = self.edge_decoding in {
-            'pair_chain_contextseqresid',
-            'pair_chain_contextseqdeltagated',
-        }
-        self.use_delta_gated_sequence = (
-            self.edge_decoding == 'pair_chain_contextseqdeltagated'
-        )
+        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -96,11 +88,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
-                if self.use_delta_gated_sequence:
-                    self.timegap_proj = MLP(2, dim_in,
-                                            num_layers=self.head_layers,
-                                            bias=True)
-                    self.timegap_gate = nn.Linear(dim_in * 2, dim_in)
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -122,15 +109,8 @@ class HeteroGNNEdgeHead(nn.Module):
                           batch[task].edge_attr), dim=-1), edge_index
 
     def _build_recent_sequence_bank(self, pair_repr, pair_nodes, pair_timestamps,
-                                    num_nodes, latest_timestamps, return_times=False):
+                                    num_nodes, latest_timestamps):
         seq_bank = pair_repr.new_zeros((num_nodes, self.sequence_len, pair_repr.size(-1)))
-        time_bank = None
-        valid_bank = None
-        if return_times:
-            time_bank = pair_timestamps.new_zeros((num_nodes, self.sequence_len))
-            valid_bank = torch.zeros((num_nodes, self.sequence_len),
-                                     dtype=torch.bool,
-                                     device=pair_repr.device)
         remaining_scores = pair_timestamps.clone()
         score_floor = torch.finfo(remaining_scores.dtype).min
         time_scale = self.sequence_time_scale.abs().clamp(min=1.0)
@@ -154,14 +134,9 @@ class HeteroGNNEdgeHead(nn.Module):
                 ).clamp(min=0) / time_scale
             ).unsqueeze(-1)
             seq_bank[valid_nodes, slot] = chosen_repr * recency
-            if return_times:
-                time_bank[valid_nodes, slot] = chosen_times
-                valid_bank[valid_nodes, slot] = True
             remaining_scores[chosen_indices] = score_floor
             remaining_mask[chosen_indices] = False
 
-        if return_times:
-            return seq_bank, time_bank, valid_bank
         return seq_bank
 
     def _pair_chain_head(self, batch):
@@ -260,85 +235,11 @@ class HeteroGNNEdgeHead(nn.Module):
                 incoming_sequence_bank = self._build_recent_sequence_bank(
                     pair_repr, pair_dst, pair_timestamps, num_nodes, incoming_latest
                 )
-                if self.use_delta_gated_sequence:
-                    outgoing_sequence_bank, outgoing_time_bank, outgoing_valid_bank = \
-                        self._build_recent_sequence_bank(
-                            pair_repr,
-                            pair_src,
-                            pair_timestamps,
-                            num_nodes,
-                            outgoing_latest,
-                            return_times=True,
-                        )
-                    incoming_sequence_bank, incoming_time_bank, incoming_valid_bank = \
-                        self._build_recent_sequence_bank(
-                            pair_repr,
-                            pair_dst,
-                            pair_timestamps,
-                            num_nodes,
-                            incoming_latest,
-                            return_times=True,
-                        )
-                    outgoing_seq_tokens = outgoing_sequence_bank[pair_src]
-                    outgoing_seq_times = outgoing_time_bank[pair_src]
-                    outgoing_seq_valid = outgoing_valid_bank[pair_src]
-                    outgoing_latest_pair = outgoing_latest[pair_src].unsqueeze(1)
-                    outgoing_prev_times = torch.cat(
-                        (outgoing_latest_pair, outgoing_seq_times[:, :-1]), dim=1
-                    )
-                    outgoing_gap_latest = (
-                        (outgoing_latest_pair - outgoing_seq_times).clamp(min=0)
-                        / self.sequence_time_scale.abs().clamp(min=1.0)
-                    )
-                    outgoing_gap_step = (
-                        (outgoing_prev_times - outgoing_seq_times).clamp(min=0)
-                        / self.sequence_time_scale.abs().clamp(min=1.0)
-                    )
-                    outgoing_gap_feat = self.timegap_proj(torch.stack(
-                        (
-                            torch.log1p(outgoing_gap_latest),
-                            torch.log1p(outgoing_gap_step),
-                        ),
-                        dim=-1,
-                    ))
-                    outgoing_gate = torch.sigmoid(self.timegap_gate(torch.cat(
-                        (outgoing_seq_tokens, outgoing_gap_feat), dim=-1
-                    ))) * outgoing_seq_valid.unsqueeze(-1).float()
-                    outgoing_sequence_bank = outgoing_seq_tokens * outgoing_gate
-
-                    incoming_seq_tokens = incoming_sequence_bank[pair_dst]
-                    incoming_seq_times = incoming_time_bank[pair_dst]
-                    incoming_seq_valid = incoming_valid_bank[pair_dst]
-                    incoming_latest_pair = incoming_latest[pair_dst].unsqueeze(1)
-                    incoming_prev_times = torch.cat(
-                        (incoming_latest_pair, incoming_seq_times[:, :-1]), dim=1
-                    )
-                    incoming_gap_latest = (
-                        (incoming_latest_pair - incoming_seq_times).clamp(min=0)
-                        / self.sequence_time_scale.abs().clamp(min=1.0)
-                    )
-                    incoming_gap_step = (
-                        (incoming_prev_times - incoming_seq_times).clamp(min=0)
-                        / self.sequence_time_scale.abs().clamp(min=1.0)
-                    )
-                    incoming_gap_feat = self.timegap_proj(torch.stack(
-                        (
-                            torch.log1p(incoming_gap_latest),
-                            torch.log1p(incoming_gap_step),
-                        ),
-                        dim=-1,
-                    ))
-                    incoming_gate = torch.sigmoid(self.timegap_gate(torch.cat(
-                        (incoming_seq_tokens, incoming_gap_feat), dim=-1
-                    ))) * incoming_seq_valid.unsqueeze(-1).float()
-                    incoming_sequence_bank = incoming_seq_tokens * incoming_gate
                 outgoing_state = self.outgoing_sequence_encoder(
-                    outgoing_sequence_bank if self.use_delta_gated_sequence
-                    else outgoing_sequence_bank[pair_src]
+                    outgoing_sequence_bank[pair_src]
                 )[1].squeeze(0)
                 incoming_state = self.incoming_sequence_encoder(
-                    incoming_sequence_bank if self.use_delta_gated_sequence
-                    else incoming_sequence_bank[pair_dst]
+                    incoming_sequence_bank[pair_dst]
                 )[1].squeeze(0)
                 pair_sequence_repr = self.sequence_proj(torch.cat(
                     (
