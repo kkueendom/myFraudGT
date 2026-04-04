@@ -22,12 +22,20 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqflowbalresid',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqflowbalresid',
         }
-        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
+        self.use_sequence_context_residual = self.edge_decoding in {
+            'pair_chain_contextseqresid',
+            'pair_chain_contextseqflowbalresid',
+        }
+        self.use_flow_balance_residual = (
+            self.edge_decoding == 'pair_chain_contextseqflowbalresid'
+        )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -88,6 +96,22 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
+                if self.use_flow_balance_residual:
+                    self.source_balance_proj = MLP(dim_in * 3, dim_in,
+                                                   num_layers=self.head_layers,
+                                                   bias=True)
+                    self.dest_balance_proj = MLP(dim_in * 3, dim_in,
+                                                 num_layers=self.head_layers,
+                                                 bias=True)
+                    self.flow_balance_proj = MLP(dim_in * 4, dim_in,
+                                                 num_layers=self.head_layers,
+                                                 bias=True)
+                    self.flow_balance_head = MLP(dim_in, dim_out,
+                                                 num_layers=self.head_layers,
+                                                 bias=True)
+                    self.flow_balance_residual_alpha = nn.Parameter(
+                        torch.full((1,), math.log(0.10 / 0.90))
+                    )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -157,6 +181,7 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_max - pair_mean), dim=-1))
         pair_context_repr = None
         pair_sequence_repr = None
+        pair_flow_balance_repr = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -249,6 +274,38 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
+                if self.use_flow_balance_residual:
+                    src_in_state = self.incoming_sequence_encoder(
+                        incoming_sequence_bank[pair_src]
+                    )[1].squeeze(0)
+                    dst_out_state = self.outgoing_sequence_encoder(
+                        outgoing_sequence_bank[pair_dst]
+                    )[1].squeeze(0)
+                    source_balance_repr = self.source_balance_proj(torch.cat(
+                        (
+                            outgoing_state - src_in_state,
+                            outgoing_state + src_in_state,
+                            outgoing_state * src_in_state,
+                        ),
+                        dim=-1,
+                    ))
+                    dest_balance_repr = self.dest_balance_proj(torch.cat(
+                        (
+                            incoming_state - dst_out_state,
+                            incoming_state + dst_out_state,
+                            incoming_state * dst_out_state,
+                        ),
+                        dim=-1,
+                    ))
+                    pair_flow_balance_repr = self.flow_balance_proj(torch.cat(
+                        (
+                            source_balance_repr,
+                            dest_balance_repr,
+                            source_balance_repr * dest_balance_repr,
+                            pair_sequence_repr,
+                        ),
+                        dim=-1,
+                    ))
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -266,6 +323,16 @@ class HeteroGNNEdgeHead(nn.Module):
                 pair_sequence_repr = torch.zeros_like(pair_repr)
             sequence_logits = self.sequence_head(pair_sequence_repr[pair_inv][mask])
             pred = pred + torch.sigmoid(self.sequence_residual_alpha) * sequence_logits
+            if self.use_flow_balance_residual:
+                if pair_flow_balance_repr is None:
+                    pair_flow_balance_repr = torch.zeros_like(pair_repr)
+                flow_balance_logits = self.flow_balance_head(
+                    pair_flow_balance_repr[pair_inv][mask]
+                )
+                pred = pred + (
+                    torch.sigmoid(self.flow_balance_residual_alpha) *
+                    flow_balance_logits
+                )
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
