@@ -22,18 +22,12 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqrelconv',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqrelconv',
         }
-        self.use_sequence_context_residual = self.edge_decoding in {
-            'pair_chain_contextseqresid',
-            'pair_chain_contextseqrelconv',
-        }
-        self.use_relation_pair_conv = self.edge_decoding == 'pair_chain_contextseqrelconv'
+        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -70,16 +64,6 @@ class HeteroGNNEdgeHead(nn.Module):
                                         num_layers=self.head_layers,
                                         bias=True)
                 self.context_residual_alpha = nn.Parameter(
-                    torch.full((1,), math.log(0.10 / 0.90))
-                )
-            if self.use_relation_pair_conv:
-                self.rel_src_in = nn.Linear(dim_in, dim_in)
-                self.rel_src_out = nn.Linear(dim_in, dim_in)
-                self.rel_dst_in = nn.Linear(dim_in, dim_in)
-                self.rel_dst_out = nn.Linear(dim_in, dim_in)
-                self.rel_gate = nn.Linear(dim_in * 3, dim_in)
-                self.rel_norm = nn.LayerNorm(dim_in)
-                self.rel_residual_alpha = nn.Parameter(
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
             if self.use_sequence_context_residual:
@@ -189,7 +173,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 chain_gate *
                 self.chain_update(chain_input)
             )
-            if self.use_chain_context_residual or self.use_relation_pair_conv:
+            if self.use_chain_context_residual:
                 pair_scores = pair_repr.norm(dim=-1)
                 predecessor_focus_weights = pyg_softmax(
                     pair_scores, pair_dst, num_nodes=num_nodes
@@ -211,33 +195,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     dim_size=num_nodes,
                     reduce='sum'
                 )
-            if self.use_relation_pair_conv:
-                src_in = predecessor_focus_bank[pair_src]
-                src_out = successor_focus_bank[pair_src]
-                dst_in = predecessor_focus_bank[pair_dst]
-                dst_out = successor_focus_bank[pair_dst]
-                rel_update = (
-                    self.rel_src_in(src_in) +
-                    self.rel_src_out(src_out) +
-                    self.rel_dst_in(dst_in) +
-                    self.rel_dst_out(dst_out)
-                )
-                rel_gate_input = torch.cat(
-                    (
-                        pair_repr,
-                        src_in * dst_out,
-                        src_out * dst_in,
-                    ),
-                    dim=-1,
-                )
-                pair_repr = self.rel_norm(
-                    pair_repr + (
-                        torch.sigmoid(self.rel_residual_alpha) *
-                        torch.sigmoid(self.rel_gate(rel_gate_input)) *
-                        rel_update
-                    )
-                )
-            if self.use_chain_context_residual:
                 pair_context_repr = self.context_proj(torch.cat(
                     (
                         predecessor_focus_bank[pair_src],
