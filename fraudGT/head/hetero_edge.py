@@ -22,12 +22,18 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqshapefuse',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqshapefuse',
         }
-        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
+        self.use_sequence_context_residual = self.edge_decoding in {
+            'pair_chain_contextseqresid',
+            'pair_chain_contextseqshapefuse',
+        }
+        self.use_shape_sequence_fuse = self.edge_decoding == 'pair_chain_contextseqshapefuse'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -60,12 +66,13 @@ class HeteroGNNEdgeHead(nn.Module):
                 self.context_proj = MLP(dim_in * 3, dim_in,
                                         num_layers=self.head_layers,
                                         bias=True)
-                self.context_head = MLP(dim_in, dim_out,
-                                        num_layers=self.head_layers,
-                                        bias=True)
-                self.context_residual_alpha = nn.Parameter(
-                    torch.full((1,), math.log(0.10 / 0.90))
-                )
+                if not self.use_shape_sequence_fuse:
+                    self.context_head = MLP(dim_in, dim_out,
+                                            num_layers=self.head_layers,
+                                            bias=True)
+                    self.context_residual_alpha = nn.Parameter(
+                        torch.full((1,), math.log(0.10 / 0.90))
+                    )
             if self.use_sequence_context_residual:
                 self.sequence_len = 4
                 self.outgoing_sequence_encoder = nn.GRU(
@@ -88,6 +95,11 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
+                if self.use_shape_sequence_fuse:
+                    self.shape_fuse_proj = MLP(dim_in * 3, dim_in,
+                                               num_layers=self.head_layers,
+                                               bias=True)
+                    self.shape_fuse_gate = nn.Linear(dim_in * 3, dim_in)
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -241,11 +253,26 @@ class HeteroGNNEdgeHead(nn.Module):
                 incoming_state = self.incoming_sequence_encoder(
                     incoming_sequence_bank[pair_dst]
                 )[1].squeeze(0)
+                sequence_interaction = outgoing_state * incoming_state
+                if self.use_shape_sequence_fuse and pair_context_repr is not None:
+                    shape_input = torch.cat(
+                        (
+                            outgoing_state,
+                            incoming_state,
+                            pair_context_repr,
+                        ),
+                        dim=-1,
+                    )
+                    shape_gate = torch.sigmoid(self.shape_fuse_gate(shape_input))
+                    sequence_interaction = (
+                        shape_gate * self.shape_fuse_proj(shape_input) +
+                        (1.0 - shape_gate) * sequence_interaction
+                    )
                 pair_sequence_repr = self.sequence_proj(torch.cat(
                     (
                         outgoing_state,
                         incoming_state,
-                        outgoing_state * incoming_state,
+                        sequence_interaction,
                     ),
                     dim=-1,
                 ))
@@ -256,7 +283,7 @@ class HeteroGNNEdgeHead(nn.Module):
             (edge_repr[mask], pair_edge_repr[mask], edge_repr[mask] * pair_edge_repr[mask]),
             dim=-1
         ))
-        if self.use_chain_context_residual:
+        if self.use_chain_context_residual and not self.use_shape_sequence_fuse:
             if pair_context_repr is None:
                 pair_context_repr = torch.zeros_like(pair_repr)
             context_logits = self.context_head(pair_context_repr[pair_inv][mask])
