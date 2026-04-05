@@ -232,7 +232,6 @@ class HeteroGNNEdgeHead(nn.Module):
             num_nodes = batch[task[0]].x.size(0)
             pair_src = torch.div(pair_keys, num_dst_nodes, rounding_mode='floor')
             pair_dst = torch.remainder(pair_keys, num_dst_nodes)
-            pair_indices = torch.arange(num_pairs, device=pair_repr.device)
             predecessor_bank = scatter(pair_repr, pair_dst, dim=0, dim_size=num_nodes, reduce='mean')
             successor_bank = scatter(pair_repr, pair_src, dim=0, dim_size=num_nodes, reduce='mean')
             prev_context = predecessor_bank[pair_src]
@@ -340,13 +339,13 @@ class HeteroGNNEdgeHead(nn.Module):
                         pair_repr,
                         outgoing_sequence_bank[pair_src],
                         outgoing_sequence_indices[pair_src],
-                        pair_indices,
+                        pair_inv,
                     )
                     incoming_attn = self._attend_sequence_bank(
                         pair_repr,
                         incoming_sequence_bank[pair_dst],
                         incoming_sequence_indices[pair_dst],
-                        pair_indices,
+                        pair_inv,
                     )
                     pair_sequence_query_repr = self.sequence_query_proj(torch.cat(
                         (
