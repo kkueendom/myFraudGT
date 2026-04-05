@@ -22,12 +22,20 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqedgehistupdate',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqedgehistupdate',
         }
-        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
+        self.use_sequence_context_residual = self.edge_decoding in {
+            'pair_chain_contextseqresid',
+            'pair_chain_contextseqedgehistupdate',
+        }
+        self.use_edge_history_update = (
+            self.edge_decoding == 'pair_chain_contextseqedgehistupdate'
+        )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -88,6 +96,19 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
+                if self.use_edge_history_update:
+                    self.edge_history_encoder = nn.GRU(
+                        input_size=dim_in,
+                        hidden_size=dim_in,
+                        batch_first=True,
+                    )
+                    self.edge_history_update = MLP(dim_in * 3, dim_in,
+                                                   num_layers=self.head_layers,
+                                                   bias=True)
+                    self.edge_history_gate = nn.Linear(dim_in * 3, dim_in)
+                    self.edge_history_alpha = nn.Parameter(
+                        torch.full((1,), math.log(0.10 / 0.90))
+                    )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -162,6 +183,42 @@ class HeteroGNNEdgeHead(nn.Module):
             num_nodes = batch[task[0]].x.size(0)
             pair_src = torch.div(pair_keys, num_dst_nodes, rounding_mode='floor')
             pair_dst = torch.remainder(pair_keys, num_dst_nodes)
+            pair_timestamps = None
+            if hasattr(batch[task], 'timestamps') and (
+                self.use_sequence_context_residual or self.use_edge_history_update
+            ):
+                edge_timestamps = batch[task].timestamps.to(edge_repr.device).float().view(-1)
+                pair_timestamps, _ = scatter_max(
+                    edge_timestamps, pair_inv, dim=0, dim_size=num_pairs
+                )
+                pair_timestamps = torch.where(
+                    torch.isfinite(pair_timestamps),
+                    pair_timestamps,
+                    torch.zeros_like(pair_timestamps),
+                )
+                if self.use_edge_history_update:
+                    pair_history_bank = self._build_recent_sequence_bank(
+                        edge_repr, pair_inv, edge_timestamps, num_pairs, pair_timestamps
+                    )
+                    pair_history_state = self.edge_history_encoder(
+                        pair_history_bank
+                    )[1].squeeze(0)
+                    pair_history_input = torch.cat(
+                        (
+                            pair_repr,
+                            pair_history_state,
+                            pair_repr * pair_history_state,
+                        ),
+                        dim=-1,
+                    )
+                    pair_history_gate = torch.sigmoid(
+                        self.edge_history_gate(pair_history_input)
+                    )
+                    pair_repr = pair_repr + (
+                        torch.sigmoid(self.edge_history_alpha) *
+                        pair_history_gate *
+                        self.edge_history_update(pair_history_input)
+                    )
             predecessor_bank = scatter(pair_repr, pair_dst, dim=0, dim_size=num_nodes, reduce='mean')
             successor_bank = scatter(pair_repr, pair_src, dim=0, dim_size=num_nodes, reduce='mean')
             prev_context = predecessor_bank[pair_src]
@@ -203,16 +260,7 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
-            if self.use_sequence_context_residual and hasattr(batch[task], 'timestamps'):
-                edge_timestamps = batch[task].timestamps.to(edge_repr.device).float().view(-1)
-                pair_timestamps, _ = scatter_max(
-                    edge_timestamps, pair_inv, dim=0, dim_size=num_pairs
-                )
-                pair_timestamps = torch.where(
-                    torch.isfinite(pair_timestamps),
-                    pair_timestamps,
-                    torch.zeros_like(pair_timestamps),
-                )
+            if self.use_sequence_context_residual and pair_timestamps is not None:
                 outgoing_latest, _ = scatter_max(
                     pair_timestamps, pair_src, dim=0, dim_size=num_nodes
                 )
