@@ -22,12 +22,20 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqrecipseqresid',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqrecipseqresid',
         }
-        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
+        self.use_sequence_context_residual = self.edge_decoding in {
+            'pair_chain_contextseqresid',
+            'pair_chain_contextseqrecipseqresid',
+        }
+        self.use_reciprocal_sequence_residual = (
+            self.edge_decoding == 'pair_chain_contextseqrecipseqresid'
+        )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -88,6 +96,16 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
+                if self.use_reciprocal_sequence_residual:
+                    self.reciprocal_sequence_proj = MLP(dim_in * 5, dim_in,
+                                                        num_layers=self.head_layers,
+                                                        bias=True)
+                    self.reciprocal_sequence_head = MLP(dim_in, dim_out,
+                                                        num_layers=self.head_layers,
+                                                        bias=True)
+                    self.reciprocal_sequence_residual_alpha = nn.Parameter(
+                        torch.full((1,), math.log(0.08 / 0.92))
+                    )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -157,6 +175,9 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_max - pair_mean), dim=-1))
         pair_context_repr = None
         pair_sequence_repr = None
+        pair_reciprocal_sequence_repr = None
+        safe_reverse_pos = None
+        reciprocal_valid = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -173,6 +194,13 @@ class HeteroGNNEdgeHead(nn.Module):
                 chain_gate *
                 self.chain_update(chain_input)
             )
+            if self.use_reciprocal_sequence_residual:
+                reverse_pair_key = pair_dst.to(torch.long) * num_dst_nodes + pair_src.to(torch.long)
+                reverse_pos = torch.searchsorted(pair_keys, reverse_pair_key)
+                safe_reverse_pos = reverse_pos.clamp(max=max(num_pairs - 1, 0))
+                reciprocal_valid = (reverse_pos < num_pairs) & (
+                    pair_keys[safe_reverse_pos] == reverse_pair_key
+                )
             if self.use_chain_context_residual:
                 pair_scores = pair_repr.norm(dim=-1)
                 predecessor_focus_weights = pyg_softmax(
@@ -241,14 +269,34 @@ class HeteroGNNEdgeHead(nn.Module):
                 incoming_state = self.incoming_sequence_encoder(
                     incoming_sequence_bank[pair_dst]
                 )[1].squeeze(0)
+                sequence_interaction = outgoing_state * incoming_state
                 pair_sequence_repr = self.sequence_proj(torch.cat(
                     (
                         outgoing_state,
                         incoming_state,
-                        outgoing_state * incoming_state,
+                        sequence_interaction,
                     ),
                     dim=-1,
                 ))
+                if self.use_reciprocal_sequence_residual:
+                    reciprocal_pair_repr = torch.zeros_like(pair_repr)
+                    reciprocal_sequence_repr = torch.zeros_like(pair_sequence_repr)
+                    reciprocal_pair_repr[reciprocal_valid] = pair_repr[
+                        safe_reverse_pos[reciprocal_valid]
+                    ]
+                    reciprocal_sequence_repr[reciprocal_valid] = pair_sequence_repr[
+                        safe_reverse_pos[reciprocal_valid]
+                    ]
+                    pair_reciprocal_sequence_repr = self.reciprocal_sequence_proj(torch.cat(
+                        (
+                            pair_repr,
+                            reciprocal_pair_repr,
+                            pair_sequence_repr,
+                            reciprocal_sequence_repr,
+                            pair_sequence_repr * reciprocal_sequence_repr,
+                        ),
+                        dim=-1,
+                    ))
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -266,6 +314,16 @@ class HeteroGNNEdgeHead(nn.Module):
                 pair_sequence_repr = torch.zeros_like(pair_repr)
             sequence_logits = self.sequence_head(pair_sequence_repr[pair_inv][mask])
             pred = pred + torch.sigmoid(self.sequence_residual_alpha) * sequence_logits
+        if self.use_reciprocal_sequence_residual:
+            if pair_reciprocal_sequence_repr is None:
+                pair_reciprocal_sequence_repr = torch.zeros_like(pair_repr)
+            reciprocal_sequence_logits = self.reciprocal_sequence_head(
+                pair_reciprocal_sequence_repr[pair_inv][mask]
+            )
+            pred = pred + (
+                torch.sigmoid(self.reciprocal_sequence_residual_alpha) *
+                reciprocal_sequence_logits
+            )
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
