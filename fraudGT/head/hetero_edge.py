@@ -22,12 +22,20 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqbridgewinner',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqbridgewinner',
         }
-        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
+        self.use_sequence_context_residual = self.edge_decoding in {
+            'pair_chain_contextseqresid',
+            'pair_chain_contextseqbridgewinner',
+        }
+        self.use_bridge_winner_sequence = (
+            self.edge_decoding == 'pair_chain_contextseqbridgewinner'
+        )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -88,6 +96,11 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
+                if self.use_bridge_winner_sequence:
+                    self.bridge_proj = MLP(dim_in * 3, dim_in,
+                                           num_layers=self.head_layers,
+                                           bias=True)
+                    self.bridge_gate = nn.Linear(dim_in * 3, dim_in)
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -229,6 +242,38 @@ class HeteroGNNEdgeHead(nn.Module):
                     incoming_latest,
                     torch.zeros_like(incoming_latest),
                 )
+                bridge_repr = None
+                if self.use_bridge_winner_sequence:
+                    pair_scores = pair_repr.norm(dim=-1)
+                    top_out_scores, top_out_idx = scatter_max(
+                        pair_scores, pair_src, dim=0, dim_size=num_nodes
+                    )
+                    top_in_scores, top_in_idx = scatter_max(
+                        pair_scores, pair_dst, dim=0, dim_size=num_nodes
+                    )
+                    valid_out = torch.isfinite(top_out_scores)
+                    valid_in = torch.isfinite(top_in_scores)
+                    src_top_idx = top_out_idx[pair_src]
+                    dst_top_idx = top_in_idx[pair_dst]
+                    src_bridge_nodes = pair_dst[src_top_idx]
+                    dst_bridge_nodes = pair_src[dst_top_idx]
+                    bridge_valid = (
+                        valid_out[pair_src] &
+                        valid_in[pair_dst] &
+                        (src_bridge_nodes == dst_bridge_nodes)
+                    )
+                    bridge_repr = torch.zeros_like(pair_repr)
+                    if bridge_valid.any():
+                        bridge_input = torch.cat(
+                            (
+                                pair_repr[src_top_idx[bridge_valid]],
+                                pair_repr[dst_top_idx[bridge_valid]],
+                                pair_repr[src_top_idx[bridge_valid]] *
+                                pair_repr[dst_top_idx[bridge_valid]],
+                            ),
+                            dim=-1,
+                        )
+                        bridge_repr[bridge_valid] = self.bridge_proj(bridge_input)
                 outgoing_sequence_bank = self._build_recent_sequence_bank(
                     pair_repr, pair_src, pair_timestamps, num_nodes, outgoing_latest
                 )
@@ -241,11 +286,19 @@ class HeteroGNNEdgeHead(nn.Module):
                 incoming_state = self.incoming_sequence_encoder(
                     incoming_sequence_bank[pair_dst]
                 )[1].squeeze(0)
+                sequence_interaction = outgoing_state * incoming_state
+                if bridge_repr is not None:
+                    bridge_gate = torch.sigmoid(
+                        self.bridge_gate(torch.cat(
+                            (outgoing_state, incoming_state, bridge_repr), dim=-1
+                        ))
+                    )
+                    sequence_interaction = sequence_interaction + bridge_gate * bridge_repr
                 pair_sequence_repr = self.sequence_proj(torch.cat(
                     (
                         outgoing_state,
                         incoming_state,
-                        outgoing_state * incoming_state,
+                        sequence_interaction,
                     ),
                     dim=-1,
                 ))
