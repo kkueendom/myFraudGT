@@ -22,12 +22,20 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqmetapathresid',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqmetapathresid',
         }
-        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
+        self.use_sequence_context_residual = self.edge_decoding in {
+            'pair_chain_contextseqresid',
+            'pair_chain_contextseqmetapathresid',
+        }
+        self.use_metapath_token_residual = (
+            self.edge_decoding == 'pair_chain_contextseqmetapathresid'
+        )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -88,6 +96,22 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
+                if self.use_metapath_token_residual:
+                    self.reciprocal_proj = MLP(dim_in * 4, dim_in,
+                                               num_layers=self.head_layers,
+                                               bias=True)
+                    self.bridge_proj = MLP(dim_in * 3, dim_in,
+                                           num_layers=self.head_layers,
+                                           bias=True)
+                    self.metapath_query = nn.Linear(dim_in, dim_in)
+                    self.metapath_key = nn.Linear(dim_in, dim_in)
+                    self.metapath_value = nn.Linear(dim_in, dim_in)
+                    self.metapath_head = MLP(dim_in, dim_out,
+                                             num_layers=self.head_layers,
+                                             bias=True)
+                    self.metapath_residual_alpha = nn.Parameter(
+                        torch.full((1,), math.log(0.08 / 0.92))
+                    )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -139,6 +163,39 @@ class HeteroGNNEdgeHead(nn.Module):
 
         return seq_bank
 
+    def _build_recent_sequence_bank_with_indices(self, pair_repr, pair_nodes, pair_timestamps,
+                                                 num_nodes, latest_timestamps):
+        seq_bank = pair_repr.new_zeros((num_nodes, self.sequence_len, pair_repr.size(-1)))
+        index_bank = pair_nodes.new_full((num_nodes, self.sequence_len), -1)
+        remaining_scores = pair_timestamps.clone()
+        score_floor = torch.finfo(remaining_scores.dtype).min
+        time_scale = self.sequence_time_scale.abs().clamp(min=1.0)
+        remaining_mask = torch.ones_like(pair_timestamps, dtype=torch.bool)
+
+        for slot in range(self.sequence_len):
+            slot_scores, slot_indices = scatter_max(
+                remaining_scores, pair_nodes, dim=0, dim_size=num_nodes
+            )
+            valid_nodes = scatter(
+                remaining_mask.float(), pair_nodes, dim=0, dim_size=num_nodes, reduce='sum'
+            ) > 0
+            if not valid_nodes.any():
+                break
+            chosen_indices = slot_indices[valid_nodes]
+            chosen_times = pair_timestamps[chosen_indices]
+            chosen_repr = pair_repr[chosen_indices]
+            recency = torch.exp(
+                -(
+                    latest_timestamps[valid_nodes] - chosen_times
+                ).clamp(min=0) / time_scale
+            ).unsqueeze(-1)
+            seq_bank[valid_nodes, slot] = chosen_repr * recency
+            index_bank[valid_nodes, slot] = chosen_indices
+            remaining_scores[chosen_indices] = score_floor
+            remaining_mask[chosen_indices] = False
+
+        return seq_bank, index_bank
+
     def _pair_chain_head(self, batch):
         task = cfg.dataset.task_entity
         mask = self._edge_mask(batch)
@@ -157,6 +214,8 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_max - pair_mean), dim=-1))
         pair_context_repr = None
         pair_sequence_repr = None
+        pair_bridge_repr = None
+        pair_reciprocal_repr = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -173,6 +232,24 @@ class HeteroGNNEdgeHead(nn.Module):
                 chain_gate *
                 self.chain_update(chain_input)
             )
+            if self.use_metapath_token_residual:
+                reverse_pair_key = pair_dst.to(torch.long) * num_dst_nodes + pair_src.to(torch.long)
+                reverse_pos = torch.searchsorted(pair_keys, reverse_pair_key)
+                safe_reverse_pos = reverse_pos.clamp(max=max(num_pairs - 1, 0))
+                reciprocal_valid = (reverse_pos < num_pairs) & (
+                    pair_keys[safe_reverse_pos] == reverse_pair_key
+                )
+                reciprocal_pair = torch.zeros_like(pair_repr)
+                reciprocal_pair[reciprocal_valid] = pair_repr[safe_reverse_pos[reciprocal_valid]]
+                pair_reciprocal_repr = self.reciprocal_proj(torch.cat(
+                    (
+                        pair_repr,
+                        reciprocal_pair,
+                        pair_repr * reciprocal_pair,
+                        pair_repr - reciprocal_pair,
+                    ),
+                    dim=-1,
+                ))
             if self.use_chain_context_residual:
                 pair_scores = pair_repr.norm(dim=-1)
                 predecessor_focus_weights = pyg_softmax(
@@ -229,26 +306,76 @@ class HeteroGNNEdgeHead(nn.Module):
                     incoming_latest,
                     torch.zeros_like(incoming_latest),
                 )
-                outgoing_sequence_bank = self._build_recent_sequence_bank(
-                    pair_repr, pair_src, pair_timestamps, num_nodes, outgoing_latest
-                )
-                incoming_sequence_bank = self._build_recent_sequence_bank(
-                    pair_repr, pair_dst, pair_timestamps, num_nodes, incoming_latest
-                )
+                if self.use_metapath_token_residual:
+                    outgoing_sequence_bank, outgoing_sequence_indices = (
+                        self._build_recent_sequence_bank_with_indices(
+                            pair_repr, pair_src, pair_timestamps, num_nodes, outgoing_latest
+                        )
+                    )
+                    incoming_sequence_bank, incoming_sequence_indices = (
+                        self._build_recent_sequence_bank_with_indices(
+                            pair_repr, pair_dst, pair_timestamps, num_nodes, incoming_latest
+                        )
+                    )
+                else:
+                    outgoing_sequence_bank = self._build_recent_sequence_bank(
+                        pair_repr, pair_src, pair_timestamps, num_nodes, outgoing_latest
+                    )
+                    incoming_sequence_bank = self._build_recent_sequence_bank(
+                        pair_repr, pair_dst, pair_timestamps, num_nodes, incoming_latest
+                    )
+                    outgoing_sequence_indices = None
+                    incoming_sequence_indices = None
                 outgoing_state = self.outgoing_sequence_encoder(
                     outgoing_sequence_bank[pair_src]
                 )[1].squeeze(0)
                 incoming_state = self.incoming_sequence_encoder(
                     incoming_sequence_bank[pair_dst]
                 )[1].squeeze(0)
+                sequence_interaction = outgoing_state * incoming_state
                 pair_sequence_repr = self.sequence_proj(torch.cat(
                     (
                         outgoing_state,
                         incoming_state,
-                        outgoing_state * incoming_state,
+                        sequence_interaction,
                     ),
                     dim=-1,
                 ))
+                if self.use_metapath_token_residual:
+                    src_sequence_bank = outgoing_sequence_bank[pair_src]
+                    dst_sequence_bank = incoming_sequence_bank[pair_dst]
+                    src_sequence_indices = outgoing_sequence_indices[pair_src]
+                    dst_sequence_indices = incoming_sequence_indices[pair_dst]
+                    src_mid = torch.full_like(src_sequence_indices, -1)
+                    dst_mid = torch.full_like(dst_sequence_indices, -1)
+                    src_valid = src_sequence_indices >= 0
+                    dst_valid = dst_sequence_indices >= 0
+                    src_mid[src_valid] = pair_dst[src_sequence_indices[src_valid]]
+                    dst_mid[dst_valid] = pair_src[dst_sequence_indices[dst_valid]]
+                    match_mask = (
+                        src_valid.unsqueeze(2) &
+                        dst_valid.unsqueeze(1) &
+                        (src_mid.unsqueeze(2) == dst_mid.unsqueeze(1))
+                    )
+                    match_weight = match_mask.float()
+                    match_count = match_weight.sum(dim=(1, 2)).clamp(min=1.0)
+                    bridge_out = (
+                        match_weight.unsqueeze(-1) * src_sequence_bank.unsqueeze(2)
+                    ).sum(dim=(1, 2)) / match_count.unsqueeze(-1)
+                    bridge_in = (
+                        match_weight.unsqueeze(-1) * dst_sequence_bank.unsqueeze(1)
+                    ).sum(dim=(1, 2)) / match_count.unsqueeze(-1)
+                    bridge_valid = (match_mask.sum(dim=(1, 2)) > 0).unsqueeze(-1)
+                    bridge_out = bridge_out * bridge_valid.float()
+                    bridge_in = bridge_in * bridge_valid.float()
+                    pair_bridge_repr = self.bridge_proj(torch.cat(
+                        (
+                            bridge_out,
+                            bridge_in,
+                            bridge_out * bridge_in,
+                        ),
+                        dim=-1,
+                    ))
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -266,6 +393,41 @@ class HeteroGNNEdgeHead(nn.Module):
                 pair_sequence_repr = torch.zeros_like(pair_repr)
             sequence_logits = self.sequence_head(pair_sequence_repr[pair_inv][mask])
             pred = pred + torch.sigmoid(self.sequence_residual_alpha) * sequence_logits
+        if self.use_metapath_token_residual:
+            if pair_bridge_repr is None:
+                pair_bridge_repr = torch.zeros_like(pair_repr)
+            if pair_reciprocal_repr is None:
+                pair_reciprocal_repr = torch.zeros_like(pair_repr)
+            if pair_context_repr is None:
+                pair_context_repr = torch.zeros_like(pair_repr)
+            if pair_sequence_repr is None:
+                pair_sequence_repr = torch.zeros_like(pair_repr)
+            metapath_tokens = torch.stack(
+                (
+                    pair_context_repr,
+                    pair_sequence_repr,
+                    pair_reciprocal_repr,
+                    pair_bridge_repr,
+                ),
+                dim=1,
+            )
+            token_mask = metapath_tokens.abs().sum(dim=-1) > 0
+            token_query = self.metapath_query(pair_repr).unsqueeze(1)
+            token_keys = self.metapath_key(metapath_tokens)
+            token_values = self.metapath_value(metapath_tokens)
+            token_scores = (token_query * token_keys).sum(dim=-1) / math.sqrt(pair_repr.size(-1))
+            token_scores = token_scores.masked_fill(~token_mask, -1e9)
+            token_weights = torch.softmax(token_scores, dim=-1).unsqueeze(-1)
+            token_weights = token_weights * token_mask.unsqueeze(-1).float()
+            token_weights = token_weights / token_weights.sum(dim=1, keepdim=True).clamp(min=1e-6)
+            metapath_repr = (token_weights * token_values).sum(dim=1)
+            metapath_logits = self.metapath_head(
+                metapath_repr[pair_inv][mask]
+            )
+            pred = pred + (
+                torch.sigmoid(self.metapath_residual_alpha) *
+                metapath_logits
+            )
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
