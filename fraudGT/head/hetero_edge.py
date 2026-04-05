@@ -22,12 +22,20 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqnodemem',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqnodemem',
         }
-        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
+        self.use_sequence_context_residual = self.edge_decoding in {
+            'pair_chain_contextseqresid',
+            'pair_chain_contextseqnodemem',
+        }
+        self.use_node_memory_update = (
+            self.edge_decoding == 'pair_chain_contextseqnodemem'
+        )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -88,6 +96,14 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
+                if self.use_node_memory_update:
+                    self.node_memory_gate = nn.Linear(dim_in * 3, dim_in)
+                    self.node_memory_update = MLP(dim_in * 3, dim_in,
+                                                  num_layers=self.head_layers,
+                                                  bias=True)
+                    self.node_memory_alpha = nn.Parameter(
+                        torch.full((1,), math.log(0.10 / 0.90))
+                    )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -249,6 +265,23 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
+                if self.use_node_memory_update:
+                    node_memory_input = torch.cat(
+                        (
+                            outgoing_state,
+                            pair_repr,
+                            incoming_state,
+                        ),
+                        dim=-1,
+                    )
+                    node_memory_gate = torch.sigmoid(
+                        self.node_memory_gate(node_memory_input)
+                    )
+                    pair_repr = pair_repr + (
+                        torch.sigmoid(self.node_memory_alpha) *
+                        node_memory_gate *
+                        self.node_memory_update(node_memory_input)
+                    )
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
