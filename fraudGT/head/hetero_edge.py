@@ -22,20 +22,12 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqmemupdate',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqmemupdate',
         }
-        self.use_sequence_context_residual = self.edge_decoding in {
-            'pair_chain_contextseqresid',
-            'pair_chain_contextseqmemupdate',
-        }
-        self.use_sequence_memory_update = (
-            self.edge_decoding == 'pair_chain_contextseqmemupdate'
-        )
+        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -96,17 +88,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
-                if self.use_sequence_memory_update:
-                    self.sequence_memory_query = nn.Linear(dim_in, dim_in)
-                    self.sequence_memory_key = nn.Linear(dim_in, dim_in)
-                    self.sequence_memory_value = nn.Linear(dim_in, dim_in)
-                    self.sequence_memory_gate = nn.Linear(dim_in * 3, dim_in)
-                    self.sequence_memory_update = MLP(dim_in * 3, dim_in,
-                                                      num_layers=self.head_layers,
-                                                      bias=True)
-                    self.sequence_memory_alpha = nn.Parameter(
-                        torch.full((1,), math.log(0.10 / 0.90))
-                    )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -260,57 +241,14 @@ class HeteroGNNEdgeHead(nn.Module):
                 incoming_state = self.incoming_sequence_encoder(
                     incoming_sequence_bank[pair_dst]
                 )[1].squeeze(0)
-                sequence_interaction = outgoing_state * incoming_state
                 pair_sequence_repr = self.sequence_proj(torch.cat(
                     (
                         outgoing_state,
                         incoming_state,
-                        sequence_interaction,
+                        outgoing_state * incoming_state,
                     ),
                     dim=-1,
                 ))
-                if self.use_sequence_memory_update:
-                    sequence_tokens = torch.cat(
-                        (
-                            outgoing_sequence_bank[pair_src],
-                            incoming_sequence_bank[pair_dst],
-                            outgoing_sequence_bank[pair_src] * incoming_sequence_bank[pair_dst],
-                        ),
-                        dim=1,
-                    )
-                    token_mask = sequence_tokens.abs().sum(dim=-1) > 0
-                    sequence_scores = torch.einsum(
-                        'bd,btd->bt',
-                        self.sequence_memory_query(pair_repr),
-                        self.sequence_memory_key(sequence_tokens),
-                    ) / math.sqrt(sequence_tokens.size(-1))
-                    sequence_scores = sequence_scores.masked_fill(~token_mask, -1e9)
-                    sequence_weights = torch.softmax(sequence_scores, dim=1)
-                    sequence_weights = sequence_weights * token_mask.float()
-                    sequence_weights = sequence_weights / sequence_weights.sum(
-                        dim=1, keepdim=True
-                    ).clamp(min=1e-6)
-                    sequence_memory = torch.einsum(
-                        'bt,btd->bd',
-                        sequence_weights,
-                        self.sequence_memory_value(sequence_tokens),
-                    )
-                    sequence_memory_input = torch.cat(
-                        (
-                            pair_repr,
-                            pair_sequence_repr,
-                            sequence_memory,
-                        ),
-                        dim=-1,
-                    )
-                    sequence_memory_gate = torch.sigmoid(
-                        self.sequence_memory_gate(sequence_memory_input)
-                    )
-                    pair_repr = pair_repr + (
-                        torch.sigmoid(self.sequence_memory_alpha) *
-                        sequence_memory_gate *
-                        self.sequence_memory_update(sequence_memory_input)
-                    )
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
