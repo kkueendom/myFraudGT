@@ -22,12 +22,20 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqintentresid',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqintentresid',
         }
-        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
+        self.use_sequence_context_residual = self.edge_decoding in {
+            'pair_chain_contextseqresid',
+            'pair_chain_contextseqintentresid',
+        }
+        self.use_intention_sequence_residual = (
+            self.edge_decoding == 'pair_chain_contextseqintentresid'
+        )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -88,6 +96,20 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
+                if self.use_intention_sequence_residual:
+                    self.num_intention_prototypes = 4
+                    self.intention_prototypes = nn.Parameter(
+                        torch.randn(self.num_intention_prototypes, dim_in) * 0.02
+                    )
+                    self.intention_context_proj = MLP(dim_in * 5, dim_in,
+                                                      num_layers=self.head_layers,
+                                                      bias=True)
+                    self.intention_head = MLP(dim_in, dim_out,
+                                              num_layers=self.head_layers,
+                                              bias=True)
+                    self.intention_residual_alpha = nn.Parameter(
+                        torch.full((1,), math.log(0.08 / 0.92))
+                    )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -157,6 +179,7 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_max - pair_mean), dim=-1))
         pair_context_repr = None
         pair_sequence_repr = None
+        pair_intention_repr = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -241,14 +264,53 @@ class HeteroGNNEdgeHead(nn.Module):
                 incoming_state = self.incoming_sequence_encoder(
                     incoming_sequence_bank[pair_dst]
                 )[1].squeeze(0)
+                sequence_interaction = outgoing_state * incoming_state
                 pair_sequence_repr = self.sequence_proj(torch.cat(
                     (
                         outgoing_state,
                         incoming_state,
-                        outgoing_state * incoming_state,
+                        sequence_interaction,
                     ),
                     dim=-1,
                 ))
+                if self.use_intention_sequence_residual:
+                    sequence_tokens = torch.cat(
+                        (
+                            outgoing_sequence_bank[pair_src],
+                            incoming_sequence_bank[pair_dst],
+                        ),
+                        dim=1,
+                    )
+                    token_mask = sequence_tokens.abs().sum(dim=-1) > 0
+                    intention_scores = torch.einsum(
+                        'btd,kd->btk',
+                        sequence_tokens,
+                        self.intention_prototypes,
+                    ) / math.sqrt(sequence_tokens.size(-1))
+                    intention_scores = intention_scores.masked_fill(
+                        ~token_mask.unsqueeze(-1), -1e9
+                    )
+                    intention_weights = torch.softmax(intention_scores, dim=1)
+                    intention_weights = intention_weights * token_mask.unsqueeze(-1).float()
+                    intention_weights = intention_weights / intention_weights.sum(
+                        dim=1, keepdim=True
+                    ).clamp(min=1e-6)
+                    intention_reads = torch.einsum(
+                        'btk,btd->bkd',
+                        intention_weights,
+                        sequence_tokens,
+                    )
+                    intention_mean = intention_reads.mean(dim=1)
+                    pair_intention_repr = self.intention_context_proj(torch.cat(
+                        (
+                            pair_repr,
+                            pair_context_repr,
+                            pair_sequence_repr,
+                            intention_mean,
+                            pair_sequence_repr * intention_mean,
+                        ),
+                        dim=-1,
+                    ))
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -266,6 +328,16 @@ class HeteroGNNEdgeHead(nn.Module):
                 pair_sequence_repr = torch.zeros_like(pair_repr)
             sequence_logits = self.sequence_head(pair_sequence_repr[pair_inv][mask])
             pred = pred + torch.sigmoid(self.sequence_residual_alpha) * sequence_logits
+        if self.use_intention_sequence_residual:
+            if pair_intention_repr is None:
+                pair_intention_repr = torch.zeros_like(pair_repr)
+            intention_logits = self.intention_head(
+                pair_intention_repr[pair_inv][mask]
+            )
+            pred = pred + (
+                torch.sigmoid(self.intention_residual_alpha) *
+                intention_logits
+            )
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
