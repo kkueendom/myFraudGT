@@ -22,20 +22,12 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqothermem',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqothermem',
         }
-        self.use_sequence_context_residual = self.edge_decoding in {
-            'pair_chain_contextseqresid',
-            'pair_chain_contextseqothermem',
-        }
-        self.use_other_query_update = (
-            self.edge_decoding == 'pair_chain_contextseqothermem'
-        )
+        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -96,14 +88,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
-                if self.use_other_query_update:
-                    self.other_query_gate = nn.Linear(dim_in * 3, dim_in)
-                    self.other_query_update = MLP(dim_in * 3, dim_in,
-                                                  num_layers=self.head_layers,
-                                                  bias=True)
-                    self.other_query_alpha = nn.Parameter(
-                        torch.full((1,), math.log(0.10 / 0.90))
-                    )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -154,33 +138,6 @@ class HeteroGNNEdgeHead(nn.Module):
             remaining_mask[chosen_indices] = False
 
         return seq_bank
-
-    def _build_recent_index_bank(self, item_nodes, item_timestamps, num_nodes):
-        index_bank = torch.full(
-            (num_nodes, self.sequence_len),
-            -1,
-            dtype=torch.long,
-            device=item_nodes.device,
-        )
-        remaining_scores = item_timestamps.clone()
-        score_floor = torch.finfo(remaining_scores.dtype).min
-        remaining_mask = torch.ones_like(item_timestamps, dtype=torch.bool)
-
-        for slot in range(self.sequence_len):
-            _, slot_indices = scatter_max(
-                remaining_scores, item_nodes, dim=0, dim_size=num_nodes
-            )
-            valid_nodes = scatter(
-                remaining_mask.float(), item_nodes, dim=0, dim_size=num_nodes, reduce='sum'
-            ) > 0
-            if not valid_nodes.any():
-                break
-            chosen_indices = slot_indices[valid_nodes]
-            index_bank[valid_nodes, slot] = chosen_indices
-            remaining_scores[chosen_indices] = score_floor
-            remaining_mask[chosen_indices] = False
-
-        return index_bank
 
     def _pair_chain_head(self, batch):
         task = cfg.dataset.task_entity
@@ -292,82 +249,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
-                if self.use_other_query_update:
-                    pair_ids = torch.arange(num_pairs, device=pair_repr.device)
-                    outgoing_index_bank = self._build_recent_index_bank(
-                        pair_src, pair_timestamps, num_nodes
-                    )
-                    incoming_index_bank = self._build_recent_index_bank(
-                        pair_dst, pair_timestamps, num_nodes
-                    )
-                    outgoing_indices = outgoing_index_bank[pair_src]
-                    incoming_indices = incoming_index_bank[pair_dst]
-                    outgoing_valid = outgoing_indices >= 0
-                    incoming_valid = incoming_indices >= 0
-                    outgoing_indices_safe = outgoing_indices.clamp(min=0)
-                    incoming_indices_safe = incoming_indices.clamp(min=0)
-                    outgoing_valid = outgoing_valid & (
-                        outgoing_indices_safe != pair_ids.unsqueeze(1)
-                    )
-                    incoming_valid = incoming_valid & (
-                        incoming_indices_safe != pair_ids.unsqueeze(1)
-                    )
-                    outgoing_other_bank = pair_repr.new_zeros(
-                        (num_pairs, self.sequence_len, pair_repr.size(-1))
-                    )
-                    incoming_other_bank = pair_repr.new_zeros(
-                        (num_pairs, self.sequence_len, pair_repr.size(-1))
-                    )
-                    if outgoing_valid.any():
-                        outgoing_other_bank[outgoing_valid] = pair_repr[
-                            outgoing_indices_safe[outgoing_valid]
-                        ]
-                    if incoming_valid.any():
-                        incoming_other_bank[incoming_valid] = pair_repr[
-                            incoming_indices_safe[incoming_valid]
-                        ]
-                    if outgoing_valid.any():
-                        outgoing_decay = torch.exp(
-                            -(
-                                outgoing_latest[pair_src].unsqueeze(1)
-                                - pair_timestamps[outgoing_indices_safe]
-                            ).clamp(min=0) / self.sequence_time_scale.abs().clamp(min=1.0)
-                        )
-                        outgoing_other_bank = outgoing_other_bank * (
-                            outgoing_decay * outgoing_valid.float()
-                        ).unsqueeze(-1)
-                    if incoming_valid.any():
-                        incoming_decay = torch.exp(
-                            -(
-                                incoming_latest[pair_dst].unsqueeze(1)
-                                - pair_timestamps[incoming_indices_safe]
-                            ).clamp(min=0) / self.sequence_time_scale.abs().clamp(min=1.0)
-                        )
-                        incoming_other_bank = incoming_other_bank * (
-                            incoming_decay * incoming_valid.float()
-                        ).unsqueeze(-1)
-                    outgoing_other_state = self.outgoing_sequence_encoder(
-                        outgoing_other_bank
-                    )[1].squeeze(0)
-                    incoming_other_state = self.incoming_sequence_encoder(
-                        incoming_other_bank
-                    )[1].squeeze(0)
-                    other_query_input = torch.cat(
-                        (
-                            outgoing_other_state,
-                            pair_repr,
-                            incoming_other_state,
-                        ),
-                        dim=-1,
-                    )
-                    other_query_gate = torch.sigmoid(
-                        self.other_query_gate(other_query_input)
-                    )
-                    pair_repr = pair_repr + (
-                        torch.sigmoid(self.other_query_alpha) *
-                        other_query_gate *
-                        self.other_query_update(other_query_input)
-                    )
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
