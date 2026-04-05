@@ -22,12 +22,20 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqedgepairattn',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqedgepairattn',
         }
-        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
+        self.use_sequence_context_residual = self.edge_decoding in {
+            'pair_chain_contextseqresid',
+            'pair_chain_contextseqedgepairattn',
+        }
+        self.use_edge_pair_attention = (
+            self.edge_decoding == 'pair_chain_contextseqedgepairattn'
+        )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -88,6 +96,11 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
+                if self.use_edge_pair_attention:
+                    self.edge_pair_query = nn.Linear(dim_in, dim_in)
+                    self.edge_pair_key = nn.Linear(dim_in, dim_in)
+                    self.edge_pair_value = nn.Linear(dim_in, dim_in)
+                    self.edge_pair_fuse_gate = nn.Linear(dim_in * 3, dim_in)
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -134,6 +147,37 @@ class HeteroGNNEdgeHead(nn.Module):
                 ).clamp(min=0) / time_scale
             ).unsqueeze(-1)
             seq_bank[valid_nodes, slot] = chosen_repr * recency
+            remaining_scores[chosen_indices] = score_floor
+            remaining_mask[chosen_indices] = False
+
+        return seq_bank
+
+    def _build_pair_history_bank(self, edge_values, pair_inv, edge_timestamps,
+                                 num_pairs, latest_pair_timestamps):
+        seq_bank = edge_values.new_zeros((num_pairs, self.sequence_len, edge_values.size(-1)))
+        remaining_scores = edge_timestamps.clone()
+        score_floor = torch.finfo(remaining_scores.dtype).min
+        time_scale = self.sequence_time_scale.abs().clamp(min=1.0)
+        remaining_mask = torch.ones_like(edge_timestamps, dtype=torch.bool)
+
+        for slot in range(self.sequence_len):
+            slot_scores, slot_indices = scatter_max(
+                remaining_scores, pair_inv, dim=0, dim_size=num_pairs
+            )
+            valid_pairs = scatter(
+                remaining_mask.float(), pair_inv, dim=0, dim_size=num_pairs, reduce='sum'
+            ) > 0
+            if not valid_pairs.any():
+                break
+            chosen_indices = slot_indices[valid_pairs]
+            chosen_times = edge_timestamps[chosen_indices]
+            chosen_values = edge_values[chosen_indices]
+            recency = torch.exp(
+                -(
+                    latest_pair_timestamps[valid_pairs] - chosen_times
+                ).clamp(min=0) / time_scale
+            ).unsqueeze(-1)
+            seq_bank[valid_pairs, slot] = chosen_values * recency
             remaining_scores[chosen_indices] = score_floor
             remaining_mask[chosen_indices] = False
 
@@ -241,11 +285,35 @@ class HeteroGNNEdgeHead(nn.Module):
                 incoming_state = self.incoming_sequence_encoder(
                     incoming_sequence_bank[pair_dst]
                 )[1].squeeze(0)
+                sequence_interaction = outgoing_state * incoming_state
+                if self.use_edge_pair_attention:
+                    pair_edge_history_bank = self._build_pair_history_bank(
+                        edge_repr, pair_inv, edge_timestamps, num_pairs, pair_timestamps
+                    )
+                    pair_query = self.edge_pair_query(pair_repr).unsqueeze(1)
+                    pair_keys = self.edge_pair_key(pair_edge_history_bank)
+                    pair_values = self.edge_pair_value(pair_edge_history_bank)
+                    pair_mask = pair_edge_history_bank.abs().sum(dim=-1) > 0
+                    pair_scores = (
+                        (pair_query * pair_keys).sum(dim=-1) / math.sqrt(pair_repr.size(-1))
+                    )
+                    pair_scores = pair_scores.masked_fill(~pair_mask, -1e9)
+                    pair_weights = torch.softmax(pair_scores, dim=-1).unsqueeze(-1)
+                    pair_attention_repr = (pair_weights * pair_values).sum(dim=1)
+                    edge_pair_fuse_gate = torch.sigmoid(
+                        self.edge_pair_fuse_gate(torch.cat(
+                            (outgoing_state, incoming_state, pair_attention_repr), dim=-1
+                        ))
+                    )
+                    sequence_interaction = (
+                        edge_pair_fuse_gate * pair_attention_repr +
+                        (1.0 - edge_pair_fuse_gate) * sequence_interaction
+                    )
                 pair_sequence_repr = self.sequence_proj(torch.cat(
                     (
                         outgoing_state,
                         incoming_state,
-                        outgoing_state * incoming_state,
+                        sequence_interaction,
                     ),
                     dim=-1,
                 ))
