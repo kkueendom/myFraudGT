@@ -22,20 +22,12 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqrecipresid',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqrecipresid',
         }
-        self.use_sequence_context_residual = self.edge_decoding in {
-            'pair_chain_contextseqresid',
-            'pair_chain_contextseqrecipresid',
-        }
-        self.use_reciprocal_pair_residual = (
-            self.edge_decoding == 'pair_chain_contextseqrecipresid'
-        )
+        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -96,11 +88,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
-            if self.use_reciprocal_pair_residual:
-                self.reciprocal_proj = MLP(dim_in * 3, dim_in,
-                                           num_layers=self.head_layers,
-                                           bias=True)
-                self.reciprocal_gate = nn.Linear(dim_in * 3, dim_in)
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -175,7 +162,6 @@ class HeteroGNNEdgeHead(nn.Module):
             num_nodes = batch[task[0]].x.size(0)
             pair_src = torch.div(pair_keys, num_dst_nodes, rounding_mode='floor')
             pair_dst = torch.remainder(pair_keys, num_dst_nodes)
-            reciprocal_pair_repr = None
             predecessor_bank = scatter(pair_repr, pair_dst, dim=0, dim_size=num_nodes, reduce='mean')
             successor_bank = scatter(pair_repr, pair_src, dim=0, dim_size=num_nodes, reduce='mean')
             prev_context = predecessor_bank[pair_src]
@@ -217,16 +203,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
-            if self.use_reciprocal_pair_residual:
-                reverse_pair_keys = pair_dst.to(torch.long) * num_dst_nodes + pair_src.to(torch.long)
-                reverse_pos = torch.searchsorted(pair_keys, reverse_pair_keys)
-                safe_reverse_pos = reverse_pos.clamp(max=max(num_pairs - 1, 0))
-                reverse_valid = (
-                    (reverse_pos < num_pairs) &
-                    (pair_keys[safe_reverse_pos] == reverse_pair_keys)
-                )
-                reciprocal_pair_repr = torch.zeros_like(pair_repr)
-                reciprocal_pair_repr[reverse_valid] = pair_repr[safe_reverse_pos[reverse_valid]]
             if self.use_sequence_context_residual and hasattr(batch[task], 'timestamps'):
                 edge_timestamps = batch[task].timestamps.to(edge_repr.device).float().view(-1)
                 pair_timestamps, _ = scatter_max(
@@ -265,25 +241,11 @@ class HeteroGNNEdgeHead(nn.Module):
                 incoming_state = self.incoming_sequence_encoder(
                     incoming_sequence_bank[pair_dst]
                 )[1].squeeze(0)
-                sequence_interaction = outgoing_state * incoming_state
-                if reciprocal_pair_repr is not None:
-                    reciprocal_input = torch.cat(
-                        (
-                            pair_repr,
-                            reciprocal_pair_repr,
-                            pair_repr * reciprocal_pair_repr,
-                        ),
-                        dim=-1,
-                    )
-                    reciprocal_context = torch.sigmoid(
-                        self.reciprocal_gate(reciprocal_input)
-                    ) * self.reciprocal_proj(reciprocal_input)
-                    sequence_interaction = sequence_interaction + reciprocal_context
                 pair_sequence_repr = self.sequence_proj(torch.cat(
                     (
                         outgoing_state,
                         incoming_state,
-                        sequence_interaction,
+                        outgoing_state * incoming_state,
                     ),
                     dim=-1,
                 ))
