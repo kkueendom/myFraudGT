@@ -22,20 +22,12 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqfanupdate',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqfanupdate',
         }
-        self.use_sequence_context_residual = self.edge_decoding in {
-            'pair_chain_contextseqresid',
-            'pair_chain_contextseqfanupdate',
-        }
-        self.use_pair_fan_update = (
-            self.edge_decoding == 'pair_chain_contextseqfanupdate'
-        )
+        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -61,14 +53,6 @@ class HeteroGNNEdgeHead(nn.Module):
             self.chain_residual_alpha = nn.Parameter(
                 torch.full((1,), math.log(0.10 / 0.90))
             )
-            if self.use_pair_fan_update:
-                self.fan_update = MLP(dim_in * 3, dim_in,
-                                      num_layers=self.head_layers,
-                                      bias=True)
-                self.fan_gate = nn.Linear(dim_in * 3, dim_in)
-                self.fan_residual_alpha = nn.Parameter(
-                    torch.full((1,), math.log(0.10 / 0.90))
-                )
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
                                      bias=True)
@@ -189,48 +173,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 chain_gate *
                 self.chain_update(chain_input)
             )
-            if self.use_pair_fan_update:
-                pair_scores = pair_repr.norm(dim=-1)
-                same_src_weights = pyg_softmax(
-                    pair_scores, pair_src, num_nodes=num_nodes
-                )
-                same_dst_weights = pyg_softmax(
-                    pair_scores, pair_dst, num_nodes=num_nodes
-                )
-                same_src_bank = scatter(
-                    pair_repr * same_src_weights.unsqueeze(-1),
-                    pair_src,
-                    dim=0,
-                    dim_size=num_nodes,
-                    reduce='sum'
-                )
-                same_dst_bank = scatter(
-                    pair_repr * same_dst_weights.unsqueeze(-1),
-                    pair_dst,
-                    dim=0,
-                    dim_size=num_nodes,
-                    reduce='sum'
-                )
-                same_src_context = (
-                    same_src_bank[pair_src] - pair_repr * same_src_weights.unsqueeze(-1)
-                ) / (1.0 - same_src_weights).unsqueeze(-1).clamp(min=1e-6)
-                same_dst_context = (
-                    same_dst_bank[pair_dst] - pair_repr * same_dst_weights.unsqueeze(-1)
-                ) / (1.0 - same_dst_weights).unsqueeze(-1).clamp(min=1e-6)
-                fan_input = torch.cat(
-                    (
-                        same_src_context,
-                        pair_repr,
-                        same_dst_context,
-                    ),
-                    dim=-1,
-                )
-                fan_gate = torch.sigmoid(self.fan_gate(fan_input))
-                pair_repr = pair_repr + (
-                    torch.sigmoid(self.fan_residual_alpha) *
-                    fan_gate *
-                    self.fan_update(fan_input)
-                )
             if self.use_chain_context_residual:
                 pair_scores = pair_repr.norm(dim=-1)
                 predecessor_focus_weights = pyg_softmax(
