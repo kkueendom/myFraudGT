@@ -22,20 +22,12 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqmotifstats',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqmotifstats',
         }
-        self.use_sequence_context_residual = self.edge_decoding in {
-            'pair_chain_contextseqresid',
-            'pair_chain_contextseqmotifstats',
-        }
-        self.use_sequence_motif_stats = (
-            self.edge_decoding == 'pair_chain_contextseqmotifstats'
-        )
+        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -96,17 +88,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
-                if self.use_sequence_motif_stats:
-                    self.motif_stats_proj = MLP(10, dim_in,
-                                                num_layers=self.head_layers,
-                                                bias=True)
-                    self.motif_stats_gate = nn.Linear(dim_in * 3, dim_in)
-                    self.motif_stats_update = MLP(dim_in * 3, dim_in,
-                                                  num_layers=self.head_layers,
-                                                  bias=True)
-                    self.motif_stats_alpha = nn.Parameter(
-                        torch.full((1,), math.log(0.10 / 0.90))
-                    )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -268,70 +249,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
-                if self.use_sequence_motif_stats:
-                    pair_ones = pair_repr.new_ones(num_pairs)
-                    src_out_degree = scatter(
-                        pair_ones, pair_src, dim=0, dim_size=num_nodes, reduce='sum'
-                    )
-                    dst_in_degree = scatter(
-                        pair_ones, pair_dst, dim=0, dim_size=num_nodes, reduce='sum'
-                    )
-                    src_out_excl = (src_out_degree[pair_src] - 1.0).clamp(min=0.0)
-                    dst_in_excl = (dst_in_degree[pair_dst] - 1.0).clamp(min=0.0)
-                    src_in_degree = dst_in_degree[pair_src]
-                    dst_out_degree = src_out_degree[pair_dst]
-                    pair_edge_count = scatter(
-                        pair_ones.new_ones(pair_inv.size(0)),
-                        pair_inv,
-                        dim=0,
-                        dim_size=num_pairs,
-                        reduce='sum',
-                    )
-                    reciprocal_keys = pair_dst.to(torch.long) * num_dst_nodes + pair_src.to(torch.long)
-                    reciprocal_pos = torch.searchsorted(pair_keys, reciprocal_keys)
-                    reciprocal_valid = reciprocal_pos < num_pairs
-                    reciprocal_valid = reciprocal_valid & (
-                        pair_keys[reciprocal_pos.clamp(max=max(num_pairs - 1, 0))] == reciprocal_keys
-                    )
-                    reciprocal_count = torch.zeros_like(pair_edge_count)
-                    if num_pairs > 0:
-                        reciprocal_count[reciprocal_valid] = pair_edge_count[
-                            reciprocal_pos[reciprocal_valid]
-                        ]
-                    flow_strength = torch.sqrt((src_out_excl + 1.0) * (dst_in_excl + 1.0)) - 1.0
-                    cycle_strength = torch.sqrt((src_in_degree + 1.0) * (dst_out_degree + 1.0)) - 1.0
-                    hub_gap = (torch.log1p(src_out_excl) - torch.log1p(dst_in_excl)).abs()
-                    cycle_gap = (torch.log1p(src_in_degree) - torch.log1p(dst_out_degree)).abs()
-                    stats = torch.stack(
-                        (
-                            torch.log1p(src_out_excl),
-                            torch.log1p(dst_in_excl),
-                            torch.log1p(src_in_degree),
-                            torch.log1p(dst_out_degree),
-                            torch.log1p(pair_edge_count),
-                            torch.log1p(reciprocal_count),
-                            flow_strength,
-                            cycle_strength,
-                            hub_gap,
-                            cycle_gap,
-                        ),
-                        dim=-1,
-                    )
-                    motif_context = self.motif_stats_proj(stats)
-                    motif_input = torch.cat(
-                        (
-                            motif_context,
-                            pair_sequence_repr,
-                            motif_context * pair_sequence_repr,
-                        ),
-                        dim=-1,
-                    )
-                    motif_gate = torch.sigmoid(self.motif_stats_gate(motif_input))
-                    pair_sequence_repr = pair_sequence_repr + (
-                        torch.sigmoid(self.motif_stats_alpha) *
-                        motif_gate *
-                        self.motif_stats_update(motif_input)
-                    )
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
