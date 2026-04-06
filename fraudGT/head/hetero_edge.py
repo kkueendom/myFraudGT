@@ -22,12 +22,20 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqbridgewinner',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqbridgewinner',
         }
-        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
+        self.use_sequence_context_residual = self.edge_decoding in {
+            'pair_chain_contextseqresid',
+            'pair_chain_contextseqbridgewinner',
+        }
+        self.use_sequence_bridge_winner = (
+            self.edge_decoding == 'pair_chain_contextseqbridgewinner'
+        )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -88,6 +96,19 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
+                if self.use_sequence_bridge_winner:
+                    self.bridge_winner_path_proj = MLP(dim_in * 3, dim_in,
+                                                       num_layers=self.head_layers,
+                                                       bias=True)
+                    self.bridge_winner_proj = MLP(dim_in * 3, dim_in,
+                                                  num_layers=self.head_layers,
+                                                  bias=True)
+                    self.bridge_winner_head = MLP(dim_in, dim_out,
+                                                  num_layers=self.head_layers,
+                                                  bias=True)
+                    self.bridge_winner_residual_alpha = nn.Parameter(
+                        torch.full((1,), math.log(0.10 / 0.90))
+                    )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -139,6 +160,56 @@ class HeteroGNNEdgeHead(nn.Module):
 
         return seq_bank
 
+    def _build_recent_partner_bank(self, pair_nodes, partner_nodes, pair_timestamps,
+                                   num_nodes):
+        partner_bank = pair_nodes.new_full((num_nodes, self.sequence_len), -1)
+        remaining_scores = pair_timestamps.clone()
+        score_floor = torch.finfo(remaining_scores.dtype).min
+        remaining_mask = torch.ones_like(pair_timestamps, dtype=torch.bool)
+
+        for slot in range(self.sequence_len):
+            _, slot_indices = scatter_max(
+                remaining_scores, pair_nodes, dim=0, dim_size=num_nodes
+            )
+            valid_nodes = scatter(
+                remaining_mask.float(), pair_nodes, dim=0, dim_size=num_nodes, reduce='sum'
+            ) > 0
+            if not valid_nodes.any():
+                break
+            chosen_indices = slot_indices[valid_nodes]
+            partner_bank[valid_nodes, slot] = partner_nodes[chosen_indices]
+            remaining_scores[chosen_indices] = score_floor
+            remaining_mask[chosen_indices] = False
+
+        return partner_bank
+
+    def _recent_winner_path_repr(self, bank_a, bank_b, seq_a, seq_b):
+        valid_a = bank_a >= 0
+        valid_b = bank_b >= 0
+        eq = (
+            bank_a.unsqueeze(2) == bank_b.unsqueeze(1)
+        ) & valid_a.unsqueeze(2) & valid_b.unsqueeze(1)
+        has_match = eq.view(eq.size(0), -1).any(dim=1)
+        pair_score = (
+            seq_a.norm(dim=-1).unsqueeze(2) + seq_b.norm(dim=-1).unsqueeze(1)
+        ).masked_fill(~eq, -1e9)
+        flat_best = pair_score.view(pair_score.size(0), -1).argmax(dim=1)
+        slot_i = torch.div(flat_best, self.sequence_len, rounding_mode='floor')
+        slot_j = torch.remainder(flat_best, self.sequence_len)
+        batch_idx = torch.arange(bank_a.size(0), device=bank_a.device)
+        winner_a = seq_a[batch_idx, slot_i]
+        winner_b = seq_b[batch_idx, slot_j]
+        winner_a = torch.where(has_match.unsqueeze(-1), winner_a, torch.zeros_like(winner_a))
+        winner_b = torch.where(has_match.unsqueeze(-1), winner_b, torch.zeros_like(winner_b))
+        return self.bridge_winner_path_proj(torch.cat(
+            (
+                winner_a,
+                winner_b,
+                winner_a * winner_b,
+            ),
+            dim=-1,
+        ))
+
     def _pair_chain_head(self, batch):
         task = cfg.dataset.task_entity
         mask = self._edge_mask(batch)
@@ -157,6 +228,7 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_max - pair_mean), dim=-1))
         pair_context_repr = None
         pair_sequence_repr = None
+        pair_bridge_winner_repr = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -249,6 +321,33 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
+                if self.use_sequence_bridge_winner:
+                    outgoing_partner_bank = self._build_recent_partner_bank(
+                        pair_src, pair_dst, pair_timestamps, num_nodes
+                    )
+                    incoming_partner_bank = self._build_recent_partner_bank(
+                        pair_dst, pair_src, pair_timestamps, num_nodes
+                    )
+                    forward_winner = self._recent_winner_path_repr(
+                        outgoing_partner_bank[pair_src],
+                        incoming_partner_bank[pair_dst],
+                        outgoing_sequence_bank[pair_src],
+                        incoming_sequence_bank[pair_dst],
+                    )
+                    cycle_winner = self._recent_winner_path_repr(
+                        incoming_partner_bank[pair_src],
+                        outgoing_partner_bank[pair_dst],
+                        incoming_sequence_bank[pair_src],
+                        outgoing_sequence_bank[pair_dst],
+                    )
+                    pair_bridge_winner_repr = self.bridge_winner_proj(torch.cat(
+                        (
+                            forward_winner,
+                            cycle_winner,
+                            forward_winner * cycle_winner,
+                        ),
+                        dim=-1,
+                    ))
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -266,6 +365,16 @@ class HeteroGNNEdgeHead(nn.Module):
                 pair_sequence_repr = torch.zeros_like(pair_repr)
             sequence_logits = self.sequence_head(pair_sequence_repr[pair_inv][mask])
             pred = pred + torch.sigmoid(self.sequence_residual_alpha) * sequence_logits
+            if self.use_sequence_bridge_winner:
+                if pair_bridge_winner_repr is None:
+                    pair_bridge_winner_repr = torch.zeros_like(pair_repr)
+                bridge_winner_logits = self.bridge_winner_head(
+                    pair_bridge_winner_repr[pair_inv][mask]
+                )
+                pred = pred + (
+                    torch.sigmoid(self.bridge_winner_residual_alpha) *
+                    bridge_winner_logits
+                )
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
