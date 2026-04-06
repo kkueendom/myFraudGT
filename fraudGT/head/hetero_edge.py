@@ -22,12 +22,20 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqpairseq',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqpairseq',
         }
-        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
+        self.use_sequence_context_residual = self.edge_decoding in {
+            'pair_chain_contextseqresid',
+            'pair_chain_contextseqpairseq',
+        }
+        self.use_pair_internal_sequence = (
+            self.edge_decoding == 'pair_chain_contextseqpairseq'
+        )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -40,9 +48,20 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_proj = MLP(dim_in * 3, dim_in,
                                  num_layers=self.head_layers,
                                  bias=True)
-            self.pair_proj = MLP(dim_in * 3, dim_in,
-                                 num_layers=self.head_layers,
-                                 bias=True)
+            if self.use_pair_internal_sequence:
+                self.pair_sequence_len = 4
+                self.pair_edge_sequence_encoder = nn.GRU(
+                    input_size=dim_in,
+                    hidden_size=dim_in,
+                    batch_first=True,
+                )
+                self.pair_proj = MLP(dim_in * 4, dim_in,
+                                     num_layers=self.head_layers,
+                                     bias=True)
+            else:
+                self.pair_proj = MLP(dim_in * 3, dim_in,
+                                     num_layers=self.head_layers,
+                                     bias=True)
             self.chain_update = MLP(dim_in * 3, dim_in,
                                     num_layers=self.head_layers,
                                     bias=True)
@@ -139,6 +158,37 @@ class HeteroGNNEdgeHead(nn.Module):
 
         return seq_bank
 
+    def _build_recent_pair_sequence_bank(self, edge_repr, pair_inv, edge_timestamps,
+                                         num_pairs, latest_timestamps):
+        seq_bank = edge_repr.new_zeros((num_pairs, self.pair_sequence_len, edge_repr.size(-1)))
+        remaining_scores = edge_timestamps.clone()
+        score_floor = torch.finfo(remaining_scores.dtype).min
+        time_scale = self.sequence_time_scale.abs().clamp(min=1.0)
+        remaining_mask = torch.ones_like(edge_timestamps, dtype=torch.bool)
+
+        for slot in range(self.pair_sequence_len):
+            _, slot_indices = scatter_max(
+                remaining_scores, pair_inv, dim=0, dim_size=num_pairs
+            )
+            valid_pairs = scatter(
+                remaining_mask.float(), pair_inv, dim=0, dim_size=num_pairs, reduce='sum'
+            ) > 0
+            if not valid_pairs.any():
+                break
+            chosen_indices = slot_indices[valid_pairs]
+            chosen_times = edge_timestamps[chosen_indices]
+            chosen_repr = edge_repr[chosen_indices]
+            recency = torch.exp(
+                -(
+                    latest_timestamps[valid_pairs] - chosen_times
+                ).clamp(min=0) / time_scale
+            ).unsqueeze(-1)
+            seq_bank[valid_pairs, slot] = chosen_repr * recency
+            remaining_scores[chosen_indices] = score_floor
+            remaining_mask[chosen_indices] = False
+
+        return seq_bank
+
     def _pair_chain_head(self, batch):
         task = cfg.dataset.task_entity
         mask = self._edge_mask(batch)
@@ -154,7 +204,31 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_mean = scatter(edge_repr, pair_inv, dim=0, dim_size=num_pairs, reduce='mean')
         pair_max, _ = scatter_max(edge_repr, pair_inv, dim=0, dim_size=num_pairs)
         pair_max = torch.where(torch.isfinite(pair_max), pair_max, torch.zeros_like(pair_max))
-        pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_max - pair_mean), dim=-1))
+        pair_seq_state = None
+        if self.use_pair_internal_sequence and hasattr(batch[task], 'timestamps'):
+            edge_timestamps = batch[task].timestamps.to(edge_repr.device).float().view(-1)
+            pair_latest, _ = scatter_max(
+                edge_timestamps, pair_inv, dim=0, dim_size=num_pairs
+            )
+            pair_latest = torch.where(
+                torch.isfinite(pair_latest),
+                pair_latest,
+                torch.zeros_like(pair_latest),
+            )
+            pair_sequence_bank = self._build_recent_pair_sequence_bank(
+                edge_repr, pair_inv, edge_timestamps, num_pairs, pair_latest
+            )
+            pair_seq_state = self.pair_edge_sequence_encoder(
+                pair_sequence_bank
+            )[1].squeeze(0)
+        if self.use_pair_internal_sequence:
+            if pair_seq_state is None:
+                pair_seq_state = torch.zeros_like(pair_mean)
+            pair_repr = self.pair_proj(torch.cat(
+                (pair_mean, pair_max, pair_max - pair_mean, pair_seq_state), dim=-1
+            ))
+        else:
+            pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_max - pair_mean), dim=-1))
         pair_context_repr = None
         pair_sequence_repr = None
 
