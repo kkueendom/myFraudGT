@@ -22,20 +22,12 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqpaircorr',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqpaircorr',
         }
-        self.use_sequence_context_residual = self.edge_decoding in {
-            'pair_chain_contextseqresid',
-            'pair_chain_contextseqpaircorr',
-        }
-        self.use_sequence_pair_correlation = (
-            self.edge_decoding == 'pair_chain_contextseqpaircorr'
-        )
+        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -96,16 +88,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
-                if self.use_sequence_pair_correlation:
-                    self.paircorr_proj = MLP(dim_in * 3, dim_in,
-                                             num_layers=self.head_layers,
-                                             bias=True)
-                    self.paircorr_head = MLP(dim_in, dim_out,
-                                             num_layers=self.head_layers,
-                                             bias=True)
-                    self.paircorr_residual_alpha = nn.Parameter(
-                        torch.full((1,), math.log(0.10 / 0.90))
-                    )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -175,7 +157,6 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_max - pair_mean), dim=-1))
         pair_context_repr = None
         pair_sequence_repr = None
-        pair_corr_repr = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -268,30 +249,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
-                if self.use_sequence_pair_correlation:
-                    pair_outgoing_bank = outgoing_sequence_bank[pair_src]
-                    pair_incoming_bank = incoming_sequence_bank[pair_dst]
-                    pair_outgoing_norm = F.normalize(pair_outgoing_bank, dim=-1, eps=1e-6)
-                    pair_incoming_norm = F.normalize(pair_incoming_bank, dim=-1, eps=1e-6)
-                    corr_scores = torch.matmul(
-                        pair_outgoing_norm, pair_incoming_norm.transpose(1, 2)
-                    )
-                    outgoing_weights = torch.softmax(corr_scores.max(dim=2).values, dim=-1)
-                    incoming_weights = torch.softmax(corr_scores.max(dim=1).values, dim=-1)
-                    aligned_outgoing = (
-                        pair_outgoing_bank * outgoing_weights.unsqueeze(-1)
-                    ).sum(dim=1)
-                    aligned_incoming = (
-                        pair_incoming_bank * incoming_weights.unsqueeze(-1)
-                    ).sum(dim=1)
-                    pair_corr_repr = self.paircorr_proj(torch.cat(
-                        (
-                            aligned_outgoing,
-                            aligned_incoming,
-                            aligned_outgoing * aligned_incoming,
-                        ),
-                        dim=-1,
-                    ))
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -309,11 +266,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 pair_sequence_repr = torch.zeros_like(pair_repr)
             sequence_logits = self.sequence_head(pair_sequence_repr[pair_inv][mask])
             pred = pred + torch.sigmoid(self.sequence_residual_alpha) * sequence_logits
-            if self.use_sequence_pair_correlation:
-                if pair_corr_repr is None:
-                    pair_corr_repr = torch.zeros_like(pair_repr)
-                corr_logits = self.paircorr_head(pair_corr_repr[pair_inv][mask])
-                pred = pred + torch.sigmoid(self.paircorr_residual_alpha) * corr_logits
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
