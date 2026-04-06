@@ -22,20 +22,12 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqbridgecount',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqbridgecount',
         }
-        self.use_sequence_context_residual = self.edge_decoding in {
-            'pair_chain_contextseqresid',
-            'pair_chain_contextseqbridgecount',
-        }
-        self.use_sequence_bridge_count = (
-            self.edge_decoding == 'pair_chain_contextseqbridgecount'
-        )
+        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -96,17 +88,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
-                if self.use_sequence_bridge_count:
-                    self.bridge_stats_proj = MLP(10, dim_in,
-                                                 num_layers=self.head_layers,
-                                                 bias=True)
-                    self.bridge_stats_gate = nn.Linear(dim_in * 3, dim_in)
-                    self.bridge_stats_update = MLP(dim_in * 3, dim_in,
-                                                   num_layers=self.head_layers,
-                                                   bias=True)
-                    self.bridge_stats_alpha = nn.Parameter(
-                        torch.full((1,), math.log(0.10 / 0.90))
-                    )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -157,45 +138,6 @@ class HeteroGNNEdgeHead(nn.Module):
             remaining_mask[chosen_indices] = False
 
         return seq_bank
-
-    def _build_recent_partner_bank(self, pair_nodes, partner_nodes, pair_timestamps,
-                                   num_nodes):
-        partner_bank = pair_nodes.new_full((num_nodes, self.sequence_len), -1)
-        remaining_scores = pair_timestamps.clone()
-        score_floor = torch.finfo(remaining_scores.dtype).min
-        remaining_mask = torch.ones_like(pair_timestamps, dtype=torch.bool)
-
-        for slot in range(self.sequence_len):
-            _, slot_indices = scatter_max(
-                remaining_scores, pair_nodes, dim=0, dim_size=num_nodes
-            )
-            valid_nodes = scatter(
-                remaining_mask.float(), pair_nodes, dim=0, dim_size=num_nodes, reduce='sum'
-            ) > 0
-            if not valid_nodes.any():
-                break
-            chosen_indices = slot_indices[valid_nodes]
-            partner_bank[valid_nodes, slot] = partner_nodes[chosen_indices]
-            remaining_scores[chosen_indices] = score_floor
-            remaining_mask[chosen_indices] = False
-
-        return partner_bank
-
-    def _recent_overlap_stats(self, bank_a, bank_b):
-        valid_a = bank_a >= 0
-        valid_b = bank_b >= 0
-        eq = (
-            bank_a.unsqueeze(2) == bank_b.unsqueeze(1)
-        ) & valid_a.unsqueeze(2) & valid_b.unsqueeze(1)
-        overlap_count = (eq.any(dim=2).float() * valid_a.float()).sum(dim=1)
-        slot_index = torch.arange(
-            bank_a.size(1), device=bank_a.device, dtype=torch.float32
-        )
-        slot_weight = 1.0 / (1.0 + slot_index)
-        weighted_overlap = (
-            eq.any(dim=2).float() * slot_weight.unsqueeze(0)
-        ).sum(dim=1)
-        return overlap_count, weighted_overlap
 
     def _pair_chain_head(self, batch):
         task = cfg.dataset.task_entity
@@ -307,63 +249,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
-                if self.use_sequence_bridge_count:
-                    outgoing_partner_bank = self._build_recent_partner_bank(
-                        pair_src, pair_dst, pair_timestamps, num_nodes
-                    )
-                    incoming_partner_bank = self._build_recent_partner_bank(
-                        pair_dst, pair_src, pair_timestamps, num_nodes
-                    )
-                    src_out_partners = outgoing_partner_bank[pair_src]
-                    dst_in_sources = incoming_partner_bank[pair_dst]
-                    src_in_sources = incoming_partner_bank[pair_src]
-                    dst_out_partners = outgoing_partner_bank[pair_dst]
-                    forward_count, forward_weight = self._recent_overlap_stats(
-                        src_out_partners, dst_in_sources
-                    )
-                    cycle_count, cycle_weight = self._recent_overlap_stats(
-                        src_in_sources, dst_out_partners
-                    )
-                    shared_out_count, shared_out_weight = self._recent_overlap_stats(
-                        src_out_partners, dst_out_partners
-                    )
-                    shared_in_count, shared_in_weight = self._recent_overlap_stats(
-                        src_in_sources, incoming_partner_bank[pair_dst]
-                    )
-                    reciprocal_recent = (
-                        (dst_out_partners == pair_src.unsqueeze(-1)).any(dim=1).float() +
-                        (src_in_sources == pair_dst.unsqueeze(-1)).any(dim=1).float()
-                    )
-                    stats = torch.stack(
-                        (
-                            forward_count,
-                            cycle_count,
-                            shared_out_count,
-                            shared_in_count,
-                            forward_weight,
-                            cycle_weight,
-                            shared_out_weight,
-                            shared_in_weight,
-                            reciprocal_recent,
-                            (forward_count > 0).float() + (cycle_count > 0).float(),
-                        ),
-                        dim=-1,
-                    )
-                    bridge_context = self.bridge_stats_proj(stats)
-                    bridge_input = torch.cat(
-                        (
-                            bridge_context,
-                            pair_sequence_repr,
-                            bridge_context * pair_sequence_repr,
-                        ),
-                        dim=-1,
-                    )
-                    bridge_gate = torch.sigmoid(self.bridge_stats_gate(bridge_input))
-                    pair_sequence_repr = pair_sequence_repr + (
-                        torch.sigmoid(self.bridge_stats_alpha) *
-                        bridge_gate *
-                        self.bridge_stats_update(bridge_input)
-                    )
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
