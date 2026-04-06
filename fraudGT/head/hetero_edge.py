@@ -22,20 +22,12 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqnodemotif',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqnodemotif',
         }
-        self.use_sequence_context_residual = self.edge_decoding in {
-            'pair_chain_contextseqresid',
-            'pair_chain_contextseqnodemotif',
-        }
-        self.use_sequence_node_motif = (
-            self.edge_decoding == 'pair_chain_contextseqnodemotif'
-        )
+        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -96,35 +88,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
-                if self.use_sequence_node_motif:
-                    self.node_motif_query = nn.Linear(dim_in, dim_in, bias=False)
-                    self.node_motif_key = nn.Linear(dim_in, dim_in, bias=False)
-                    self.node_motif_value = nn.Linear(dim_in, dim_in, bias=False)
-                    self.node_motif_embed = nn.Parameter(
-                        torch.randn(4, dim_in) * 0.02
-                    )
-                    self.node_flow_proj = MLP(dim_in * 3, dim_in,
-                                              num_layers=self.head_layers,
-                                              bias=True)
-                    self.node_cycle_proj = MLP(dim_in * 3, dim_in,
-                                               num_layers=self.head_layers,
-                                               bias=True)
-                    self.node_src_hub_proj = MLP(dim_in * 3, dim_in,
-                                                 num_layers=self.head_layers,
-                                                 bias=True)
-                    self.node_dst_hub_proj = MLP(dim_in * 3, dim_in,
-                                                 num_layers=self.head_layers,
-                                                 bias=True)
-                    self.node_motif_proj = MLP(dim_in * 3, dim_in,
-                                               num_layers=self.head_layers,
-                                               bias=True)
-                    self.node_motif_gate = nn.Linear(dim_in * 3, dim_in)
-                    self.node_motif_update = MLP(dim_in * 3, dim_in,
-                                                 num_layers=self.head_layers,
-                                                 bias=True)
-                    self.node_motif_alpha = nn.Parameter(
-                        torch.full((1,), math.log(0.10 / 0.90))
-                    )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -286,116 +249,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
-                if self.use_sequence_node_motif:
-                    node_x = batch[task[0]].x
-                    edge_ones = edge_repr.new_ones(src_nodes.size(0), 1)
-                    out_sum = scatter(node_x[dst_nodes], src_nodes, dim=0,
-                                      dim_size=num_nodes, reduce='sum')
-                    out_count = scatter(edge_ones, src_nodes, dim=0,
-                                        dim_size=num_nodes, reduce='sum').squeeze(-1)
-                    in_sum = scatter(node_x[src_nodes], dst_nodes, dim=0,
-                                     dim_size=num_nodes, reduce='sum')
-                    in_count = scatter(edge_ones, dst_nodes, dim=0,
-                                       dim_size=num_nodes, reduce='sum').squeeze(-1)
-                    pair_edge_count = scatter(
-                        edge_ones.squeeze(-1), pair_inv, dim=0, dim_size=num_pairs, reduce='sum'
-                    )
-                    src_out_sum = out_sum[pair_src] - pair_edge_count.unsqueeze(-1) * node_x[pair_dst]
-                    src_out_count = (out_count[pair_src] - pair_edge_count).clamp(min=0)
-                    dst_in_sum = in_sum[pair_dst] - pair_edge_count.unsqueeze(-1) * node_x[pair_src]
-                    dst_in_count = (in_count[pair_dst] - pair_edge_count).clamp(min=0)
-                    src_out_pool = src_out_sum / src_out_count.unsqueeze(-1).clamp(min=1.0)
-                    dst_in_pool = dst_in_sum / dst_in_count.unsqueeze(-1).clamp(min=1.0)
-                    src_in_pool = in_sum[pair_src] / in_count[pair_src].unsqueeze(-1).clamp(min=1.0)
-                    dst_out_pool = out_sum[pair_dst] / out_count[pair_dst].unsqueeze(-1).clamp(min=1.0)
-                    src_out_valid = src_out_count > 0
-                    dst_in_valid = dst_in_count > 0
-                    src_in_valid = in_count[pair_src] > 0
-                    dst_out_valid = out_count[pair_dst] > 0
-                    motif_tokens = torch.stack(
-                        (
-                            self.node_flow_proj(torch.cat(
-                                (
-                                    src_out_pool,
-                                    dst_in_pool,
-                                    src_out_pool * dst_in_pool,
-                                ),
-                                dim=-1,
-                            )),
-                            self.node_cycle_proj(torch.cat(
-                                (
-                                    src_in_pool,
-                                    dst_out_pool,
-                                    src_in_pool * dst_out_pool,
-                                ),
-                                dim=-1,
-                            )),
-                            self.node_src_hub_proj(torch.cat(
-                                (
-                                    src_out_pool,
-                                    src_in_pool,
-                                    src_out_pool * src_in_pool,
-                                ),
-                                dim=-1,
-                            )),
-                            self.node_dst_hub_proj(torch.cat(
-                                (
-                                    dst_out_pool,
-                                    dst_in_pool,
-                                    dst_out_pool * dst_in_pool,
-                                ),
-                                dim=-1,
-                            )),
-                        ),
-                        dim=1,
-                    )
-                    motif_tokens = motif_tokens + self.node_motif_embed.unsqueeze(0)
-                    motif_valid = torch.stack(
-                        (
-                            src_out_valid & dst_in_valid,
-                            src_in_valid & dst_out_valid,
-                            src_out_valid | src_in_valid,
-                            dst_out_valid | dst_in_valid,
-                        ),
-                        dim=1,
-                    )
-                    motif_query = self.node_motif_query(
-                        pair_sequence_repr
-                    ).unsqueeze(1)
-                    motif_key = self.node_motif_key(motif_tokens)
-                    motif_value = self.node_motif_value(motif_tokens)
-                    motif_scores = (
-                        motif_query * motif_key
-                    ).sum(dim=-1) / math.sqrt(motif_tokens.size(-1))
-                    motif_scores = motif_scores.masked_fill(~motif_valid, -1e9)
-                    motif_attn = torch.softmax(motif_scores, dim=-1)
-                    motif_attn = motif_attn * motif_valid.float()
-                    motif_attn = motif_attn / motif_attn.sum(
-                        dim=-1, keepdim=True
-                    ).clamp(min=1e-6)
-                    motif_context = (motif_attn.unsqueeze(-1) * motif_value).sum(dim=1)
-                    motif_context = self.node_motif_proj(torch.cat(
-                        (
-                            motif_context,
-                            pair_sequence_repr,
-                            motif_context * pair_sequence_repr,
-                        ),
-                        dim=-1,
-                    ))
-                    motif_input = torch.cat(
-                        (
-                            motif_context,
-                            pair_sequence_repr,
-                            motif_context * pair_sequence_repr,
-                        ),
-                        dim=-1,
-                    )
-                    motif_gate = torch.sigmoid(self.node_motif_gate(motif_input))
-                    pair_sequence_repr = pair_sequence_repr + (
-                        torch.sigmoid(self.node_motif_alpha) *
-                        motif_gate *
-                        self.node_motif_update(motif_input)
-                    )
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
