@@ -22,12 +22,20 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqroleshape',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqroleshape',
         }
-        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
+        self.use_sequence_context_residual = self.edge_decoding in {
+            'pair_chain_contextseqresid',
+            'pair_chain_contextseqroleshape',
+        }
+        self.use_sequence_role_shape = (
+            self.edge_decoding == 'pair_chain_contextseqroleshape'
+        )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -88,6 +96,23 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
+                if self.use_sequence_role_shape:
+                    self.role_sequence_query = nn.Linear(dim_in, dim_in, bias=False)
+                    self.role_sequence_key = nn.Linear(dim_in, dim_in, bias=False)
+                    self.role_sequence_value = nn.Linear(dim_in, dim_in, bias=False)
+                    self.role_sequence_embed = nn.Parameter(
+                        torch.randn(4, dim_in) * 0.02
+                    )
+                    self.role_sequence_proj = MLP(dim_in * 3, dim_in,
+                                                  num_layers=self.head_layers,
+                                                  bias=True)
+                    self.role_sequence_gate = nn.Linear(dim_in * 3, dim_in)
+                    self.role_sequence_update = MLP(dim_in * 3, dim_in,
+                                                    num_layers=self.head_layers,
+                                                    bias=True)
+                    self.role_sequence_alpha = nn.Parameter(
+                        torch.full((1,), math.log(0.10 / 0.90))
+                    )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -249,6 +274,69 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
+                if self.use_sequence_role_shape:
+                    src_in_state = self.incoming_sequence_encoder(
+                        incoming_sequence_bank[pair_src]
+                    )[1].squeeze(0)
+                    dst_out_state = self.outgoing_sequence_encoder(
+                        outgoing_sequence_bank[pair_dst]
+                    )[1].squeeze(0)
+                    role_tokens = torch.stack(
+                        (
+                            outgoing_state,
+                            src_in_state,
+                            dst_out_state,
+                            incoming_state,
+                        ),
+                        dim=1,
+                    )
+                    role_tokens = role_tokens + self.role_sequence_embed.unsqueeze(0)
+                    role_valid = torch.stack(
+                        (
+                            outgoing_sequence_bank[pair_src].abs().sum(dim=(1, 2)) > 0,
+                            incoming_sequence_bank[pair_src].abs().sum(dim=(1, 2)) > 0,
+                            outgoing_sequence_bank[pair_dst].abs().sum(dim=(1, 2)) > 0,
+                            incoming_sequence_bank[pair_dst].abs().sum(dim=(1, 2)) > 0,
+                        ),
+                        dim=1,
+                    )
+                    role_query = self.role_sequence_query(
+                        pair_sequence_repr
+                    ).unsqueeze(1)
+                    role_key = self.role_sequence_key(role_tokens)
+                    role_value = self.role_sequence_value(role_tokens)
+                    role_scores = (
+                        role_query * role_key
+                    ).sum(dim=-1) / math.sqrt(role_tokens.size(-1))
+                    role_scores = role_scores.masked_fill(~role_valid, -1e9)
+                    role_attn = torch.softmax(role_scores, dim=-1)
+                    role_attn = role_attn * role_valid.float()
+                    role_attn = role_attn / role_attn.sum(
+                        dim=-1, keepdim=True
+                    ).clamp(min=1e-6)
+                    role_context = (role_attn.unsqueeze(-1) * role_value).sum(dim=1)
+                    role_context = self.role_sequence_proj(torch.cat(
+                        (
+                            role_context,
+                            pair_sequence_repr,
+                            role_context * pair_sequence_repr,
+                        ),
+                        dim=-1,
+                    ))
+                    role_input = torch.cat(
+                        (
+                            role_context,
+                            pair_sequence_repr,
+                            role_context * pair_sequence_repr,
+                        ),
+                        dim=-1,
+                    )
+                    role_gate = torch.sigmoid(self.role_sequence_gate(role_input))
+                    pair_sequence_repr = pair_sequence_repr + (
+                        torch.sigmoid(self.role_sequence_alpha) *
+                        role_gate *
+                        self.role_sequence_update(role_input)
+                    )
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
