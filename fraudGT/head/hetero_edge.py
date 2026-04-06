@@ -22,20 +22,12 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqalignmem',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqalignmem',
         }
-        self.use_sequence_context_residual = self.edge_decoding in {
-            'pair_chain_contextseqresid',
-            'pair_chain_contextseqalignmem',
-        }
-        self.use_sequence_alignment_update = (
-            self.edge_decoding == 'pair_chain_contextseqalignmem'
-        )
+        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -96,17 +88,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
-                if self.use_sequence_alignment_update:
-                    self.sequence_align_proj = MLP(dim_in * 3, dim_in,
-                                                   num_layers=self.head_layers,
-                                                   bias=True)
-                    self.sequence_align_gate = nn.Linear(dim_in * 3, dim_in)
-                    self.sequence_align_update = MLP(dim_in * 3, dim_in,
-                                                     num_layers=self.head_layers,
-                                                     bias=True)
-                    self.sequence_align_alpha = nn.Parameter(
-                        torch.full((1,), math.log(0.10 / 0.90))
-                    )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -268,57 +249,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
-                if self.use_sequence_alignment_update:
-                    outgoing_tokens = outgoing_sequence_bank[pair_src]
-                    incoming_tokens = incoming_sequence_bank[pair_dst]
-                    outgoing_mask = outgoing_tokens.abs().sum(dim=-1) > 0
-                    incoming_mask = incoming_tokens.abs().sum(dim=-1) > 0
-                    score_mask = outgoing_mask.unsqueeze(-1) & incoming_mask.unsqueeze(1)
-                    align_scores = torch.bmm(
-                        outgoing_tokens,
-                        incoming_tokens.transpose(1, 2)
-                    ) / math.sqrt(outgoing_tokens.size(-1))
-                    align_scores = align_scores.masked_fill(~score_mask, -1e9)
-                    out_to_in = torch.softmax(align_scores, dim=-1)
-                    out_to_in = out_to_in * score_mask.float()
-                    out_to_in = out_to_in / out_to_in.sum(
-                        dim=-1, keepdim=True
-                    ).clamp(min=1e-6)
-                    in_to_out = torch.softmax(align_scores.transpose(1, 2), dim=-1)
-                    in_to_out = in_to_out * score_mask.transpose(1, 2).float()
-                    in_to_out = in_to_out / in_to_out.sum(
-                        dim=-1, keepdim=True
-                    ).clamp(min=1e-6)
-                    aligned_in_tokens = torch.bmm(out_to_in, incoming_tokens)
-                    aligned_out_tokens = torch.bmm(in_to_out, outgoing_tokens)
-                    aligned_out = (
-                        aligned_in_tokens * outgoing_mask.unsqueeze(-1).float()
-                    ).sum(dim=1) / outgoing_mask.sum(dim=1, keepdim=True).clamp(min=1.0)
-                    aligned_in = (
-                        aligned_out_tokens * incoming_mask.unsqueeze(-1).float()
-                    ).sum(dim=1) / incoming_mask.sum(dim=1, keepdim=True).clamp(min=1.0)
-                    pair_align_repr = self.sequence_align_proj(torch.cat(
-                        (
-                            aligned_out,
-                            aligned_in,
-                            aligned_out * aligned_in,
-                        ),
-                        dim=-1,
-                    ))
-                    align_input = torch.cat(
-                        (
-                            pair_align_repr,
-                            pair_repr,
-                            pair_align_repr * pair_repr,
-                        ),
-                        dim=-1,
-                    )
-                    align_gate = torch.sigmoid(self.sequence_align_gate(align_input))
-                    pair_repr = pair_repr + (
-                        torch.sigmoid(self.sequence_align_alpha) *
-                        align_gate *
-                        self.sequence_align_update(align_input)
-                    )
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
