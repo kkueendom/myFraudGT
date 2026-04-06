@@ -22,12 +22,20 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqlineprop',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqlineprop',
         }
-        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
+        self.use_sequence_context_residual = self.edge_decoding in {
+            'pair_chain_contextseqresid',
+            'pair_chain_contextseqlineprop',
+        }
+        self.use_edge_line_propagation = (
+            self.edge_decoding == 'pair_chain_contextseqlineprop'
+        )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -56,6 +64,14 @@ class HeteroGNNEdgeHead(nn.Module):
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
                                      bias=True)
+            if self.use_edge_line_propagation:
+                self.line_update = MLP(dim_in * 3, dim_in,
+                                       num_layers=self.head_layers,
+                                       bias=True)
+                self.line_gate = nn.Linear(dim_in * 3, dim_in)
+                self.line_residual_alpha = nn.Parameter(
+                    torch.full((1,), math.log(0.10 / 0.90))
+                )
             if self.use_chain_context_residual:
                 self.context_proj = MLP(dim_in * 3, dim_in,
                                         num_layers=self.head_layers,
@@ -145,6 +161,41 @@ class HeteroGNNEdgeHead(nn.Module):
         edge_inputs, edge_index = self._edge_inputs(batch)
         src_nodes, dst_nodes = edge_index
         edge_repr = self.edge_proj(edge_inputs)
+
+        if self.use_edge_line_propagation and task[0] == task[2]:
+            num_nodes = batch[task[0]].x.size(0)
+            edge_scores = edge_repr.norm(dim=-1)
+            predecessor_weights = pyg_softmax(
+                edge_scores, dst_nodes, num_nodes=num_nodes
+            )
+            successor_weights = pyg_softmax(
+                edge_scores, src_nodes, num_nodes=num_nodes
+            )
+            predecessor_bank = scatter(
+                edge_repr * predecessor_weights.unsqueeze(-1),
+                dst_nodes,
+                dim=0,
+                dim_size=num_nodes,
+                reduce='sum'
+            )
+            successor_bank = scatter(
+                edge_repr * successor_weights.unsqueeze(-1),
+                src_nodes,
+                dim=0,
+                dim_size=num_nodes,
+                reduce='sum'
+            )
+            prev_edge_context = predecessor_bank[src_nodes]
+            next_edge_context = successor_bank[dst_nodes]
+            line_input = torch.cat(
+                (prev_edge_context, edge_repr, next_edge_context), dim=-1
+            )
+            line_gate = torch.sigmoid(self.line_gate(line_input))
+            edge_repr = edge_repr + (
+                torch.sigmoid(self.line_residual_alpha) *
+                line_gate *
+                self.line_update(line_input)
+            )
 
         num_dst_nodes = batch[task[2]].x.size(0)
         pair_key = src_nodes.to(torch.long) * num_dst_nodes + dst_nodes.to(torch.long)
