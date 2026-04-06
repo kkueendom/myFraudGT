@@ -22,12 +22,20 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqbridgefocus',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqbridgefocus',
         }
-        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
+        self.use_sequence_context_residual = self.edge_decoding in {
+            'pair_chain_contextseqresid',
+            'pair_chain_contextseqbridgefocus',
+        }
+        self.use_sequence_bridge_focus = (
+            self.edge_decoding == 'pair_chain_contextseqbridgefocus'
+        )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -88,6 +96,23 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
+                if self.use_sequence_bridge_focus:
+                    self.bridge_focus_topk = 4
+                    self.bridge_focus_pair_proj = MLP(dim_in * 2 + 2, dim_in,
+                                                      num_layers=self.head_layers,
+                                                      bias=True)
+                    self.bridge_focus_proj = MLP(dim_in * 3, dim_in,
+                                                 num_layers=self.head_layers,
+                                                 bias=True)
+                    self.bridge_focus_fuse = MLP(dim_in * 3, dim_in,
+                                                 num_layers=self.head_layers,
+                                                 bias=True)
+                    self.bridge_focus_head = MLP(dim_in, dim_out,
+                                                 num_layers=self.head_layers,
+                                                 bias=True)
+                    self.bridge_focus_residual_alpha = nn.Parameter(
+                        torch.full((1,), math.log(0.10 / 0.90))
+                    )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -139,6 +164,67 @@ class HeteroGNNEdgeHead(nn.Module):
 
         return seq_bank
 
+    def _build_topk_partner_pair_bank(self, pair_nodes, partner_nodes, pair_scores,
+                                      pair_repr, num_nodes):
+        partner_bank = pair_nodes.new_full((num_nodes, self.bridge_focus_topk), -1)
+        repr_bank = pair_repr.new_zeros((num_nodes, self.bridge_focus_topk, pair_repr.size(-1)))
+        remaining_scores = pair_scores.clone()
+        score_floor = torch.finfo(remaining_scores.dtype).min
+        remaining_mask = torch.ones_like(pair_scores, dtype=torch.bool)
+
+        for slot in range(self.bridge_focus_topk):
+            _, slot_indices = scatter_max(
+                remaining_scores, pair_nodes, dim=0, dim_size=num_nodes
+            )
+            valid_nodes = scatter(
+                remaining_mask.float(), pair_nodes, dim=0, dim_size=num_nodes, reduce='sum'
+            ) > 0
+            if not valid_nodes.any():
+                break
+            chosen_indices = slot_indices[valid_nodes]
+            partner_bank[valid_nodes, slot] = partner_nodes[chosen_indices]
+            repr_bank[valid_nodes, slot] = pair_repr[chosen_indices]
+            remaining_scores[chosen_indices] = score_floor
+            remaining_mask[chosen_indices] = False
+
+        return partner_bank, repr_bank
+
+    def _recent_overlap_focus_repr(self, bank_a, bank_b, repr_a, repr_b):
+        valid_a = bank_a >= 0
+        valid_b = bank_b >= 0
+        eq = (
+            bank_a.unsqueeze(2) == bank_b.unsqueeze(1)
+        ) & valid_a.unsqueeze(2) & valid_b.unsqueeze(1)
+        overlap_count = eq.float().sum(dim=(1, 2))
+        pair_interaction = repr_a.unsqueeze(2) * repr_b.unsqueeze(1)
+        mean_interaction = (
+            pair_interaction * eq.unsqueeze(-1).float()
+        ).sum(dim=(1, 2)) / overlap_count.unsqueeze(-1).clamp(min=1.0)
+        max_interaction = pair_interaction.masked_fill(~eq.unsqueeze(-1), -1e9).amax(dim=(1, 2))
+        max_interaction = torch.where(
+            overlap_count.unsqueeze(-1) > 0,
+            max_interaction,
+            torch.zeros_like(max_interaction),
+        )
+        slot_index = torch.arange(
+            bank_a.size(1), device=bank_a.device, dtype=torch.float32
+        )
+        slot_weight = 1.0 / (1.0 + slot_index)
+        weighted_overlap = (
+            eq.float()
+            * slot_weight.view(1, -1, 1)
+            * slot_weight.view(1, 1, -1)
+        ).sum(dim=(1, 2))
+        return self.bridge_focus_pair_proj(torch.cat(
+            (
+                mean_interaction,
+                max_interaction,
+                overlap_count.unsqueeze(-1),
+                weighted_overlap.unsqueeze(-1),
+            ),
+            dim=-1,
+        ))
+
     def _pair_chain_head(self, batch):
         task = cfg.dataset.task_entity
         mask = self._edge_mask(batch)
@@ -157,6 +243,7 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_max - pair_mean), dim=-1))
         pair_context_repr = None
         pair_sequence_repr = None
+        pair_bridge_focus_repr = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -249,6 +336,42 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
+                if self.use_sequence_bridge_focus:
+                    pair_scores = pair_repr.norm(dim=-1)
+                    outgoing_partner_bank, outgoing_repr_bank = self._build_topk_partner_pair_bank(
+                        pair_src, pair_dst, pair_scores, pair_repr, num_nodes
+                    )
+                    incoming_partner_bank, incoming_repr_bank = self._build_topk_partner_pair_bank(
+                        pair_dst, pair_src, pair_scores, pair_repr, num_nodes
+                    )
+                    forward_bridge = self._recent_overlap_focus_repr(
+                        outgoing_partner_bank[pair_src],
+                        incoming_partner_bank[pair_dst],
+                        outgoing_repr_bank[pair_src],
+                        incoming_repr_bank[pair_dst],
+                    )
+                    cycle_bridge = self._recent_overlap_focus_repr(
+                        incoming_partner_bank[pair_src],
+                        outgoing_partner_bank[pair_dst],
+                        incoming_repr_bank[pair_src],
+                        outgoing_repr_bank[pair_dst],
+                    )
+                    bridge_context = self.bridge_focus_proj(torch.cat(
+                        (
+                            forward_bridge,
+                            cycle_bridge,
+                            forward_bridge * cycle_bridge,
+                        ),
+                        dim=-1,
+                    ))
+                    pair_bridge_focus_repr = self.bridge_focus_fuse(torch.cat(
+                        (
+                            bridge_context,
+                            pair_sequence_repr,
+                            bridge_context * pair_sequence_repr,
+                        ),
+                        dim=-1,
+                    ))
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -266,6 +389,13 @@ class HeteroGNNEdgeHead(nn.Module):
                 pair_sequence_repr = torch.zeros_like(pair_repr)
             sequence_logits = self.sequence_head(pair_sequence_repr[pair_inv][mask])
             pred = pred + torch.sigmoid(self.sequence_residual_alpha) * sequence_logits
+            if self.use_sequence_bridge_focus:
+                if pair_bridge_focus_repr is None:
+                    pair_bridge_focus_repr = torch.zeros_like(pair_repr)
+                bridge_logits = self.bridge_focus_head(pair_bridge_focus_repr[pair_inv][mask])
+                pred = pred + (
+                    torch.sigmoid(self.bridge_focus_residual_alpha) * bridge_logits
+                )
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
