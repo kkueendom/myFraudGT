@@ -22,12 +22,20 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqbridgebank',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqbridgebank',
         }
-        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
+        self.use_sequence_context_residual = self.edge_decoding in {
+            'pair_chain_contextseqresid',
+            'pair_chain_contextseqbridgebank',
+        }
+        self.use_sequence_bridge_bank = (
+            self.edge_decoding == 'pair_chain_contextseqbridgebank'
+        )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -88,6 +96,20 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
+                if self.use_sequence_bridge_bank:
+                    self.bridge_partner_proj = MLP(dim_in * 2 + 2, dim_in,
+                                                   num_layers=self.head_layers,
+                                                   bias=True)
+                    self.bridge_bank_proj = MLP(dim_in * 3, dim_in,
+                                                num_layers=self.head_layers,
+                                                bias=True)
+                    self.bridge_bank_gate = nn.Linear(dim_in * 3, dim_in)
+                    self.bridge_bank_update = MLP(dim_in * 3, dim_in,
+                                                  num_layers=self.head_layers,
+                                                  bias=True)
+                    self.bridge_bank_alpha = nn.Parameter(
+                        torch.full((1,), math.log(0.10 / 0.90))
+                    )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -138,6 +160,63 @@ class HeteroGNNEdgeHead(nn.Module):
             remaining_mask[chosen_indices] = False
 
         return seq_bank
+
+    def _build_recent_partner_bank(self, pair_nodes, partner_nodes, pair_timestamps,
+                                   num_nodes):
+        partner_bank = pair_nodes.new_full((num_nodes, self.sequence_len), -1)
+        remaining_scores = pair_timestamps.clone()
+        score_floor = torch.finfo(remaining_scores.dtype).min
+        remaining_mask = torch.ones_like(pair_timestamps, dtype=torch.bool)
+
+        for slot in range(self.sequence_len):
+            _, slot_indices = scatter_max(
+                remaining_scores, pair_nodes, dim=0, dim_size=num_nodes
+            )
+            valid_nodes = scatter(
+                remaining_mask.float(), pair_nodes, dim=0, dim_size=num_nodes, reduce='sum'
+            ) > 0
+            if not valid_nodes.any():
+                break
+            chosen_indices = slot_indices[valid_nodes]
+            partner_bank[valid_nodes, slot] = partner_nodes[chosen_indices]
+            remaining_scores[chosen_indices] = score_floor
+            remaining_mask[chosen_indices] = False
+
+        return partner_bank
+
+    def _recent_overlap_partner_repr(self, bank_a, bank_b, node_x):
+        valid_a = bank_a >= 0
+        valid_b = bank_b >= 0
+        eq = (
+            bank_a.unsqueeze(2) == bank_b.unsqueeze(1)
+        ) & valid_a.unsqueeze(2) & valid_b.unsqueeze(1)
+        match_any = eq.any(dim=2)
+        overlap_count = (match_any.float() * valid_a.float()).sum(dim=1)
+        slot_index = torch.arange(
+            bank_a.size(1), device=bank_a.device, dtype=torch.float32
+        )
+        slot_weight = 1.0 / (1.0 + slot_index)
+        weighted_overlap = (
+            match_any.float() * slot_weight.unsqueeze(0)
+        ).sum(dim=1)
+        gather_ids = bank_a.clamp(min=0)
+        matched_emb = node_x[gather_ids] * match_any.unsqueeze(-1).float()
+        mean_emb = matched_emb.sum(dim=1) / overlap_count.unsqueeze(-1).clamp(min=1.0)
+        max_emb = matched_emb.masked_fill(~match_any.unsqueeze(-1), -1e9).max(dim=1).values
+        max_emb = torch.where(
+            overlap_count.unsqueeze(-1) > 0,
+            max_emb,
+            torch.zeros_like(max_emb),
+        )
+        return self.bridge_partner_proj(torch.cat(
+            (
+                mean_emb,
+                max_emb,
+                overlap_count.unsqueeze(-1),
+                weighted_overlap.unsqueeze(-1),
+            ),
+            dim=-1,
+        ))
 
     def _pair_chain_head(self, batch):
         task = cfg.dataset.task_entity
@@ -249,6 +328,46 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
+                if self.use_sequence_bridge_bank:
+                    outgoing_partner_bank = self._build_recent_partner_bank(
+                        pair_src, pair_dst, pair_timestamps, num_nodes
+                    )
+                    incoming_partner_bank = self._build_recent_partner_bank(
+                        pair_dst, pair_src, pair_timestamps, num_nodes
+                    )
+                    src_out_partners = outgoing_partner_bank[pair_src]
+                    dst_in_sources = incoming_partner_bank[pair_dst]
+                    src_in_sources = incoming_partner_bank[pair_src]
+                    dst_out_partners = outgoing_partner_bank[pair_dst]
+                    node_x = batch[task[0]].x
+                    forward_bridge = self._recent_overlap_partner_repr(
+                        src_out_partners, dst_in_sources, node_x
+                    )
+                    cycle_bridge = self._recent_overlap_partner_repr(
+                        src_in_sources, dst_out_partners, node_x
+                    )
+                    bridge_context = self.bridge_bank_proj(torch.cat(
+                        (
+                            forward_bridge,
+                            cycle_bridge,
+                            forward_bridge * cycle_bridge,
+                        ),
+                        dim=-1,
+                    ))
+                    bridge_input = torch.cat(
+                        (
+                            bridge_context,
+                            pair_sequence_repr,
+                            bridge_context * pair_sequence_repr,
+                        ),
+                        dim=-1,
+                    )
+                    bridge_gate = torch.sigmoid(self.bridge_bank_gate(bridge_input))
+                    pair_sequence_repr = pair_sequence_repr + (
+                        torch.sigmoid(self.bridge_bank_alpha) *
+                        bridge_gate *
+                        self.bridge_bank_update(bridge_input)
+                    )
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
