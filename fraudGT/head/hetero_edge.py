@@ -22,20 +22,12 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqpeerbankresid',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqpeerbankresid',
         }
-        self.use_sequence_context_residual = self.edge_decoding in {
-            'pair_chain_contextseqresid',
-            'pair_chain_contextseqpeerbankresid',
-        }
-        self.use_peer_context_residual = (
-            self.edge_decoding == 'pair_chain_contextseqpeerbankresid'
-        )
+        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -96,21 +88,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
-                if self.use_peer_context_residual:
-                    self.source_peer_score = nn.Linear(dim_in, 1)
-                    self.dest_peer_score = nn.Linear(dim_in, 1)
-                    self.reciprocal_proj = MLP(dim_in * 3, dim_in,
-                                               num_layers=self.head_layers,
-                                               bias=True)
-                    self.peer_proj = MLP(dim_in * 5, dim_in,
-                                         num_layers=self.head_layers,
-                                         bias=True)
-                    self.peer_head = MLP(dim_in, dim_out,
-                                         num_layers=self.head_layers,
-                                         bias=True)
-                    self.peer_residual_alpha = nn.Parameter(
-                        torch.full((1,), math.log(0.10 / 0.90))
-                    )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -162,39 +139,6 @@ class HeteroGNNEdgeHead(nn.Module):
 
         return seq_bank
 
-    def _lookup_pair_indices(self, sorted_pair_keys, target_keys):
-        positions = torch.searchsorted(sorted_pair_keys, target_keys)
-        valid = positions < sorted_pair_keys.numel()
-        matched = torch.zeros_like(valid)
-        matched[valid] = sorted_pair_keys[positions[valid]] == target_keys[valid]
-        resolved = torch.full_like(positions, -1)
-        resolved[matched] = positions[matched]
-        return resolved
-
-    def _build_exclusive_peer_context(self, pair_repr, group_index, score_layer, dim_size):
-        peer_weight = F.softplus(score_layer(pair_repr).squeeze(-1)) + 1e-6
-        weighted_sum = scatter(
-            pair_repr * peer_weight.unsqueeze(-1),
-            group_index,
-            dim=0,
-            dim_size=dim_size,
-            reduce='sum',
-        )
-        weight_sum = scatter(
-            peer_weight,
-            group_index,
-            dim=0,
-            dim_size=dim_size,
-            reduce='sum',
-        )
-        exclusive_sum = weighted_sum[group_index] - pair_repr * peer_weight.unsqueeze(-1)
-        exclusive_weight = (
-            weight_sum[group_index] - peer_weight
-        ).unsqueeze(-1)
-        peer_context = exclusive_sum / exclusive_weight.clamp(min=1e-6)
-        has_peer = exclusive_weight.squeeze(-1) > 1e-6
-        return peer_context * has_peer.float().unsqueeze(-1)
-
     def _pair_chain_head(self, batch):
         task = cfg.dataset.task_entity
         mask = self._edge_mask(batch)
@@ -213,7 +157,6 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_max - pair_mean), dim=-1))
         pair_context_repr = None
         pair_sequence_repr = None
-        peer_context_repr = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -306,42 +249,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
-                if self.use_peer_context_residual:
-                    source_peer_context = self._build_exclusive_peer_context(
-                        pair_repr, pair_src, self.source_peer_score, num_nodes
-                    )
-                    dest_peer_context = self._build_exclusive_peer_context(
-                        pair_repr, pair_dst, self.dest_peer_score, num_nodes
-                    )
-                    reverse_keys = pair_dst.to(torch.long) * num_dst_nodes + pair_src.to(torch.long)
-                    reciprocal_indices = self._lookup_pair_indices(pair_keys, reverse_keys)
-                    reciprocal_repr = torch.zeros_like(pair_repr)
-                    valid_reciprocal = reciprocal_indices >= 0
-                    if valid_reciprocal.any():
-                        reciprocal_repr[valid_reciprocal] = pair_repr[
-                            reciprocal_indices[valid_reciprocal]
-                        ]
-                    reciprocal_token = self.reciprocal_proj(torch.cat(
-                        (
-                            pair_repr,
-                            reciprocal_repr,
-                            pair_repr * reciprocal_repr,
-                        ),
-                        dim=-1,
-                    ))
-                    context_token = pair_context_repr
-                    if context_token is None:
-                        context_token = torch.zeros_like(pair_repr)
-                    peer_context_repr = self.peer_proj(torch.cat(
-                        (
-                            source_peer_context,
-                            dest_peer_context,
-                            reciprocal_token,
-                            context_token,
-                            pair_sequence_repr,
-                        ),
-                        dim=-1,
-                    ))
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -359,11 +266,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 pair_sequence_repr = torch.zeros_like(pair_repr)
             sequence_logits = self.sequence_head(pair_sequence_repr[pair_inv][mask])
             pred = pred + torch.sigmoid(self.sequence_residual_alpha) * sequence_logits
-        if self.use_peer_context_residual:
-            if peer_context_repr is None:
-                peer_context_repr = torch.zeros_like(pair_repr)
-            peer_logits = self.peer_head(peer_context_repr[pair_inv][mask])
-            pred = pred + torch.sigmoid(self.peer_residual_alpha) * peer_logits
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
