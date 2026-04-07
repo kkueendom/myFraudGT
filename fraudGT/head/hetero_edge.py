@@ -22,20 +22,12 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqmotifattnresid',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
-            'pair_chain_contextseqmotifattnresid',
         }
-        self.use_sequence_context_residual = self.edge_decoding in {
-            'pair_chain_contextseqresid',
-            'pair_chain_contextseqmotifattnresid',
-        }
-        self.use_motif_attention_residual = (
-            self.edge_decoding == 'pair_chain_contextseqmotifattnresid'
-        )
+        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
         # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
@@ -96,27 +88,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
-                if self.use_motif_attention_residual:
-                    self.reciprocal_proj = MLP(dim_in * 3, dim_in,
-                                               num_layers=self.head_layers,
-                                               bias=True)
-                    self.bridge_proj = MLP(dim_in * 3, dim_in,
-                                           num_layers=self.head_layers,
-                                           bias=True)
-                    self.motif_attention = nn.MultiheadAttention(
-                        dim_in,
-                        num_heads=4,
-                        batch_first=True,
-                    )
-                    self.motif_proj = MLP(dim_in * 3, dim_in,
-                                          num_layers=self.head_layers,
-                                          bias=True)
-                    self.motif_head = MLP(dim_in, dim_out,
-                                          num_layers=self.head_layers,
-                                          bias=True)
-                    self.motif_residual_alpha = nn.Parameter(
-                        torch.full((1,), math.log(0.10 / 0.90))
-                    )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -168,74 +139,6 @@ class HeteroGNNEdgeHead(nn.Module):
 
         return seq_bank
 
-    def _build_recent_index_bank(self, pair_nodes, pair_timestamps, num_nodes):
-        index_bank = torch.full(
-            (num_nodes, self.sequence_len),
-            -1,
-            dtype=torch.long,
-            device=pair_nodes.device,
-        )
-        remaining_scores = pair_timestamps.clone()
-        score_floor = torch.finfo(remaining_scores.dtype).min
-        remaining_mask = torch.ones_like(pair_timestamps, dtype=torch.bool)
-
-        for slot in range(self.sequence_len):
-            _, slot_indices = scatter_max(
-                remaining_scores, pair_nodes, dim=0, dim_size=num_nodes
-            )
-            valid_nodes = scatter(
-                remaining_mask.float(), pair_nodes, dim=0, dim_size=num_nodes, reduce='sum'
-            ) > 0
-            if not valid_nodes.any():
-                break
-            chosen_indices = slot_indices[valid_nodes]
-            index_bank[valid_nodes, slot] = chosen_indices
-            remaining_scores[chosen_indices] = score_floor
-            remaining_mask[chosen_indices] = False
-
-        return index_bank
-
-    def _lookup_pair_indices(self, sorted_pair_keys, target_keys):
-        positions = torch.searchsorted(sorted_pair_keys, target_keys)
-        valid = positions < sorted_pair_keys.numel()
-        matched = torch.zeros_like(valid)
-        matched[valid] = sorted_pair_keys[positions[valid]] == target_keys[valid]
-        resolved = torch.full_like(positions, -1)
-        resolved[matched] = positions[matched]
-        return resolved
-
-    def _build_bridge_repr(self, pair_repr, left_indices, right_indices,
-                           left_mediators, right_mediators):
-        safe_left = left_indices.clamp(min=0)
-        safe_right = right_indices.clamp(min=0)
-        left_valid = left_indices >= 0
-        right_valid = right_indices >= 0
-
-        match = (
-            left_valid.unsqueeze(2) &
-            right_valid.unsqueeze(1) &
-            (left_mediators.unsqueeze(2) == right_mediators.unsqueeze(1))
-        )
-        has_match = match.view(match.size(0), -1).any(dim=-1)
-        if not has_match.any():
-            return pair_repr.new_zeros(pair_repr.size())
-
-        left_repr = pair_repr[safe_left]
-        right_repr = pair_repr[safe_right]
-        match_float = match.float()
-        left_weights = match_float.sum(dim=2)
-        right_weights = match_float.sum(dim=1)
-        left_sum = (left_repr * left_weights.unsqueeze(-1)).sum(dim=1)
-        right_sum = (right_repr * right_weights.unsqueeze(-1)).sum(dim=1)
-        match_count = match.view(match.size(0), -1).float().sum(dim=-1, keepdim=True).clamp(min=1.0)
-        left_mean = left_sum / match_count
-        right_mean = right_sum / match_count
-        bridge_repr = self.bridge_proj(torch.cat(
-            (left_mean, right_mean, left_mean * right_mean),
-            dim=-1,
-        ))
-        return bridge_repr * has_match.float().unsqueeze(-1)
-
     def _pair_chain_head(self, batch):
         task = cfg.dataset.task_entity
         mask = self._edge_mask(batch)
@@ -254,7 +157,6 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_max - pair_mean), dim=-1))
         pair_context_repr = None
         pair_sequence_repr = None
-        motif_attn_repr = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -347,82 +249,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
-                if self.use_motif_attention_residual:
-                    outgoing_index_bank = self._build_recent_index_bank(
-                        pair_src, pair_timestamps, num_nodes
-                    )
-                    incoming_index_bank = self._build_recent_index_bank(
-                        pair_dst, pair_timestamps, num_nodes
-                    )
-
-                    reverse_keys = pair_dst.to(torch.long) * num_dst_nodes + pair_src.to(torch.long)
-                    reciprocal_indices = self._lookup_pair_indices(pair_keys, reverse_keys)
-                    reciprocal_repr = torch.zeros_like(pair_repr)
-                    valid_reciprocal = reciprocal_indices >= 0
-                    if valid_reciprocal.any():
-                        reciprocal_repr[valid_reciprocal] = pair_repr[
-                            reciprocal_indices[valid_reciprocal]
-                        ]
-                    reciprocal_token = self.reciprocal_proj(torch.cat(
-                        (
-                            pair_repr,
-                            reciprocal_repr,
-                            pair_repr * reciprocal_repr,
-                        ),
-                        dim=-1,
-                    ))
-
-                    src_out_indices = outgoing_index_bank[pair_src]
-                    dst_in_indices = incoming_index_bank[pair_dst]
-                    src_in_indices = incoming_index_bank[pair_src]
-                    dst_out_indices = outgoing_index_bank[pair_dst]
-
-                    forward_bridge_repr = self._build_bridge_repr(
-                        pair_repr,
-                        src_out_indices,
-                        dst_in_indices,
-                        pair_dst[src_out_indices.clamp(min=0)],
-                        pair_src[dst_in_indices.clamp(min=0)],
-                    )
-                    cycle_bridge_repr = self._build_bridge_repr(
-                        pair_repr,
-                        src_in_indices,
-                        dst_out_indices,
-                        pair_src[src_in_indices.clamp(min=0)],
-                        pair_dst[dst_out_indices.clamp(min=0)],
-                    )
-
-                    context_token = pair_context_repr
-                    if context_token is None:
-                        context_token = torch.zeros_like(pair_repr)
-
-                    motif_tokens = torch.stack(
-                        (
-                            outgoing_state,
-                            incoming_state,
-                            pair_sequence_repr,
-                            reciprocal_token,
-                            forward_bridge_repr,
-                            cycle_bridge_repr,
-                            context_token,
-                        ),
-                        dim=1,
-                    )
-                    motif_attn_out, _ = self.motif_attention(
-                        pair_repr.unsqueeze(1),
-                        motif_tokens,
-                        motif_tokens,
-                        need_weights=False,
-                    )
-                    motif_attn_out = motif_attn_out.squeeze(1)
-                    motif_attn_repr = self.motif_proj(torch.cat(
-                        (
-                            pair_repr,
-                            motif_attn_out,
-                            pair_repr * motif_attn_out,
-                        ),
-                        dim=-1,
-                    ))
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -440,11 +266,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 pair_sequence_repr = torch.zeros_like(pair_repr)
             sequence_logits = self.sequence_head(pair_sequence_repr[pair_inv][mask])
             pred = pred + torch.sigmoid(self.sequence_residual_alpha) * sequence_logits
-        if self.use_motif_attention_residual:
-            if motif_attn_repr is None:
-                motif_attn_repr = torch.zeros_like(pair_repr)
-            motif_logits = self.motif_head(motif_attn_repr[pair_inv][mask])
-            pred = pred + torch.sigmoid(self.motif_residual_alpha) * motif_logits
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
