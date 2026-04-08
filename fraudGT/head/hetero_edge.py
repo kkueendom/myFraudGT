@@ -22,16 +22,42 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain',
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqpairseqbridgebank',
+            'pair_chain_contextseqpairseqbridgebankmotiflite',
+            'pair_chain_contextseqpairseqbridgebankwindow',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
             'pair_chain_contextseqresid',
+            'pair_chain_contextseqpairseqbridgebank',
+            'pair_chain_contextseqpairseqbridgebankmotiflite',
+            'pair_chain_contextseqpairseqbridgebankwindow',
         }
-        self.use_sequence_context_residual = self.edge_decoding == 'pair_chain_contextseqresid'
+        self.use_sequence_context_residual = self.edge_decoding in {
+            'pair_chain_contextseqresid',
+            'pair_chain_contextseqpairseqbridgebank',
+            'pair_chain_contextseqpairseqbridgebankmotiflite',
+            'pair_chain_contextseqpairseqbridgebankwindow',
+        }
+        self.use_pair_internal_sequence = (
+            self.edge_decoding in {
+                'pair_chain_contextseqpairseqbridgebank',
+                'pair_chain_contextseqpairseqbridgebankmotiflite',
+                'pair_chain_contextseqpairseqbridgebankwindow',
+            }
+        )
+        self.use_sequence_bridge_bank = self.edge_decoding in {
+            'pair_chain_contextseqpairseqbridgebank',
+            'pair_chain_contextseqpairseqbridgebankmotiflite',
+            'pair_chain_contextseqpairseqbridgebankwindow',
+        }
+        self.use_sequence_bridge_motif_lite = (
+            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankmotiflite'
+        )
+        self.use_sequence_bridge_bank_window = (
+            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindow'
+        )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
-        # self.train_edge_inds = mask_to_index(data[cfg.dataset.task_entity].train_edge_mask).to(cfg.device)
-        # self.val_edge_inds = mask_to_index(data[cfg.dataset.task_entity].val_edge_mask).to(cfg.device)
-        # self.test_edge_inds = mask_to_index(data[cfg.dataset.task_entity].test_edge_mask).to(cfg.device)
         self.train_inds = mask_to_index(dataset['train'][cfg.dataset.task_entity].split_mask).to(cfg.device)
         self.val_inds = mask_to_index(dataset['val'][cfg.dataset.task_entity].split_mask).to(cfg.device)
         self.test_inds = mask_to_index(dataset['test'][cfg.dataset.task_entity].split_mask).to(cfg.device)
@@ -40,9 +66,25 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_proj = MLP(dim_in * 3, dim_in,
                                  num_layers=self.head_layers,
                                  bias=True)
-            self.pair_proj = MLP(dim_in * 3, dim_in,
-                                 num_layers=self.head_layers,
-                                 bias=True)
+            if self.use_pair_internal_sequence:
+                self.pair_sequence_len = 4
+                self.pair_edge_sequence_encoder = nn.GRU(
+                    input_size=dim_in,
+                    hidden_size=dim_in,
+                    batch_first=True,
+                )
+                self.pair_proj = MLP(dim_in * 4, dim_in,
+                                     num_layers=self.head_layers,
+                                     bias=True)
+            else:
+                self.pair_proj = MLP(dim_in * 3, dim_in,
+                                     num_layers=self.head_layers,
+                                     bias=True)
+            if self.use_sequence_bridge_bank_window:
+                self.pair_window_gate = nn.Linear(dim_in * 3, dim_in)
+                self.pair_window_alpha = nn.Parameter(
+                    torch.full((1,), math.log(0.10 / 0.90))
+                )
             self.chain_update = MLP(dim_in * 3, dim_in,
                                     num_layers=self.head_layers,
                                     bias=True)
@@ -88,13 +130,45 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
+                if self.use_sequence_bridge_bank_window:
+                    self.fast_time_scale_log = nn.Parameter(torch.tensor(math.log(0.35)))
+                    self.slow_time_scale_log = nn.Parameter(torch.tensor(math.log(3.0)))
+                    self.sequence_window_gate = nn.Linear(dim_in * 3, dim_in)
+                    self.sequence_window_alpha = nn.Parameter(
+                        torch.full((1,), math.log(0.10 / 0.90))
+                    )
+                if self.use_sequence_bridge_bank:
+                    self.bridge_partner_proj = MLP(dim_in * 2 + 2, dim_in,
+                                                   num_layers=self.head_layers,
+                                                   bias=True)
+                    self.bridge_bank_proj = MLP(dim_in * 3, dim_in,
+                                                num_layers=self.head_layers,
+                                                bias=True)
+                    self.bridge_bank_gate = nn.Linear(dim_in * 3, dim_in)
+                    self.bridge_bank_update = MLP(dim_in * 3, dim_in,
+                                                  num_layers=self.head_layers,
+                                                  bias=True)
+                    self.bridge_bank_alpha = nn.Parameter(
+                        torch.full((1,), math.log(0.10 / 0.90))
+                    )
+                    if self.use_sequence_bridge_motif_lite:
+                        self.bridge_leg_pair_proj = MLP(dim_in * 3 + 1, dim_in,
+                                                        num_layers=self.head_layers,
+                                                        bias=True)
+                        self.bridge_leg_bank_proj = MLP(dim_in * 3, dim_in,
+                                                        num_layers=self.head_layers,
+                                                        bias=True)
+                        self.bridge_leg_bank_gate = nn.Linear(dim_in * 3, dim_in)
+                        self.bridge_leg_bank_update = MLP(dim_in * 3, dim_in,
+                                                          num_layers=self.head_layers,
+                                                          bias=True)
+                        self.bridge_leg_bank_alpha = nn.Parameter(
+                            torch.full((1,), math.log(0.08 / 0.92))
+                        )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
                                      bias=True)
-        # requires parameter
-        # self.decode_module = lambda v1, v2: \
-        #     self.layer_post_mp(torch.cat((v1, v2), dim=-1))
 
     def _edge_mask(self, batch):
         task = cfg.dataset.task_entity
@@ -109,15 +183,16 @@ class HeteroGNNEdgeHead(nn.Module):
                           batch[task].edge_attr), dim=-1), edge_index
 
     def _build_recent_sequence_bank(self, pair_repr, pair_nodes, pair_timestamps,
-                                    num_nodes, latest_timestamps):
+                                    num_nodes, latest_timestamps, time_scale=None):
         seq_bank = pair_repr.new_zeros((num_nodes, self.sequence_len, pair_repr.size(-1)))
         remaining_scores = pair_timestamps.clone()
         score_floor = torch.finfo(remaining_scores.dtype).min
-        time_scale = self.sequence_time_scale.abs().clamp(min=1.0)
+        if time_scale is None:
+            time_scale = self.sequence_time_scale.abs().clamp(min=1.0)
         remaining_mask = torch.ones_like(pair_timestamps, dtype=torch.bool)
 
         for slot in range(self.sequence_len):
-            slot_scores, slot_indices = scatter_max(
+            _, slot_indices = scatter_max(
                 remaining_scores, pair_nodes, dim=0, dim_size=num_nodes
             )
             valid_nodes = scatter(
@@ -139,6 +214,176 @@ class HeteroGNNEdgeHead(nn.Module):
 
         return seq_bank
 
+    def _build_recent_pair_sequence_bank(self, edge_repr, pair_inv, edge_timestamps,
+                                         num_pairs, latest_timestamps, time_scale=None):
+        seq_bank = edge_repr.new_zeros((num_pairs, self.pair_sequence_len, edge_repr.size(-1)))
+        remaining_scores = edge_timestamps.clone()
+        score_floor = torch.finfo(remaining_scores.dtype).min
+        if time_scale is None:
+            time_scale = self.sequence_time_scale.abs().clamp(min=1.0)
+        remaining_mask = torch.ones_like(edge_timestamps, dtype=torch.bool)
+
+        for slot in range(self.pair_sequence_len):
+            _, slot_indices = scatter_max(
+                remaining_scores, pair_inv, dim=0, dim_size=num_pairs
+            )
+            valid_pairs = scatter(
+                remaining_mask.float(), pair_inv, dim=0, dim_size=num_pairs, reduce='sum'
+            ) > 0
+            if not valid_pairs.any():
+                break
+            chosen_indices = slot_indices[valid_pairs]
+            chosen_times = edge_timestamps[chosen_indices]
+            chosen_repr = edge_repr[chosen_indices]
+            recency = torch.exp(
+                -(
+                    latest_timestamps[valid_pairs] - chosen_times
+                ).clamp(min=0) / time_scale
+            ).unsqueeze(-1)
+            seq_bank[valid_pairs, slot] = chosen_repr * recency
+            remaining_scores[chosen_indices] = score_floor
+            remaining_mask[chosen_indices] = False
+
+        return seq_bank
+
+    def _build_recent_partner_bank(self, pair_nodes, partner_nodes, pair_timestamps,
+                                   num_nodes):
+        partner_bank = pair_nodes.new_full((num_nodes, self.sequence_len), -1)
+        remaining_scores = pair_timestamps.clone()
+        score_floor = torch.finfo(remaining_scores.dtype).min
+        remaining_mask = torch.ones_like(pair_timestamps, dtype=torch.bool)
+
+        for slot in range(self.sequence_len):
+            _, slot_indices = scatter_max(
+                remaining_scores, pair_nodes, dim=0, dim_size=num_nodes
+            )
+            valid_nodes = scatter(
+                remaining_mask.float(), pair_nodes, dim=0, dim_size=num_nodes, reduce='sum'
+            ) > 0
+            if not valid_nodes.any():
+                break
+            chosen_indices = slot_indices[valid_nodes]
+            partner_bank[valid_nodes, slot] = partner_nodes[chosen_indices]
+            remaining_scores[chosen_indices] = score_floor
+            remaining_mask[chosen_indices] = False
+
+        return partner_bank
+
+    def _build_recent_timestamp_bank(self, pair_nodes, pair_timestamps, num_nodes):
+        time_bank = pair_timestamps.new_zeros((num_nodes, self.sequence_len))
+        remaining_scores = pair_timestamps.clone()
+        score_floor = torch.finfo(remaining_scores.dtype).min
+        remaining_mask = torch.ones_like(pair_timestamps, dtype=torch.bool)
+
+        for slot in range(self.sequence_len):
+            _, slot_indices = scatter_max(
+                remaining_scores, pair_nodes, dim=0, dim_size=num_nodes
+            )
+            valid_nodes = scatter(
+                remaining_mask.float(), pair_nodes, dim=0, dim_size=num_nodes, reduce='sum'
+            ) > 0
+            if not valid_nodes.any():
+                break
+            chosen_indices = slot_indices[valid_nodes]
+            time_bank[valid_nodes, slot] = pair_timestamps[chosen_indices]
+            remaining_scores[chosen_indices] = score_floor
+            remaining_mask[chosen_indices] = False
+
+        return time_bank
+
+    def _recent_overlap_partner_repr(self, bank_a, bank_b, node_x):
+        valid_a = bank_a >= 0
+        valid_b = bank_b >= 0
+        eq = (
+            bank_a.unsqueeze(2) == bank_b.unsqueeze(1)
+        ) & valid_a.unsqueeze(2) & valid_b.unsqueeze(1)
+        match_any = eq.any(dim=2)
+        overlap_count = (match_any.float() * valid_a.float()).sum(dim=1)
+        slot_index = torch.arange(
+            bank_a.size(1), device=bank_a.device, dtype=torch.float32
+        )
+        slot_weight = 1.0 / (1.0 + slot_index)
+        weighted_overlap = (
+            match_any.float() * slot_weight.unsqueeze(0)
+        ).sum(dim=1)
+        gather_ids = bank_a.clamp(min=0)
+        matched_emb = node_x[gather_ids] * match_any.unsqueeze(-1).float()
+        mean_emb = matched_emb.sum(dim=1) / overlap_count.unsqueeze(-1).clamp(min=1.0)
+        max_emb = matched_emb.masked_fill(~match_any.unsqueeze(-1), -1e9).max(dim=1).values
+        max_emb = torch.where(
+            overlap_count.unsqueeze(-1) > 0,
+            max_emb,
+            torch.zeros_like(max_emb),
+        )
+        return self.bridge_partner_proj(torch.cat(
+            (
+                mean_emb,
+                max_emb,
+                overlap_count.unsqueeze(-1),
+                weighted_overlap.unsqueeze(-1),
+            ),
+            dim=-1,
+        ))
+
+    def _recent_overlap_leg_repr(self, bank_a, bank_b, seq_a, seq_b, time_a, time_b):
+        batch_size = bank_a.size(0)
+        dim = seq_a.size(-1)
+        device = seq_a.device
+        acc_sum = seq_a.new_zeros((batch_size, dim))
+        acc_weight = seq_a.new_zeros((batch_size, 1))
+        max_token = seq_a.new_full((batch_size, dim), -1e9)
+        has_match = torch.zeros(batch_size, dtype=torch.bool, device=device)
+        time_scale = self.sequence_time_scale.abs().clamp(min=1.0)
+
+        for i in range(self.sequence_len):
+            a_ids = bank_a[:, i]
+            a_valid = a_ids >= 0
+            a_seq = seq_a[:, i]
+            a_time = time_a[:, i]
+            for j in range(self.sequence_len):
+                b_ids = bank_b[:, j]
+                match = a_valid & (b_ids >= 0) & (a_ids == b_ids)
+                if not match.any():
+                    continue
+                b_seq = seq_b[:, j]
+                b_time = time_b[:, j]
+                align = torch.exp(
+                    -(a_time - b_time).abs() / time_scale
+                ).unsqueeze(-1)
+                token = self.bridge_leg_pair_proj(torch.cat(
+                    (
+                        a_seq,
+                        b_seq,
+                        a_seq * b_seq,
+                        align,
+                    ),
+                    dim=-1,
+                ))
+                masked_align = align * match.unsqueeze(-1).float()
+                acc_sum = acc_sum + token * masked_align
+                acc_weight = acc_weight + masked_align
+                max_token = torch.where(
+                    match.unsqueeze(-1),
+                    torch.maximum(max_token, token),
+                    max_token,
+                )
+                has_match = has_match | match
+
+        mean_token = acc_sum / acc_weight.clamp(min=1e-6)
+        max_token = torch.where(
+            has_match.unsqueeze(-1),
+            max_token,
+            torch.zeros_like(max_token),
+        )
+        return self.bridge_leg_bank_proj(torch.cat(
+            (
+                mean_token,
+                max_token,
+                mean_token * max_token,
+            ),
+            dim=-1,
+        ))
+
     def _pair_chain_head(self, batch):
         task = cfg.dataset.task_entity
         mask = self._edge_mask(batch)
@@ -154,9 +399,70 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_mean = scatter(edge_repr, pair_inv, dim=0, dim_size=num_pairs, reduce='mean')
         pair_max, _ = scatter_max(edge_repr, pair_inv, dim=0, dim_size=num_pairs)
         pair_max = torch.where(torch.isfinite(pair_max), pair_max, torch.zeros_like(pair_max))
-        pair_repr = self.pair_proj(torch.cat((pair_mean, pair_max, pair_max - pair_mean), dim=-1))
+        pair_seq_state = None
+        fast_pair_seq_state = None
+        slow_pair_seq_state = None
+        if self.use_pair_internal_sequence and hasattr(batch[task], 'timestamps'):
+            edge_timestamps = batch[task].timestamps.to(edge_repr.device).float().view(-1)
+            pair_latest, _ = scatter_max(
+                edge_timestamps, pair_inv, dim=0, dim_size=num_pairs
+            )
+            pair_latest = torch.where(
+                torch.isfinite(pair_latest),
+                pair_latest,
+                torch.zeros_like(pair_latest),
+            )
+            if self.use_sequence_bridge_bank_window:
+                base_time_scale = self.sequence_time_scale.abs().clamp(min=1.0)
+                fast_time_scale = base_time_scale * self.fast_time_scale_log.exp().clamp(min=0.1, max=10.0)
+                slow_time_scale = base_time_scale * self.slow_time_scale_log.exp().clamp(min=0.25, max=20.0)
+                fast_pair_sequence_bank = self._build_recent_pair_sequence_bank(
+                    edge_repr, pair_inv, edge_timestamps, num_pairs, pair_latest, fast_time_scale
+                )
+                slow_pair_sequence_bank = self._build_recent_pair_sequence_bank(
+                    edge_repr, pair_inv, edge_timestamps, num_pairs, pair_latest, slow_time_scale
+                )
+                fast_pair_seq_state = self.pair_edge_sequence_encoder(
+                    fast_pair_sequence_bank
+                )[1].squeeze(0)
+                slow_pair_seq_state = self.pair_edge_sequence_encoder(
+                    slow_pair_sequence_bank
+                )[1].squeeze(0)
+                pair_window_input = torch.cat(
+                    (
+                        fast_pair_seq_state,
+                        slow_pair_seq_state,
+                        fast_pair_seq_state * slow_pair_seq_state,
+                    ),
+                    dim=-1,
+                )
+                pair_window_gate = torch.sigmoid(self.pair_window_gate(pair_window_input))
+                pair_seq_state = fast_pair_seq_state + (
+                    torch.sigmoid(self.pair_window_alpha) *
+                    pair_window_gate *
+                    (slow_pair_seq_state - fast_pair_seq_state)
+                )
+            else:
+                pair_sequence_bank = self._build_recent_pair_sequence_bank(
+                    edge_repr, pair_inv, edge_timestamps, num_pairs, pair_latest
+                )
+                pair_seq_state = self.pair_edge_sequence_encoder(
+                    pair_sequence_bank
+                )[1].squeeze(0)
+        if self.use_pair_internal_sequence:
+            if pair_seq_state is None:
+                pair_seq_state = torch.zeros_like(pair_mean)
+            pair_repr = self.pair_proj(torch.cat(
+                (pair_mean, pair_max, pair_max - pair_mean, pair_seq_state), dim=-1
+            ))
+        else:
+            pair_repr = self.pair_proj(torch.cat(
+                (pair_mean, pair_max, pair_max - pair_mean), dim=-1
+            ))
         pair_context_repr = None
         pair_sequence_repr = None
+        fast_sequence_repr = None
+        slow_sequence_repr = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -229,26 +535,164 @@ class HeteroGNNEdgeHead(nn.Module):
                     incoming_latest,
                     torch.zeros_like(incoming_latest),
                 )
-                outgoing_sequence_bank = self._build_recent_sequence_bank(
-                    pair_repr, pair_src, pair_timestamps, num_nodes, outgoing_latest
-                )
-                incoming_sequence_bank = self._build_recent_sequence_bank(
-                    pair_repr, pair_dst, pair_timestamps, num_nodes, incoming_latest
-                )
-                outgoing_state = self.outgoing_sequence_encoder(
-                    outgoing_sequence_bank[pair_src]
-                )[1].squeeze(0)
-                incoming_state = self.incoming_sequence_encoder(
-                    incoming_sequence_bank[pair_dst]
-                )[1].squeeze(0)
-                pair_sequence_repr = self.sequence_proj(torch.cat(
-                    (
-                        outgoing_state,
-                        incoming_state,
-                        outgoing_state * incoming_state,
-                    ),
-                    dim=-1,
-                ))
+                if self.use_sequence_bridge_bank_window:
+                    base_time_scale = self.sequence_time_scale.abs().clamp(min=1.0)
+                    fast_time_scale = base_time_scale * self.fast_time_scale_log.exp().clamp(min=0.1, max=10.0)
+                    slow_time_scale = base_time_scale * self.slow_time_scale_log.exp().clamp(min=0.25, max=20.0)
+                    outgoing_sequence_bank = self._build_recent_sequence_bank(
+                        pair_repr, pair_src, pair_timestamps, num_nodes, outgoing_latest, fast_time_scale
+                    )
+                    incoming_sequence_bank = self._build_recent_sequence_bank(
+                        pair_repr, pair_dst, pair_timestamps, num_nodes, incoming_latest, fast_time_scale
+                    )
+                    slow_outgoing_sequence_bank = self._build_recent_sequence_bank(
+                        pair_repr, pair_src, pair_timestamps, num_nodes, outgoing_latest, slow_time_scale
+                    )
+                    slow_incoming_sequence_bank = self._build_recent_sequence_bank(
+                        pair_repr, pair_dst, pair_timestamps, num_nodes, incoming_latest, slow_time_scale
+                    )
+                    outgoing_state = self.outgoing_sequence_encoder(
+                        outgoing_sequence_bank[pair_src]
+                    )[1].squeeze(0)
+                    incoming_state = self.incoming_sequence_encoder(
+                        incoming_sequence_bank[pair_dst]
+                    )[1].squeeze(0)
+                    slow_outgoing_state = self.outgoing_sequence_encoder(
+                        slow_outgoing_sequence_bank[pair_src]
+                    )[1].squeeze(0)
+                    slow_incoming_state = self.incoming_sequence_encoder(
+                        slow_incoming_sequence_bank[pair_dst]
+                    )[1].squeeze(0)
+                    fast_sequence_repr = self.sequence_proj(torch.cat(
+                        (
+                            outgoing_state,
+                            incoming_state,
+                            outgoing_state * incoming_state,
+                        ),
+                        dim=-1,
+                    ))
+                    slow_sequence_repr = self.sequence_proj(torch.cat(
+                        (
+                            slow_outgoing_state,
+                            slow_incoming_state,
+                            slow_outgoing_state * slow_incoming_state,
+                        ),
+                        dim=-1,
+                    ))
+                    pair_sequence_repr = fast_sequence_repr
+                else:
+                    outgoing_sequence_bank = self._build_recent_sequence_bank(
+                        pair_repr, pair_src, pair_timestamps, num_nodes, outgoing_latest
+                    )
+                    incoming_sequence_bank = self._build_recent_sequence_bank(
+                        pair_repr, pair_dst, pair_timestamps, num_nodes, incoming_latest
+                    )
+                    outgoing_state = self.outgoing_sequence_encoder(
+                        outgoing_sequence_bank[pair_src]
+                    )[1].squeeze(0)
+                    incoming_state = self.incoming_sequence_encoder(
+                        incoming_sequence_bank[pair_dst]
+                    )[1].squeeze(0)
+                    pair_sequence_repr = self.sequence_proj(torch.cat(
+                        (
+                            outgoing_state,
+                            incoming_state,
+                            outgoing_state * incoming_state,
+                        ),
+                        dim=-1,
+                    ))
+                if self.use_sequence_bridge_bank:
+                    outgoing_partner_bank = self._build_recent_partner_bank(
+                        pair_src, pair_dst, pair_timestamps, num_nodes
+                    )
+                    incoming_partner_bank = self._build_recent_partner_bank(
+                        pair_dst, pair_src, pair_timestamps, num_nodes
+                    )
+                    node_x = batch[task[0]].x
+                    forward_bridge = self._recent_overlap_partner_repr(
+                        outgoing_partner_bank[pair_src],
+                        incoming_partner_bank[pair_dst],
+                        node_x,
+                    )
+                    cycle_bridge = self._recent_overlap_partner_repr(
+                        incoming_partner_bank[pair_src],
+                        outgoing_partner_bank[pair_dst],
+                        node_x,
+                    )
+                    bridge_context = self.bridge_bank_proj(torch.cat(
+                        (
+                            forward_bridge,
+                            cycle_bridge,
+                            forward_bridge * cycle_bridge,
+                        ),
+                        dim=-1,
+                    ))
+                    if self.use_sequence_bridge_bank_window:
+                        window_input = torch.cat(
+                            (
+                                fast_sequence_repr,
+                                slow_sequence_repr,
+                                bridge_context,
+                            ),
+                            dim=-1,
+                        )
+                        window_gate = torch.sigmoid(self.sequence_window_gate(window_input))
+                        pair_sequence_repr = fast_sequence_repr + (
+                            torch.sigmoid(self.sequence_window_alpha) *
+                            window_gate *
+                            (slow_sequence_repr - fast_sequence_repr)
+                        )
+                    bridge_input = torch.cat(
+                        (
+                            bridge_context,
+                            pair_sequence_repr,
+                            bridge_context * pair_sequence_repr,
+                        ),
+                        dim=-1,
+                    )
+                    bridge_gate = torch.sigmoid(self.bridge_bank_gate(bridge_input))
+                    pair_sequence_repr = pair_sequence_repr + (
+                        torch.sigmoid(self.bridge_bank_alpha) *
+                        bridge_gate *
+                        self.bridge_bank_update(bridge_input)
+                    )
+                    if self.use_sequence_bridge_motif_lite:
+                        outgoing_time_bank = self._build_recent_timestamp_bank(
+                            pair_src, pair_timestamps, num_nodes
+                        )
+                        incoming_time_bank = self._build_recent_timestamp_bank(
+                            pair_dst, pair_timestamps, num_nodes
+                        )
+                        forward_leg = self._recent_overlap_leg_repr(
+                            outgoing_partner_bank[pair_src],
+                            incoming_partner_bank[pair_dst],
+                            outgoing_sequence_bank[pair_src],
+                            incoming_sequence_bank[pair_dst],
+                            outgoing_time_bank[pair_src],
+                            incoming_time_bank[pair_dst],
+                        )
+                        cycle_leg = self._recent_overlap_leg_repr(
+                            incoming_partner_bank[pair_src],
+                            outgoing_partner_bank[pair_dst],
+                            incoming_sequence_bank[pair_src],
+                            outgoing_sequence_bank[pair_dst],
+                            incoming_time_bank[pair_src],
+                            outgoing_time_bank[pair_dst],
+                        )
+                        leg_input = torch.cat(
+                            (
+                                forward_leg,
+                                cycle_leg,
+                                forward_leg * cycle_leg,
+                            ),
+                            dim=-1,
+                        )
+                        leg_gate = torch.sigmoid(self.bridge_leg_bank_gate(leg_input))
+                        pair_sequence_repr = pair_sequence_repr + (
+                            torch.sigmoid(self.bridge_leg_bank_alpha) *
+                            leg_gate *
+                            self.bridge_leg_bank_update(leg_input)
+                        )
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -270,40 +714,20 @@ class HeteroGNNEdgeHead(nn.Module):
 
     def _apply_index(self, batch):
         task = cfg.dataset.task_entity
-        # There could be multi-edge between node pair, using edge id is the safest way
-        # mask = torch.isin(getattr(self, f'{batch.split}_edge_inds')[batch[task].e_id], 
-        #                   getattr(self, f'{batch.split}_inds')[batch[task].input_id])
         mask = self._edge_mask(batch)
 
         task = cfg.dataset.task_entity
         edge_index = batch[task].edge_index
 
-        # A concatentation of source/target node embedding + edge attribute
-        return torch.cat((batch[task[0]].x[edge_index[0, mask]], 
-                          batch[task[2]].x[edge_index[1, mask]], 
+        return torch.cat((batch[task[0]].x[edge_index[0, mask]],
+                          batch[task[2]].x[edge_index[1, mask]],
                           batch[task].edge_attr[mask]), dim=-1), \
                batch[task].y[mask]
-    
 
     def forward(self, batch):
-        # TODO: add homogeneous graph support
-        # batch.x_dict[cfg.dataset.task_entity] = self.layer_post_mp(batch.x_dict[cfg.dataset.task_entity])
-        # pred, label = self._apply_index(batch)
-    
-        # if cfg.model.edge_decoding != 'concat':
-        #     batch = self.layer_post_mp(batch)
         if self.use_pair_chain_head:
             return self._pair_chain_head(batch)
         pred, label = self._apply_index(batch)
-        # nodes_first = pred[0]
-        # nodes_second = pred[1]
-        # pred = self.decode_module(nodes_first, nodes_second)
         pred = self.layer_post_mp(pred)
 
         return pred, label
-    
-        # if not self.training:  # Compute extra stats when in evaluation mode.
-        #     stats = self.compute_mrr(batch)
-        #     return pred, label, stats
-        # else:
-        #     return pred, label
