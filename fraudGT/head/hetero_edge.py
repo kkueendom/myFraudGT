@@ -457,16 +457,6 @@ class HeteroGNNEdgeHead(nn.Module):
                         pair_dst, pair_src, pair_timestamps, num_nodes
                     )
                     node_x = batch[task[0]].x
-                    forward_bridge = self._recent_overlap_partner_repr(
-                        outgoing_partner_bank[pair_src],
-                        incoming_partner_bank[pair_dst],
-                        node_x,
-                    )
-                    cycle_bridge = self._recent_overlap_partner_repr(
-                        incoming_partner_bank[pair_src],
-                        outgoing_partner_bank[pair_dst],
-                        node_x,
-                    )
                     if self.use_sequence_bridge_seqmotif:
                         forward_tokens = self._recent_overlap_partner_tokens(
                             outgoing_partner_bank[pair_src],
@@ -494,6 +484,16 @@ class HeteroGNNEdgeHead(nn.Module):
                             dim=-1,
                         ))
                     else:
+                        forward_bridge = self._recent_overlap_partner_repr(
+                            outgoing_partner_bank[pair_src],
+                            incoming_partner_bank[pair_dst],
+                            node_x,
+                        )
+                        cycle_bridge = self._recent_overlap_partner_repr(
+                            incoming_partner_bank[pair_src],
+                            outgoing_partner_bank[pair_dst],
+                            node_x,
+                        )
                         bridge_context = self.bridge_bank_proj(torch.cat(
                             (
                                 forward_bridge,
