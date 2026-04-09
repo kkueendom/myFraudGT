@@ -25,8 +25,6 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
-            'pair_chain_contextseqpairseqbridgebankwindowscalebridge',
-            'pair_chain_contextseqpairseqbridgebankwindowmulti',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
@@ -34,48 +32,30 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
-            'pair_chain_contextseqpairseqbridgebankwindowscalebridge',
-            'pair_chain_contextseqpairseqbridgebankwindowmulti',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
             'pair_chain_contextseqresid',
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
-            'pair_chain_contextseqpairseqbridgebankwindowscalebridge',
-            'pair_chain_contextseqpairseqbridgebankwindowmulti',
         }
         self.use_pair_internal_sequence = (
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebank',
                 'pair_chain_contextseqpairseqbridgebankmotiflite',
                 'pair_chain_contextseqpairseqbridgebankwindow',
-                'pair_chain_contextseqpairseqbridgebankwindowscalebridge',
-                'pair_chain_contextseqpairseqbridgebankwindowmulti',
             }
         )
         self.use_sequence_bridge_bank = self.edge_decoding in {
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
-            'pair_chain_contextseqpairseqbridgebankwindowscalebridge',
-            'pair_chain_contextseqpairseqbridgebankwindowmulti',
         }
         self.use_sequence_bridge_motif_lite = (
             self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankmotiflite'
         )
-        self.use_sequence_bridge_bank_window_scale_bridge = (
-            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindowscalebridge'
-        )
-        self.use_sequence_bridge_bank_window_multi = (
-            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindowmulti'
-        )
         self.use_sequence_bridge_bank_window = (
-            self.edge_decoding in {
-                'pair_chain_contextseqpairseqbridgebankwindow',
-                'pair_chain_contextseqpairseqbridgebankwindowscalebridge',
-                'pair_chain_contextseqpairseqbridgebankwindowmulti',
-            }
+            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindow'
         )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         self.train_inds = mask_to_index(dataset['train'][cfg.dataset.task_entity].split_mask).to(cfg.device)
@@ -153,23 +133,10 @@ class HeteroGNNEdgeHead(nn.Module):
                 if self.use_sequence_bridge_bank_window:
                     self.fast_time_scale_log = nn.Parameter(torch.tensor(math.log(0.35)))
                     self.slow_time_scale_log = nn.Parameter(torch.tensor(math.log(3.0)))
-                    if self.use_sequence_bridge_bank_window_multi:
-                        self.sequence_multi_scale_logs = nn.Parameter(
-                            torch.tensor([
-                                math.log(0.15),
-                                math.log(0.45),
-                                math.log(1.5),
-                                math.log(6.0),
-                            ])
-                        )
-                        self.sequence_window_score = MLP(dim_in * 3, 1,
-                                                         num_layers=self.head_layers,
-                                                         bias=True)
-                    else:
-                        self.sequence_window_gate = nn.Linear(dim_in * 3, dim_in)
-                        self.sequence_window_alpha = nn.Parameter(
-                            torch.full((1,), math.log(0.10 / 0.90))
-                        )
+                    self.sequence_window_gate = nn.Linear(dim_in * 3, dim_in)
+                    self.sequence_window_alpha = nn.Parameter(
+                        torch.full((1,), math.log(0.10 / 0.90))
+                    )
                 if self.use_sequence_bridge_bank:
                     self.bridge_partner_proj = MLP(dim_in * 2 + 2, dim_in,
                                                    num_layers=self.head_layers,
@@ -184,10 +151,7 @@ class HeteroGNNEdgeHead(nn.Module):
                     self.bridge_bank_alpha = nn.Parameter(
                         torch.full((1,), math.log(0.10 / 0.90))
                     )
-                    if (
-                        self.use_sequence_bridge_motif_lite or
-                        self.use_sequence_bridge_bank_window_scale_bridge
-                    ):
+                    if self.use_sequence_bridge_motif_lite:
                         self.bridge_leg_pair_proj = MLP(dim_in * 3 + 1, dim_in,
                                                         num_layers=self.head_layers,
                                                         bias=True)
@@ -361,8 +325,7 @@ class HeteroGNNEdgeHead(nn.Module):
             dim=-1,
         ))
 
-    def _recent_overlap_leg_repr(self, bank_a, bank_b, seq_a, seq_b, time_a, time_b,
-                                 time_scale=None):
+    def _recent_overlap_leg_repr(self, bank_a, bank_b, seq_a, seq_b, time_a, time_b):
         batch_size = bank_a.size(0)
         dim = seq_a.size(-1)
         device = seq_a.device
@@ -370,8 +333,7 @@ class HeteroGNNEdgeHead(nn.Module):
         acc_weight = seq_a.new_zeros((batch_size, 1))
         max_token = seq_a.new_full((batch_size, dim), -1e9)
         has_match = torch.zeros(batch_size, dtype=torch.bool, device=device)
-        if time_scale is None:
-            time_scale = self.sequence_time_scale.abs().clamp(min=1.0)
+        time_scale = self.sequence_time_scale.abs().clamp(min=1.0)
 
         for i in range(self.sequence_len):
             a_ids = bank_a[:, i]
@@ -501,7 +463,6 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_sequence_repr = None
         fast_sequence_repr = None
         slow_sequence_repr = None
-        multiscale_sequence_reprs = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -578,78 +539,47 @@ class HeteroGNNEdgeHead(nn.Module):
                     base_time_scale = self.sequence_time_scale.abs().clamp(min=1.0)
                     fast_time_scale = base_time_scale * self.fast_time_scale_log.exp().clamp(min=0.1, max=10.0)
                     slow_time_scale = base_time_scale * self.slow_time_scale_log.exp().clamp(min=0.25, max=20.0)
-                    if self.use_sequence_bridge_bank_window_multi:
-                        multiscale_sequence_repr_list = []
-                        for scale_log in self.sequence_multi_scale_logs:
-                            scale = base_time_scale * scale_log.exp().clamp(min=0.05, max=24.0)
-                            scale_outgoing_sequence_bank = self._build_recent_sequence_bank(
-                                pair_repr, pair_src, pair_timestamps, num_nodes, outgoing_latest, scale
-                            )
-                            scale_incoming_sequence_bank = self._build_recent_sequence_bank(
-                                pair_repr, pair_dst, pair_timestamps, num_nodes, incoming_latest, scale
-                            )
-                            scale_outgoing_state = self.outgoing_sequence_encoder(
-                                scale_outgoing_sequence_bank[pair_src]
-                            )[1].squeeze(0)
-                            scale_incoming_state = self.incoming_sequence_encoder(
-                                scale_incoming_sequence_bank[pair_dst]
-                            )[1].squeeze(0)
-                            multiscale_sequence_repr_list.append(
-                                self.sequence_proj(torch.cat(
-                                    (
-                                        scale_outgoing_state,
-                                        scale_incoming_state,
-                                        scale_outgoing_state * scale_incoming_state,
-                                    ),
-                                    dim=-1,
-                                ))
-                            )
-                        multiscale_sequence_reprs = torch.stack(
-                            multiscale_sequence_repr_list, dim=1
-                        )
-                        pair_sequence_repr = multiscale_sequence_reprs[:, 1]
-                    else:
-                        outgoing_sequence_bank = self._build_recent_sequence_bank(
-                            pair_repr, pair_src, pair_timestamps, num_nodes, outgoing_latest, fast_time_scale
-                        )
-                        incoming_sequence_bank = self._build_recent_sequence_bank(
-                            pair_repr, pair_dst, pair_timestamps, num_nodes, incoming_latest, fast_time_scale
-                        )
-                        slow_outgoing_sequence_bank = self._build_recent_sequence_bank(
-                            pair_repr, pair_src, pair_timestamps, num_nodes, outgoing_latest, slow_time_scale
-                        )
-                        slow_incoming_sequence_bank = self._build_recent_sequence_bank(
-                            pair_repr, pair_dst, pair_timestamps, num_nodes, incoming_latest, slow_time_scale
-                        )
-                        outgoing_state = self.outgoing_sequence_encoder(
-                            outgoing_sequence_bank[pair_src]
-                        )[1].squeeze(0)
-                        incoming_state = self.incoming_sequence_encoder(
-                            incoming_sequence_bank[pair_dst]
-                        )[1].squeeze(0)
-                        slow_outgoing_state = self.outgoing_sequence_encoder(
-                            slow_outgoing_sequence_bank[pair_src]
-                        )[1].squeeze(0)
-                        slow_incoming_state = self.incoming_sequence_encoder(
-                            slow_incoming_sequence_bank[pair_dst]
-                        )[1].squeeze(0)
-                        fast_sequence_repr = self.sequence_proj(torch.cat(
-                            (
-                                outgoing_state,
-                                incoming_state,
-                                outgoing_state * incoming_state,
-                            ),
-                            dim=-1,
-                        ))
-                        slow_sequence_repr = self.sequence_proj(torch.cat(
-                            (
-                                slow_outgoing_state,
-                                slow_incoming_state,
-                                slow_outgoing_state * slow_incoming_state,
-                            ),
-                            dim=-1,
-                        ))
-                        pair_sequence_repr = fast_sequence_repr
+                    outgoing_sequence_bank = self._build_recent_sequence_bank(
+                        pair_repr, pair_src, pair_timestamps, num_nodes, outgoing_latest, fast_time_scale
+                    )
+                    incoming_sequence_bank = self._build_recent_sequence_bank(
+                        pair_repr, pair_dst, pair_timestamps, num_nodes, incoming_latest, fast_time_scale
+                    )
+                    slow_outgoing_sequence_bank = self._build_recent_sequence_bank(
+                        pair_repr, pair_src, pair_timestamps, num_nodes, outgoing_latest, slow_time_scale
+                    )
+                    slow_incoming_sequence_bank = self._build_recent_sequence_bank(
+                        pair_repr, pair_dst, pair_timestamps, num_nodes, incoming_latest, slow_time_scale
+                    )
+                    outgoing_state = self.outgoing_sequence_encoder(
+                        outgoing_sequence_bank[pair_src]
+                    )[1].squeeze(0)
+                    incoming_state = self.incoming_sequence_encoder(
+                        incoming_sequence_bank[pair_dst]
+                    )[1].squeeze(0)
+                    slow_outgoing_state = self.outgoing_sequence_encoder(
+                        slow_outgoing_sequence_bank[pair_src]
+                    )[1].squeeze(0)
+                    slow_incoming_state = self.incoming_sequence_encoder(
+                        slow_incoming_sequence_bank[pair_dst]
+                    )[1].squeeze(0)
+                    fast_sequence_repr = self.sequence_proj(torch.cat(
+                        (
+                            outgoing_state,
+                            incoming_state,
+                            outgoing_state * incoming_state,
+                        ),
+                        dim=-1,
+                    ))
+                    slow_sequence_repr = self.sequence_proj(torch.cat(
+                        (
+                            slow_outgoing_state,
+                            slow_incoming_state,
+                            slow_outgoing_state * slow_incoming_state,
+                        ),
+                        dim=-1,
+                    ))
+                    pair_sequence_repr = fast_sequence_repr
                 else:
                     outgoing_sequence_bank = self._build_recent_sequence_bank(
                         pair_repr, pair_src, pair_timestamps, num_nodes, outgoing_latest
@@ -698,112 +628,20 @@ class HeteroGNNEdgeHead(nn.Module):
                         dim=-1,
                     ))
                     if self.use_sequence_bridge_bank_window:
-                        if self.use_sequence_bridge_bank_window_multi:
-                            num_scales = multiscale_sequence_reprs.size(1)
-                            bridge_expand = bridge_context.unsqueeze(1).expand(-1, num_scales, -1)
-                            score_input = torch.cat(
-                                (
-                                    multiscale_sequence_reprs,
-                                    bridge_expand,
-                                    multiscale_sequence_reprs * bridge_expand,
-                                ),
-                                dim=-1,
-                            ).reshape(-1, bridge_context.size(-1) * 3)
-                            scale_scores = self.sequence_window_score(score_input).view(-1, num_scales)
-                            scale_weights = torch.softmax(scale_scores, dim=1)
-                            pair_sequence_repr = (
-                                multiscale_sequence_reprs * scale_weights.unsqueeze(-1)
-                            ).sum(dim=1)
-                        else:
-                            if self.use_sequence_bridge_bank_window_scale_bridge:
-                                outgoing_time_bank = self._build_recent_timestamp_bank(
-                                    pair_src, pair_timestamps, num_nodes
-                                )
-                                incoming_time_bank = self._build_recent_timestamp_bank(
-                                    pair_dst, pair_timestamps, num_nodes
-                                )
-                                fast_forward_leg = self._recent_overlap_leg_repr(
-                                    outgoing_partner_bank[pair_src],
-                                    incoming_partner_bank[pair_dst],
-                                    outgoing_sequence_bank[pair_src],
-                                    incoming_sequence_bank[pair_dst],
-                                    outgoing_time_bank[pair_src],
-                                    incoming_time_bank[pair_dst],
-                                    time_scale=fast_time_scale,
-                                )
-                                fast_cycle_leg = self._recent_overlap_leg_repr(
-                                    incoming_partner_bank[pair_src],
-                                    outgoing_partner_bank[pair_dst],
-                                    incoming_sequence_bank[pair_src],
-                                    outgoing_sequence_bank[pair_dst],
-                                    incoming_time_bank[pair_src],
-                                    outgoing_time_bank[pair_dst],
-                                    time_scale=fast_time_scale,
-                                )
-                                fast_leg_input = torch.cat(
-                                    (
-                                        fast_forward_leg,
-                                        fast_cycle_leg,
-                                        fast_forward_leg * fast_cycle_leg,
-                                    ),
-                                    dim=-1,
-                                )
-                                fast_leg_gate = torch.sigmoid(
-                                    self.bridge_leg_bank_gate(fast_leg_input)
-                                )
-                                fast_sequence_repr = fast_sequence_repr + (
-                                    torch.sigmoid(self.bridge_leg_bank_alpha) *
-                                    fast_leg_gate *
-                                    self.bridge_leg_bank_update(fast_leg_input)
-                                )
-                                slow_forward_leg = self._recent_overlap_leg_repr(
-                                    outgoing_partner_bank[pair_src],
-                                    incoming_partner_bank[pair_dst],
-                                    slow_outgoing_sequence_bank[pair_src],
-                                    slow_incoming_sequence_bank[pair_dst],
-                                    outgoing_time_bank[pair_src],
-                                    incoming_time_bank[pair_dst],
-                                    time_scale=slow_time_scale,
-                                )
-                                slow_cycle_leg = self._recent_overlap_leg_repr(
-                                    incoming_partner_bank[pair_src],
-                                    outgoing_partner_bank[pair_dst],
-                                    slow_incoming_sequence_bank[pair_src],
-                                    slow_outgoing_sequence_bank[pair_dst],
-                                    incoming_time_bank[pair_src],
-                                    outgoing_time_bank[pair_dst],
-                                    time_scale=slow_time_scale,
-                                )
-                                slow_leg_input = torch.cat(
-                                    (
-                                        slow_forward_leg,
-                                        slow_cycle_leg,
-                                        slow_forward_leg * slow_cycle_leg,
-                                    ),
-                                    dim=-1,
-                                )
-                                slow_leg_gate = torch.sigmoid(
-                                    self.bridge_leg_bank_gate(slow_leg_input)
-                                )
-                                slow_sequence_repr = slow_sequence_repr + (
-                                    torch.sigmoid(self.bridge_leg_bank_alpha) *
-                                    slow_leg_gate *
-                                    self.bridge_leg_bank_update(slow_leg_input)
-                                )
-                            window_input = torch.cat(
-                                (
-                                    fast_sequence_repr,
-                                    slow_sequence_repr,
-                                    bridge_context,
-                                ),
-                                dim=-1,
-                            )
-                            window_gate = torch.sigmoid(self.sequence_window_gate(window_input))
-                            pair_sequence_repr = fast_sequence_repr + (
-                                torch.sigmoid(self.sequence_window_alpha) *
-                                window_gate *
-                                (slow_sequence_repr - fast_sequence_repr)
-                            )
+                        window_input = torch.cat(
+                            (
+                                fast_sequence_repr,
+                                slow_sequence_repr,
+                                bridge_context,
+                            ),
+                            dim=-1,
+                        )
+                        window_gate = torch.sigmoid(self.sequence_window_gate(window_input))
+                        pair_sequence_repr = fast_sequence_repr + (
+                            torch.sigmoid(self.sequence_window_alpha) *
+                            window_gate *
+                            (slow_sequence_repr - fast_sequence_repr)
+                        )
                     bridge_input = torch.cat(
                         (
                             bridge_context,
