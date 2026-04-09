@@ -25,6 +25,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankotherquery',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
@@ -32,30 +33,40 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankotherquery',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
             'pair_chain_contextseqresid',
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankotherquery',
         }
         self.use_pair_internal_sequence = (
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebank',
                 'pair_chain_contextseqpairseqbridgebankmotiflite',
                 'pair_chain_contextseqpairseqbridgebankwindow',
+                'pair_chain_contextseqpairseqbridgebankotherquery',
             }
         )
         self.use_sequence_bridge_bank = self.edge_decoding in {
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankotherquery',
         }
         self.use_sequence_bridge_motif_lite = (
             self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankmotiflite'
         )
         self.use_sequence_bridge_bank_window = (
-            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindow'
+            self.edge_decoding in {
+                'pair_chain_contextseqpairseqbridgebankwindow',
+                'pair_chain_contextseqpairseqbridgebankotherquery',
+            }
+        )
+        self.use_sequence_other_query = (
+            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankotherquery'
         )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         self.train_inds = mask_to_index(dataset['train'][cfg.dataset.task_entity].split_mask).to(cfg.device)
@@ -151,6 +162,20 @@ class HeteroGNNEdgeHead(nn.Module):
                     self.bridge_bank_alpha = nn.Parameter(
                         torch.full((1,), math.log(0.10 / 0.90))
                     )
+                    if self.use_sequence_other_query:
+                        self.other_query_proj = MLP(dim_in * 3, dim_in,
+                                                   num_layers=self.head_layers,
+                                                   bias=True)
+                        self.other_query_pair_proj = MLP(dim_in * 3, dim_in,
+                                                        num_layers=self.head_layers,
+                                                        bias=True)
+                        self.other_query_gate = nn.Linear(dim_in * 3, dim_in)
+                        self.other_query_update = MLP(dim_in * 3, dim_in,
+                                                      num_layers=self.head_layers,
+                                                      bias=True)
+                        self.other_query_alpha = nn.Parameter(
+                            torch.full((1,), math.log(0.08 / 0.92))
+                        )
                     if self.use_sequence_bridge_motif_lite:
                         self.bridge_leg_pair_proj = MLP(dim_in * 3 + 1, dim_in,
                                                         num_layers=self.head_layers,
@@ -380,6 +405,24 @@ class HeteroGNNEdgeHead(nn.Module):
                 mean_token,
                 max_token,
                 mean_token * max_token,
+            ),
+            dim=-1,
+        ))
+
+    def _recent_other_partner_repr(self, partner_bank, sequence_bank, exclude_partner, node_x):
+        valid = (partner_bank >= 0) & (partner_bank != exclude_partner.unsqueeze(-1))
+        count = valid.float().sum(dim=1, keepdim=True)
+        gather_ids = partner_bank.clamp(min=0)
+        partner_emb = node_x[gather_ids] * valid.unsqueeze(-1).float()
+        seq_mean = (sequence_bank * valid.unsqueeze(-1).float()).sum(dim=1) / count.clamp(min=1.0)
+        seq_max = sequence_bank.masked_fill(~valid.unsqueeze(-1), -1e9).max(dim=1).values
+        seq_max = torch.where(count > 0, seq_max, torch.zeros_like(seq_max))
+        partner_mean = partner_emb.sum(dim=1) / count.clamp(min=1.0)
+        return self.other_query_proj(torch.cat(
+            (
+                seq_mean,
+                seq_max,
+                partner_mean,
             ),
             dim=-1,
         ))
@@ -656,6 +699,41 @@ class HeteroGNNEdgeHead(nn.Module):
                         bridge_gate *
                         self.bridge_bank_update(bridge_input)
                     )
+                    if self.use_sequence_other_query:
+                        src_other = self._recent_other_partner_repr(
+                            outgoing_partner_bank[pair_src],
+                            outgoing_sequence_bank[pair_src],
+                            pair_dst,
+                            node_x,
+                        )
+                        dst_other = self._recent_other_partner_repr(
+                            incoming_partner_bank[pair_dst],
+                            incoming_sequence_bank[pair_dst],
+                            pair_src,
+                            node_x,
+                        )
+                        other_context = self.other_query_pair_proj(torch.cat(
+                            (
+                                src_other,
+                                dst_other,
+                                src_other * dst_other,
+                            ),
+                            dim=-1,
+                        ))
+                        other_input = torch.cat(
+                            (
+                                other_context,
+                                pair_sequence_repr,
+                                other_context * pair_sequence_repr,
+                            ),
+                            dim=-1,
+                        )
+                        other_gate = torch.sigmoid(self.other_query_gate(other_input))
+                        pair_sequence_repr = pair_sequence_repr + (
+                            torch.sigmoid(self.other_query_alpha) *
+                            other_gate *
+                            self.other_query_update(other_input)
+                        )
                     if self.use_sequence_bridge_motif_lite:
                         outgoing_time_bank = self._build_recent_timestamp_bank(
                             pair_src, pair_timestamps, num_nodes
