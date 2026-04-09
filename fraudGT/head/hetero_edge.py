@@ -25,6 +25,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowdiff',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
@@ -32,30 +33,40 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowdiff',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
             'pair_chain_contextseqresid',
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowdiff',
         }
         self.use_pair_internal_sequence = (
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebank',
                 'pair_chain_contextseqpairseqbridgebankmotiflite',
                 'pair_chain_contextseqpairseqbridgebankwindow',
+                'pair_chain_contextseqpairseqbridgebankwindowdiff',
             }
         )
         self.use_sequence_bridge_bank = self.edge_decoding in {
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowdiff',
         }
         self.use_sequence_bridge_motif_lite = (
             self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankmotiflite'
         )
+        self.use_sequence_bridge_bank_diff = (
+            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindowdiff'
+        )
         self.use_sequence_bridge_bank_window = (
-            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindow'
+            self.edge_decoding in {
+                'pair_chain_contextseqpairseqbridgebankwindow',
+                'pair_chain_contextseqpairseqbridgebankwindowdiff',
+            }
         )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         self.train_inds = mask_to_index(dataset['train'][cfg.dataset.task_entity].split_mask).to(cfg.device)
@@ -141,7 +152,8 @@ class HeteroGNNEdgeHead(nn.Module):
                     self.bridge_partner_proj = MLP(dim_in * 2 + 2, dim_in,
                                                    num_layers=self.head_layers,
                                                    bias=True)
-                    self.bridge_bank_proj = MLP(dim_in * 3, dim_in,
+                    bridge_bank_proj_dim = dim_in * 4 if self.use_sequence_bridge_bank_diff else dim_in * 3
+                    self.bridge_bank_proj = MLP(bridge_bank_proj_dim, dim_in,
                                                 num_layers=self.head_layers,
                                                 bias=True)
                     self.bridge_bank_gate = nn.Linear(dim_in * 3, dim_in)
@@ -619,14 +631,16 @@ class HeteroGNNEdgeHead(nn.Module):
                         outgoing_partner_bank[pair_dst],
                         node_x,
                     )
-                    bridge_context = self.bridge_bank_proj(torch.cat(
-                        (
-                            forward_bridge,
-                            cycle_bridge,
-                            forward_bridge * cycle_bridge,
-                        ),
-                        dim=-1,
-                    ))
+                    bridge_parts = [
+                        forward_bridge,
+                        cycle_bridge,
+                        forward_bridge * cycle_bridge,
+                    ]
+                    if self.use_sequence_bridge_bank_diff:
+                        bridge_parts.append((forward_bridge - cycle_bridge).abs())
+                    bridge_context = self.bridge_bank_proj(
+                        torch.cat(tuple(bridge_parts), dim=-1)
+                    )
                     if self.use_sequence_bridge_bank_window:
                         window_input = torch.cat(
                             (
