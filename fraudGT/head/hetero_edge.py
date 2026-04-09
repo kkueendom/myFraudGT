@@ -25,6 +25,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowlineflow',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
@@ -32,30 +33,40 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowlineflow',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
             'pair_chain_contextseqresid',
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowlineflow',
         }
         self.use_pair_internal_sequence = (
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebank',
                 'pair_chain_contextseqpairseqbridgebankmotiflite',
                 'pair_chain_contextseqpairseqbridgebankwindow',
+                'pair_chain_contextseqpairseqbridgebankwindowlineflow',
             }
         )
         self.use_sequence_bridge_bank = self.edge_decoding in {
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowlineflow',
         }
+        self.use_edge_line_flow = (
+            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindowlineflow'
+        )
         self.use_sequence_bridge_motif_lite = (
             self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankmotiflite'
         )
         self.use_sequence_bridge_bank_window = (
-            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindow'
+            self.edge_decoding in {
+                'pair_chain_contextseqpairseqbridgebankwindow',
+                'pair_chain_contextseqpairseqbridgebankwindowlineflow',
+            }
         )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         self.train_inds = mask_to_index(dataset['train'][cfg.dataset.task_entity].split_mask).to(cfg.device)
@@ -95,6 +106,14 @@ class HeteroGNNEdgeHead(nn.Module):
             self.chain_residual_alpha = nn.Parameter(
                 torch.full((1,), math.log(0.10 / 0.90))
             )
+            if self.use_edge_line_flow:
+                self.line_flow_gate = nn.Linear(dim_in * 3, dim_in)
+                self.line_flow_update = MLP(dim_in * 3, dim_in,
+                                            num_layers=self.head_layers,
+                                            bias=True)
+                self.line_flow_alpha = nn.Parameter(
+                    torch.full((1,), math.log(0.10 / 0.90))
+                )
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
                                      bias=True)
@@ -390,6 +409,25 @@ class HeteroGNNEdgeHead(nn.Module):
         edge_inputs, edge_index = self._edge_inputs(batch)
         src_nodes, dst_nodes = edge_index
         edge_repr = self.edge_proj(edge_inputs)
+        if task[0] == task[2] and self.use_edge_line_flow:
+            num_nodes = batch[task[0]].x.size(0)
+            predecessor_edge_bank = scatter(
+                edge_repr, dst_nodes, dim=0, dim_size=num_nodes, reduce='mean'
+            )
+            successor_edge_bank = scatter(
+                edge_repr, src_nodes, dim=0, dim_size=num_nodes, reduce='mean'
+            )
+            predecessor_edge = predecessor_edge_bank[src_nodes]
+            successor_edge = successor_edge_bank[dst_nodes]
+            line_input = torch.cat(
+                (predecessor_edge, edge_repr, successor_edge), dim=-1
+            )
+            line_gate = torch.sigmoid(self.line_flow_gate(line_input))
+            edge_repr = edge_repr + (
+                torch.sigmoid(self.line_flow_alpha) *
+                line_gate *
+                self.line_flow_update(line_input)
+            )
 
         num_dst_nodes = batch[task[2]].x.size(0)
         pair_key = src_nodes.to(torch.long) * num_dst_nodes + dst_nodes.to(torch.long)
