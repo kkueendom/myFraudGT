@@ -25,7 +25,6 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
-            'pair_chain_contextseqpairseqbridgebankwindowattn',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
@@ -33,40 +32,30 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
-            'pair_chain_contextseqpairseqbridgebankwindowattn',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
             'pair_chain_contextseqresid',
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
-            'pair_chain_contextseqpairseqbridgebankwindowattn',
         }
         self.use_pair_internal_sequence = (
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebank',
                 'pair_chain_contextseqpairseqbridgebankmotiflite',
                 'pair_chain_contextseqpairseqbridgebankwindow',
-                'pair_chain_contextseqpairseqbridgebankwindowattn',
             }
         )
         self.use_sequence_bridge_bank = self.edge_decoding in {
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
-            'pair_chain_contextseqpairseqbridgebankwindowattn',
         }
         self.use_sequence_bridge_motif_lite = (
             self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankmotiflite'
         )
         self.use_sequence_bridge_bank_window = (
-            self.edge_decoding in {
-                'pair_chain_contextseqpairseqbridgebankwindow',
-                'pair_chain_contextseqpairseqbridgebankwindowattn',
-            }
-        )
-        self.use_sequence_bridge_bank_attn = (
-            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindowattn'
+            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindow'
         )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         self.train_inds = mask_to_index(dataset['train'][cfg.dataset.task_entity].split_mask).to(cfg.device)
@@ -162,13 +151,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     self.bridge_bank_alpha = nn.Parameter(
                         torch.full((1,), math.log(0.10 / 0.90))
                     )
-                    if self.use_sequence_bridge_bank_attn:
-                        self.bridge_bank_token_proj = MLP(dim_in * 3, dim_in,
-                                                          num_layers=self.head_layers,
-                                                          bias=True)
-                        self.bridge_bank_attn_q = nn.Linear(dim_in, dim_in, bias=False)
-                        self.bridge_bank_attn_k = nn.Linear(dim_in, dim_in, bias=False)
-                        self.bridge_bank_attn_v = nn.Linear(dim_in, dim_in, bias=False)
                     if self.use_sequence_bridge_motif_lite:
                         self.bridge_leg_pair_proj = MLP(dim_in * 3 + 1, dim_in,
                                                         num_layers=self.head_layers,
@@ -401,30 +383,6 @@ class HeteroGNNEdgeHead(nn.Module):
             ),
             dim=-1,
         ))
-
-    def _bridge_bank_attention(self, query_repr, forward_bridge, cycle_bridge):
-        bridge_tokens = torch.stack(
-            (
-                forward_bridge,
-                cycle_bridge,
-                forward_bridge * cycle_bridge,
-            ),
-            dim=1,
-        )
-        bridge_tokens = self.bridge_bank_token_proj(torch.cat(
-            (
-                bridge_tokens,
-                query_repr.unsqueeze(1).expand_as(bridge_tokens),
-                bridge_tokens * query_repr.unsqueeze(1),
-            ),
-            dim=-1,
-        ))
-        q = self.bridge_bank_attn_q(query_repr).unsqueeze(1)
-        k = self.bridge_bank_attn_k(bridge_tokens)
-        v = self.bridge_bank_attn_v(bridge_tokens)
-        scores = (q * k).sum(dim=-1) / math.sqrt(query_repr.size(-1))
-        weights = torch.softmax(scores, dim=-1).unsqueeze(-1)
-        return (weights * v).sum(dim=1)
 
     def _pair_chain_head(self, batch):
         task = cfg.dataset.task_entity
@@ -683,12 +641,6 @@ class HeteroGNNEdgeHead(nn.Module):
                             torch.sigmoid(self.sequence_window_alpha) *
                             window_gate *
                             (slow_sequence_repr - fast_sequence_repr)
-                        )
-                    if self.use_sequence_bridge_bank_attn:
-                        bridge_context = self._bridge_bank_attention(
-                            pair_sequence_repr,
-                            forward_bridge,
-                            cycle_bridge,
                         )
                     bridge_input = torch.cat(
                         (
