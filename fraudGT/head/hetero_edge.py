@@ -25,6 +25,8 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowmotifgate',
+            'pair_chain_contextseqpairseqbridgebankwindowtimefuse',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
@@ -32,30 +34,53 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowmotifgate',
+            'pair_chain_contextseqpairseqbridgebankwindowtimefuse',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
             'pair_chain_contextseqresid',
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowmotifgate',
+            'pair_chain_contextseqpairseqbridgebankwindowtimefuse',
         }
         self.use_pair_internal_sequence = (
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebank',
                 'pair_chain_contextseqpairseqbridgebankmotiflite',
                 'pair_chain_contextseqpairseqbridgebankwindow',
+                'pair_chain_contextseqpairseqbridgebankwindowmotifgate',
+                'pair_chain_contextseqpairseqbridgebankwindowtimefuse',
             }
         )
         self.use_sequence_bridge_bank = self.edge_decoding in {
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowmotifgate',
+            'pair_chain_contextseqpairseqbridgebankwindowtimefuse',
         }
         self.use_sequence_bridge_motif_lite = (
             self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankmotiflite'
         )
+        self.use_sequence_bridge_motif_gate = (
+            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindowmotifgate'
+        )
+        self.use_sequence_bridge_time_fuse = (
+            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindowtimefuse'
+        )
+        self.use_sequence_bridge_motif_features = (
+            self.use_sequence_bridge_motif_lite or
+            self.use_sequence_bridge_motif_gate or
+            self.use_sequence_bridge_time_fuse
+        )
         self.use_sequence_bridge_bank_window = (
-            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindow'
+            self.edge_decoding in {
+                'pair_chain_contextseqpairseqbridgebankwindow',
+                'pair_chain_contextseqpairseqbridgebankwindowmotifgate',
+                'pair_chain_contextseqpairseqbridgebankwindowtimefuse',
+            }
         )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         self.train_inds = mask_to_index(dataset['train'][cfg.dataset.task_entity].split_mask).to(cfg.device)
@@ -151,20 +176,34 @@ class HeteroGNNEdgeHead(nn.Module):
                     self.bridge_bank_alpha = nn.Parameter(
                         torch.full((1,), math.log(0.10 / 0.90))
                     )
-                    if self.use_sequence_bridge_motif_lite:
+                    if self.use_sequence_bridge_motif_features:
                         self.bridge_leg_pair_proj = MLP(dim_in * 3 + 1, dim_in,
                                                         num_layers=self.head_layers,
                                                         bias=True)
                         self.bridge_leg_bank_proj = MLP(dim_in * 3, dim_in,
                                                         num_layers=self.head_layers,
                                                         bias=True)
-                        self.bridge_leg_bank_gate = nn.Linear(dim_in * 3, dim_in)
-                        self.bridge_leg_bank_update = MLP(dim_in * 3, dim_in,
+                        if self.use_sequence_bridge_time_fuse:
+                            self.bridge_time_gate = nn.Linear(dim_in * 3, dim_in)
+                            self.bridge_time_update = MLP(dim_in * 3, dim_in,
                                                           num_layers=self.head_layers,
                                                           bias=True)
-                        self.bridge_leg_bank_alpha = nn.Parameter(
-                            torch.full((1,), math.log(0.08 / 0.92))
-                        )
+                            self.bridge_time_alpha = nn.Parameter(
+                                torch.full((1,), math.log(0.08 / 0.92))
+                            )
+                        if self.use_sequence_bridge_motif_lite:
+                            self.bridge_leg_bank_gate = nn.Linear(dim_in * 3, dim_in)
+                            self.bridge_leg_bank_update = MLP(dim_in * 3, dim_in,
+                                                              num_layers=self.head_layers,
+                                                              bias=True)
+                            self.bridge_leg_bank_alpha = nn.Parameter(
+                                torch.full((1,), math.log(0.08 / 0.92))
+                            )
+                        if self.use_sequence_bridge_motif_gate:
+                            self.motif_window_gate = nn.Linear(dim_in * 4, dim_in)
+                            self.motif_window_alpha = nn.Parameter(
+                                torch.full((1,), math.log(0.08 / 0.92))
+                            )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -627,36 +666,8 @@ class HeteroGNNEdgeHead(nn.Module):
                         ),
                         dim=-1,
                     ))
-                    if self.use_sequence_bridge_bank_window:
-                        window_input = torch.cat(
-                            (
-                                fast_sequence_repr,
-                                slow_sequence_repr,
-                                bridge_context,
-                            ),
-                            dim=-1,
-                        )
-                        window_gate = torch.sigmoid(self.sequence_window_gate(window_input))
-                        pair_sequence_repr = fast_sequence_repr + (
-                            torch.sigmoid(self.sequence_window_alpha) *
-                            window_gate *
-                            (slow_sequence_repr - fast_sequence_repr)
-                        )
-                    bridge_input = torch.cat(
-                        (
-                            bridge_context,
-                            pair_sequence_repr,
-                            bridge_context * pair_sequence_repr,
-                        ),
-                        dim=-1,
-                    )
-                    bridge_gate = torch.sigmoid(self.bridge_bank_gate(bridge_input))
-                    pair_sequence_repr = pair_sequence_repr + (
-                        torch.sigmoid(self.bridge_bank_alpha) *
-                        bridge_gate *
-                        self.bridge_bank_update(bridge_input)
-                    )
-                    if self.use_sequence_bridge_motif_lite:
+                    motif_context = None
+                    if self.use_sequence_bridge_motif_features:
                         outgoing_time_bank = self._build_recent_timestamp_bank(
                             pair_src, pair_timestamps, num_nodes
                         )
@@ -687,12 +698,77 @@ class HeteroGNNEdgeHead(nn.Module):
                             ),
                             dim=-1,
                         )
-                        leg_gate = torch.sigmoid(self.bridge_leg_bank_gate(leg_input))
-                        pair_sequence_repr = pair_sequence_repr + (
-                            torch.sigmoid(self.bridge_leg_bank_alpha) *
-                            leg_gate *
-                            self.bridge_leg_bank_update(leg_input)
+                        motif_context = self.bridge_leg_bank_proj(leg_input)
+                        if self.use_sequence_bridge_time_fuse:
+                            time_bridge_input = torch.cat(
+                                (
+                                    bridge_context,
+                                    motif_context,
+                                    bridge_context * motif_context,
+                                ),
+                                dim=-1,
+                            )
+                            time_bridge_gate = torch.sigmoid(
+                                self.bridge_time_gate(time_bridge_input)
+                            )
+                            bridge_context = bridge_context + (
+                                torch.sigmoid(self.bridge_time_alpha) *
+                                time_bridge_gate *
+                                self.bridge_time_update(time_bridge_input)
+                            )
+                    if self.use_sequence_bridge_bank_window:
+                        window_input = torch.cat(
+                            (
+                                fast_sequence_repr,
+                                slow_sequence_repr,
+                                bridge_context,
+                            ),
+                            dim=-1,
                         )
+                        window_gate = torch.sigmoid(self.sequence_window_gate(window_input))
+                        pair_sequence_repr = fast_sequence_repr + (
+                            torch.sigmoid(self.sequence_window_alpha) *
+                            window_gate *
+                            (slow_sequence_repr - fast_sequence_repr)
+                        )
+                    bridge_input = torch.cat(
+                        (
+                            bridge_context,
+                            pair_sequence_repr,
+                            bridge_context * pair_sequence_repr,
+                        ),
+                        dim=-1,
+                    )
+                    bridge_gate = torch.sigmoid(self.bridge_bank_gate(bridge_input))
+                    pair_sequence_repr = pair_sequence_repr + (
+                        torch.sigmoid(self.bridge_bank_alpha) *
+                        bridge_gate *
+                        self.bridge_bank_update(bridge_input)
+                    )
+                    if self.use_sequence_bridge_motif_features:
+                        if self.use_sequence_bridge_motif_lite:
+                            leg_gate = torch.sigmoid(self.bridge_leg_bank_gate(leg_input))
+                            pair_sequence_repr = pair_sequence_repr + (
+                                torch.sigmoid(self.bridge_leg_bank_alpha) *
+                                leg_gate *
+                                self.bridge_leg_bank_update(leg_input)
+                            )
+                        if self.use_sequence_bridge_motif_gate:
+                            motif_window_input = torch.cat(
+                                (
+                                    fast_sequence_repr,
+                                    slow_sequence_repr,
+                                    bridge_context,
+                                    motif_context,
+                                ),
+                                dim=-1,
+                            )
+                            motif_gate = torch.sigmoid(self.motif_window_gate(motif_window_input))
+                            pair_sequence_repr = pair_sequence_repr + (
+                                torch.sigmoid(self.motif_window_alpha) *
+                                motif_gate *
+                                (slow_sequence_repr - fast_sequence_repr)
+                            )
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
