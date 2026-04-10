@@ -25,6 +25,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindownbrecip',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
@@ -32,30 +33,40 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindownbrecip',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
             'pair_chain_contextseqresid',
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindownbrecip',
         }
         self.use_pair_internal_sequence = (
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebank',
                 'pair_chain_contextseqpairseqbridgebankmotiflite',
                 'pair_chain_contextseqpairseqbridgebankwindow',
+                'pair_chain_contextseqpairseqbridgebankwindownbrecip',
             }
         )
         self.use_sequence_bridge_bank = self.edge_decoding in {
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindownbrecip',
         }
+        self.use_nonbacktrack_window_recip = (
+            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindownbrecip'
+        )
         self.use_sequence_bridge_motif_lite = (
             self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankmotiflite'
         )
         self.use_sequence_bridge_bank_window = (
-            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindow'
+            self.edge_decoding in {
+                'pair_chain_contextseqpairseqbridgebankwindow',
+                'pair_chain_contextseqpairseqbridgebankwindownbrecip',
+            }
         )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         self.train_inds = mask_to_index(dataset['train'][cfg.dataset.task_entity].split_mask).to(cfg.device)
@@ -95,6 +106,21 @@ class HeteroGNNEdgeHead(nn.Module):
             self.chain_residual_alpha = nn.Parameter(
                 torch.full((1,), math.log(0.10 / 0.90))
             )
+            if self.use_nonbacktrack_window_recip:
+                self.line_nonback_gate = nn.Linear(dim_in * 3, dim_in)
+                self.line_nonback_update = MLP(dim_in * 3, dim_in,
+                                               num_layers=self.head_layers,
+                                               bias=True)
+                self.line_nonback_alpha = nn.Parameter(
+                    torch.full((1,), math.log(0.10 / 0.90))
+                )
+                self.reciprocal_pair_gate = nn.Linear(dim_in * 3, dim_in)
+                self.reciprocal_pair_update = MLP(dim_in * 3, dim_in,
+                                                  num_layers=self.head_layers,
+                                                  bias=True)
+                self.reciprocal_pair_alpha = nn.Parameter(
+                    torch.full((1,), math.log(0.08 / 0.92))
+                )
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
                                      bias=True)
@@ -384,6 +410,15 @@ class HeteroGNNEdgeHead(nn.Module):
             dim=-1,
         ))
 
+    def _lookup_pair_indices(self, sorted_pair_keys, target_keys):
+        positions = torch.searchsorted(sorted_pair_keys, target_keys)
+        valid = positions < sorted_pair_keys.numel()
+        matched = torch.zeros_like(valid)
+        matched[valid] = sorted_pair_keys[positions[valid]] == target_keys[valid]
+        resolved = torch.full_like(positions, -1)
+        resolved[matched] = positions[matched]
+        return resolved
+
     def _pair_chain_head(self, batch):
         task = cfg.dataset.task_entity
         mask = self._edge_mask(batch)
@@ -395,6 +430,69 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_key = src_nodes.to(torch.long) * num_dst_nodes + dst_nodes.to(torch.long)
         pair_keys, pair_inv = torch.unique(pair_key, sorted=True, return_inverse=True)
         num_pairs = pair_keys.numel()
+        pair_src = torch.div(pair_keys, num_dst_nodes, rounding_mode='floor')
+        pair_dst = torch.remainder(pair_keys, num_dst_nodes)
+        reverse_pair_indices = None
+
+        if task[0] == task[2] and self.use_nonbacktrack_window_recip:
+            num_nodes = batch[task[0]].x.size(0)
+            reverse_keys = pair_dst.to(torch.long) * num_dst_nodes + pair_src.to(torch.long)
+            reverse_pair_indices = self._lookup_pair_indices(pair_keys, reverse_keys)
+            edge_count = edge_repr.new_ones((edge_repr.size(0), 1))
+            pair_sum_for_line = scatter(
+                edge_repr, pair_inv, dim=0, dim_size=num_pairs, reduce='sum'
+            )
+            pair_count = scatter(
+                edge_count, pair_inv, dim=0, dim_size=num_pairs, reduce='sum'
+            )
+            reverse_pair_sum = torch.zeros_like(pair_sum_for_line)
+            reverse_pair_count = torch.zeros_like(pair_count)
+            valid_reverse = reverse_pair_indices >= 0
+            if valid_reverse.any():
+                reverse_pair_sum[valid_reverse] = pair_sum_for_line[
+                    reverse_pair_indices[valid_reverse]
+                ]
+                reverse_pair_count[valid_reverse] = pair_count[
+                    reverse_pair_indices[valid_reverse]
+                ]
+
+            incoming_sum = scatter(
+                edge_repr, dst_nodes, dim=0, dim_size=num_nodes, reduce='sum'
+            )
+            outgoing_sum = scatter(
+                edge_repr, src_nodes, dim=0, dim_size=num_nodes, reduce='sum'
+            )
+            incoming_count = scatter(
+                edge_count, dst_nodes, dim=0, dim_size=num_nodes, reduce='sum'
+            )
+            outgoing_count = scatter(
+                edge_count, src_nodes, dim=0, dim_size=num_nodes, reduce='sum'
+            )
+            reverse_edge_sum = reverse_pair_sum[pair_inv]
+            reverse_edge_count = reverse_pair_count[pair_inv]
+            prev_sum = incoming_sum[src_nodes] - reverse_edge_sum
+            next_sum = outgoing_sum[dst_nodes] - reverse_edge_sum
+            prev_count = (incoming_count[src_nodes] - reverse_edge_count).clamp(min=0.0)
+            next_count = (outgoing_count[dst_nodes] - reverse_edge_count).clamp(min=0.0)
+            prev_nonback = torch.where(
+                prev_count > 0,
+                prev_sum / prev_count.clamp(min=1.0),
+                torch.zeros_like(prev_sum),
+            )
+            next_nonback = torch.where(
+                next_count > 0,
+                next_sum / next_count.clamp(min=1.0),
+                torch.zeros_like(next_sum),
+            )
+            line_input = torch.cat(
+                (prev_nonback, edge_repr, next_nonback), dim=-1
+            )
+            line_gate = torch.sigmoid(self.line_nonback_gate(line_input))
+            edge_repr = edge_repr + (
+                torch.sigmoid(self.line_nonback_alpha) *
+                line_gate *
+                self.line_nonback_update(line_input)
+            )
 
         pair_mean = scatter(edge_repr, pair_inv, dim=0, dim_size=num_pairs, reduce='mean')
         pair_max, _ = scatter_max(edge_repr, pair_inv, dim=0, dim_size=num_pairs)
@@ -466,8 +564,6 @@ class HeteroGNNEdgeHead(nn.Module):
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
-            pair_src = torch.div(pair_keys, num_dst_nodes, rounding_mode='floor')
-            pair_dst = torch.remainder(pair_keys, num_dst_nodes)
             predecessor_bank = scatter(pair_repr, pair_dst, dim=0, dim_size=num_nodes, reduce='mean')
             successor_bank = scatter(pair_repr, pair_src, dim=0, dim_size=num_nodes, reduce='mean')
             prev_context = predecessor_bank[pair_src]
@@ -479,6 +575,32 @@ class HeteroGNNEdgeHead(nn.Module):
                 chain_gate *
                 self.chain_update(chain_input)
             )
+            if self.use_nonbacktrack_window_recip:
+                if reverse_pair_indices is None:
+                    reverse_keys = pair_dst.to(torch.long) * num_dst_nodes + pair_src.to(torch.long)
+                    reverse_pair_indices = self._lookup_pair_indices(pair_keys, reverse_keys)
+                reciprocal_repr = torch.zeros_like(pair_repr)
+                valid_reverse = reverse_pair_indices >= 0
+                if valid_reverse.any():
+                    reciprocal_repr[valid_reverse] = pair_repr[
+                        reverse_pair_indices[valid_reverse]
+                    ]
+                reciprocal_input = torch.cat(
+                    (
+                        pair_repr,
+                        reciprocal_repr,
+                        pair_repr * reciprocal_repr,
+                    ),
+                    dim=-1,
+                )
+                reciprocal_gate = torch.sigmoid(
+                    self.reciprocal_pair_gate(reciprocal_input)
+                )
+                pair_repr = pair_repr + (
+                    torch.sigmoid(self.reciprocal_pair_alpha) *
+                    reciprocal_gate *
+                    self.reciprocal_pair_update(reciprocal_input)
+                )
             if self.use_chain_context_residual:
                 pair_scores = pair_repr.norm(dim=-1)
                 predecessor_focus_weights = pyg_softmax(
