@@ -25,6 +25,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowfulladaptive',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
@@ -32,30 +33,40 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowfulladaptive',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
             'pair_chain_contextseqresid',
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowfulladaptive',
         }
         self.use_pair_internal_sequence = (
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebank',
                 'pair_chain_contextseqpairseqbridgebankmotiflite',
                 'pair_chain_contextseqpairseqbridgebankwindow',
+                'pair_chain_contextseqpairseqbridgebankwindowfulladaptive',
             }
         )
         self.use_sequence_bridge_bank = self.edge_decoding in {
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowfulladaptive',
         }
+        self.use_full_adaptive_window = (
+            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindowfulladaptive'
+        )
         self.use_sequence_bridge_motif_lite = (
             self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankmotiflite'
         )
         self.use_sequence_bridge_bank_window = (
-            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindow'
+            self.edge_decoding in {
+                'pair_chain_contextseqpairseqbridgebankwindow',
+                'pair_chain_contextseqpairseqbridgebankwindowfulladaptive',
+            }
         )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         self.train_inds = mask_to_index(dataset['train'][cfg.dataset.task_entity].split_mask).to(cfg.device)
@@ -82,6 +93,8 @@ class HeteroGNNEdgeHead(nn.Module):
                                      bias=True)
             if self.use_sequence_bridge_bank_window:
                 self.pair_window_gate = nn.Linear(dim_in * 3, dim_in)
+                if self.use_full_adaptive_window:
+                    self.pair_time_scale_proj = nn.Linear(dim_in * 3, 2)
                 self.pair_window_alpha = nn.Parameter(
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
@@ -134,6 +147,9 @@ class HeteroGNNEdgeHead(nn.Module):
                     self.fast_time_scale_log = nn.Parameter(torch.tensor(math.log(0.35)))
                     self.slow_time_scale_log = nn.Parameter(torch.tensor(math.log(3.0)))
                     self.sequence_window_gate = nn.Linear(dim_in * 3, dim_in)
+                    if self.use_full_adaptive_window:
+                        self.outgoing_time_scale_proj = nn.Linear(dim_in, 2)
+                        self.incoming_time_scale_proj = nn.Linear(dim_in, 2)
                     self.sequence_window_alpha = nn.Parameter(
                         torch.full((1,), math.log(0.10 / 0.90))
                     )
@@ -203,10 +219,14 @@ class HeteroGNNEdgeHead(nn.Module):
             chosen_indices = slot_indices[valid_nodes]
             chosen_times = pair_timestamps[chosen_indices]
             chosen_repr = pair_repr[chosen_indices]
+            if torch.is_tensor(time_scale) and time_scale.dim() > 0:
+                slot_time_scale = time_scale[valid_nodes]
+            else:
+                slot_time_scale = time_scale
             recency = torch.exp(
                 -(
                     latest_timestamps[valid_nodes] - chosen_times
-                ).clamp(min=0) / time_scale
+                ).clamp(min=0) / slot_time_scale
             ).unsqueeze(-1)
             seq_bank[valid_nodes, slot] = chosen_repr * recency
             remaining_scores[chosen_indices] = score_floor
@@ -235,10 +255,14 @@ class HeteroGNNEdgeHead(nn.Module):
             chosen_indices = slot_indices[valid_pairs]
             chosen_times = edge_timestamps[chosen_indices]
             chosen_repr = edge_repr[chosen_indices]
+            if torch.is_tensor(time_scale) and time_scale.dim() > 0:
+                slot_time_scale = time_scale[valid_pairs]
+            else:
+                slot_time_scale = time_scale
             recency = torch.exp(
                 -(
                     latest_timestamps[valid_pairs] - chosen_times
-                ).clamp(min=0) / time_scale
+                ).clamp(min=0) / slot_time_scale
             ).unsqueeze(-1)
             seq_bank[valid_pairs, slot] = chosen_repr * recency
             remaining_scores[chosen_indices] = score_floor
@@ -414,8 +438,24 @@ class HeteroGNNEdgeHead(nn.Module):
             )
             if self.use_sequence_bridge_bank_window:
                 base_time_scale = self.sequence_time_scale.abs().clamp(min=1.0)
-                fast_time_scale = base_time_scale * self.fast_time_scale_log.exp().clamp(min=0.1, max=10.0)
-                slow_time_scale = base_time_scale * self.slow_time_scale_log.exp().clamp(min=0.25, max=20.0)
+                if self.use_full_adaptive_window:
+                    pair_window_scale = torch.sigmoid(self.pair_time_scale_proj(torch.cat(
+                        (
+                            pair_mean,
+                            pair_max,
+                            pair_max - pair_mean,
+                        ),
+                        dim=-1,
+                    )))
+                    fast_time_scale = base_time_scale * (
+                        0.10 + 0.90 * pair_window_scale[:, 0]
+                    )
+                    slow_time_scale = base_time_scale * (
+                        1.00 + 9.00 * pair_window_scale[:, 1]
+                    )
+                else:
+                    fast_time_scale = base_time_scale * self.fast_time_scale_log.exp().clamp(min=0.1, max=10.0)
+                    slow_time_scale = base_time_scale * self.slow_time_scale_log.exp().clamp(min=0.25, max=20.0)
                 fast_pair_sequence_bank = self._build_recent_pair_sequence_bank(
                     edge_repr, pair_inv, edge_timestamps, num_pairs, pair_latest, fast_time_scale
                 )
@@ -537,19 +577,43 @@ class HeteroGNNEdgeHead(nn.Module):
                 )
                 if self.use_sequence_bridge_bank_window:
                     base_time_scale = self.sequence_time_scale.abs().clamp(min=1.0)
-                    fast_time_scale = base_time_scale * self.fast_time_scale_log.exp().clamp(min=0.1, max=10.0)
-                    slow_time_scale = base_time_scale * self.slow_time_scale_log.exp().clamp(min=0.25, max=20.0)
+                    if self.use_full_adaptive_window:
+                        outgoing_scale = torch.sigmoid(
+                            self.outgoing_time_scale_proj(successor_bank)
+                        )
+                        incoming_scale = torch.sigmoid(
+                            self.incoming_time_scale_proj(predecessor_bank)
+                        )
+                        fast_outgoing_time_scale = base_time_scale * (
+                            0.10 + 0.90 * outgoing_scale[:, 0]
+                        )
+                        slow_outgoing_time_scale = base_time_scale * (
+                            1.00 + 9.00 * outgoing_scale[:, 1]
+                        )
+                        fast_incoming_time_scale = base_time_scale * (
+                            0.10 + 0.90 * incoming_scale[:, 0]
+                        )
+                        slow_incoming_time_scale = base_time_scale * (
+                            1.00 + 9.00 * incoming_scale[:, 1]
+                        )
+                    else:
+                        fast_time_scale = base_time_scale * self.fast_time_scale_log.exp().clamp(min=0.1, max=10.0)
+                        slow_time_scale = base_time_scale * self.slow_time_scale_log.exp().clamp(min=0.25, max=20.0)
                     outgoing_sequence_bank = self._build_recent_sequence_bank(
-                        pair_repr, pair_src, pair_timestamps, num_nodes, outgoing_latest, fast_time_scale
+                        pair_repr, pair_src, pair_timestamps, num_nodes, outgoing_latest,
+                        fast_outgoing_time_scale if self.use_full_adaptive_window else fast_time_scale
                     )
                     incoming_sequence_bank = self._build_recent_sequence_bank(
-                        pair_repr, pair_dst, pair_timestamps, num_nodes, incoming_latest, fast_time_scale
+                        pair_repr, pair_dst, pair_timestamps, num_nodes, incoming_latest,
+                        fast_incoming_time_scale if self.use_full_adaptive_window else fast_time_scale
                     )
                     slow_outgoing_sequence_bank = self._build_recent_sequence_bank(
-                        pair_repr, pair_src, pair_timestamps, num_nodes, outgoing_latest, slow_time_scale
+                        pair_repr, pair_src, pair_timestamps, num_nodes, outgoing_latest,
+                        slow_outgoing_time_scale if self.use_full_adaptive_window else slow_time_scale
                     )
                     slow_incoming_sequence_bank = self._build_recent_sequence_bank(
-                        pair_repr, pair_dst, pair_timestamps, num_nodes, incoming_latest, slow_time_scale
+                        pair_repr, pair_dst, pair_timestamps, num_nodes, incoming_latest,
+                        slow_incoming_time_scale if self.use_full_adaptive_window else slow_time_scale
                     )
                     outgoing_state = self.outgoing_sequence_encoder(
                         outgoing_sequence_bank[pair_src]
