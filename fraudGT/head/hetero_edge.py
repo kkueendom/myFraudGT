@@ -25,6 +25,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowflowbal',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
@@ -32,30 +33,40 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowflowbal',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
             'pair_chain_contextseqresid',
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowflowbal',
         }
         self.use_pair_internal_sequence = (
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebank',
                 'pair_chain_contextseqpairseqbridgebankmotiflite',
                 'pair_chain_contextseqpairseqbridgebankwindow',
+                'pair_chain_contextseqpairseqbridgebankwindowflowbal',
             }
         )
         self.use_sequence_bridge_bank = self.edge_decoding in {
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowflowbal',
         }
+        self.use_sequence_bridge_flow_balance = (
+            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindowflowbal'
+        )
         self.use_sequence_bridge_motif_lite = (
             self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankmotiflite'
         )
         self.use_sequence_bridge_bank_window = (
-            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindow'
+            self.edge_decoding in {
+                'pair_chain_contextseqpairseqbridgebankwindow',
+                'pair_chain_contextseqpairseqbridgebankwindowflowbal',
+            }
         )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         self.train_inds = mask_to_index(dataset['train'][cfg.dataset.task_entity].split_mask).to(cfg.device)
@@ -151,6 +162,22 @@ class HeteroGNNEdgeHead(nn.Module):
                     self.bridge_bank_alpha = nn.Parameter(
                         torch.full((1,), math.log(0.10 / 0.90))
                     )
+                    if self.use_sequence_bridge_flow_balance:
+                        self.source_balance_proj = MLP(dim_in * 3, dim_in,
+                                                       num_layers=self.head_layers,
+                                                       bias=True)
+                        self.dest_balance_proj = MLP(dim_in * 3, dim_in,
+                                                     num_layers=self.head_layers,
+                                                     bias=True)
+                        self.flow_balance_proj = MLP(dim_in * 4, dim_in,
+                                                     num_layers=self.head_layers,
+                                                     bias=True)
+                        self.flow_balance_head = MLP(dim_in, dim_out,
+                                                     num_layers=self.head_layers,
+                                                     bias=True)
+                        self.flow_balance_residual_alpha = nn.Parameter(
+                            torch.full((1,), math.log(0.08 / 0.92))
+                        )
                     if self.use_sequence_bridge_motif_lite:
                         self.bridge_leg_pair_proj = MLP(dim_in * 3 + 1, dim_in,
                                                         num_layers=self.head_layers,
@@ -461,6 +488,7 @@ class HeteroGNNEdgeHead(nn.Module):
             ))
         pair_context_repr = None
         pair_sequence_repr = None
+        pair_flow_balance_repr = None
         fast_sequence_repr = None
         slow_sequence_repr = None
 
@@ -656,6 +684,38 @@ class HeteroGNNEdgeHead(nn.Module):
                         bridge_gate *
                         self.bridge_bank_update(bridge_input)
                     )
+                    if self.use_sequence_bridge_flow_balance:
+                        source_in_state = self.incoming_sequence_encoder(
+                            incoming_sequence_bank[pair_src]
+                        )[1].squeeze(0)
+                        dest_out_state = self.outgoing_sequence_encoder(
+                            outgoing_sequence_bank[pair_dst]
+                        )[1].squeeze(0)
+                        source_balance_repr = self.source_balance_proj(torch.cat(
+                            (
+                                outgoing_state - source_in_state,
+                                outgoing_state + source_in_state,
+                                outgoing_state * source_in_state,
+                            ),
+                            dim=-1,
+                        ))
+                        dest_balance_repr = self.dest_balance_proj(torch.cat(
+                            (
+                                incoming_state - dest_out_state,
+                                incoming_state + dest_out_state,
+                                incoming_state * dest_out_state,
+                            ),
+                            dim=-1,
+                        ))
+                        pair_flow_balance_repr = self.flow_balance_proj(torch.cat(
+                            (
+                                source_balance_repr,
+                                dest_balance_repr,
+                                source_balance_repr * dest_balance_repr,
+                                pair_sequence_repr,
+                            ),
+                            dim=-1,
+                        ))
                     if self.use_sequence_bridge_motif_lite:
                         outgoing_time_bank = self._build_recent_timestamp_bank(
                             pair_src, pair_timestamps, num_nodes
@@ -710,6 +770,16 @@ class HeteroGNNEdgeHead(nn.Module):
                 pair_sequence_repr = torch.zeros_like(pair_repr)
             sequence_logits = self.sequence_head(pair_sequence_repr[pair_inv][mask])
             pred = pred + torch.sigmoid(self.sequence_residual_alpha) * sequence_logits
+            if self.use_sequence_bridge_flow_balance:
+                if pair_flow_balance_repr is None:
+                    pair_flow_balance_repr = torch.zeros_like(pair_repr)
+                flow_balance_logits = self.flow_balance_head(
+                    pair_flow_balance_repr[pair_inv][mask]
+                )
+                pred = pred + (
+                    torch.sigmoid(self.flow_balance_residual_alpha) *
+                    flow_balance_logits
+                )
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
