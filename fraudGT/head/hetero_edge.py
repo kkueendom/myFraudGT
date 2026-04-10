@@ -25,7 +25,6 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
-            'pair_chain_contextseqpairseqbridgebankwindowlinemax',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
@@ -33,40 +32,30 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
-            'pair_chain_contextseqpairseqbridgebankwindowlinemax',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
             'pair_chain_contextseqresid',
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
-            'pair_chain_contextseqpairseqbridgebankwindowlinemax',
         }
         self.use_pair_internal_sequence = (
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebank',
                 'pair_chain_contextseqpairseqbridgebankmotiflite',
                 'pair_chain_contextseqpairseqbridgebankwindow',
-                'pair_chain_contextseqpairseqbridgebankwindowlinemax',
             }
         )
         self.use_sequence_bridge_bank = self.edge_decoding in {
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
-            'pair_chain_contextseqpairseqbridgebankwindowlinemax',
         }
-        self.use_edge_line_meanmax = (
-            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindowlinemax'
-        )
         self.use_sequence_bridge_motif_lite = (
             self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankmotiflite'
         )
         self.use_sequence_bridge_bank_window = (
-            self.edge_decoding in {
-                'pair_chain_contextseqpairseqbridgebankwindow',
-                'pair_chain_contextseqpairseqbridgebankwindowlinemax',
-            }
+            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindow'
         )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         self.train_inds = mask_to_index(dataset['train'][cfg.dataset.task_entity].split_mask).to(cfg.device)
@@ -94,20 +83,6 @@ class HeteroGNNEdgeHead(nn.Module):
             if self.use_sequence_bridge_bank_window:
                 self.pair_window_gate = nn.Linear(dim_in * 3, dim_in)
                 self.pair_window_alpha = nn.Parameter(
-                    torch.full((1,), math.log(0.10 / 0.90))
-                )
-            if self.use_edge_line_meanmax:
-                self.prev_line_proj = MLP(dim_in * 3, dim_in,
-                                          num_layers=self.head_layers,
-                                          bias=True)
-                self.next_line_proj = MLP(dim_in * 3, dim_in,
-                                          num_layers=self.head_layers,
-                                          bias=True)
-                self.line_meanmax_gate = nn.Linear(dim_in * 3, dim_in)
-                self.line_meanmax_update = MLP(dim_in * 3, dim_in,
-                                               num_layers=self.head_layers,
-                                               bias=True)
-                self.line_meanmax_alpha = nn.Parameter(
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
             self.chain_update = MLP(dim_in * 3, dim_in,
@@ -415,55 +390,6 @@ class HeteroGNNEdgeHead(nn.Module):
         edge_inputs, edge_index = self._edge_inputs(batch)
         src_nodes, dst_nodes = edge_index
         edge_repr = self.edge_proj(edge_inputs)
-        if task[0] == task[2] and self.use_edge_line_meanmax:
-            num_nodes = batch[task[0]].x.size(0)
-            predecessor_mean = scatter(
-                edge_repr, dst_nodes, dim=0, dim_size=num_nodes, reduce='mean'
-            )
-            predecessor_max, _ = scatter_max(
-                edge_repr, dst_nodes, dim=0, dim_size=num_nodes
-            )
-            predecessor_max = torch.where(
-                torch.isfinite(predecessor_max),
-                predecessor_max,
-                torch.zeros_like(predecessor_max),
-            )
-            successor_mean = scatter(
-                edge_repr, src_nodes, dim=0, dim_size=num_nodes, reduce='mean'
-            )
-            successor_max, _ = scatter_max(
-                edge_repr, src_nodes, dim=0, dim_size=num_nodes
-            )
-            successor_max = torch.where(
-                torch.isfinite(successor_max),
-                successor_max,
-                torch.zeros_like(successor_max),
-            )
-            predecessor_edge = self.prev_line_proj(torch.cat(
-                (
-                    predecessor_mean[src_nodes],
-                    predecessor_max[src_nodes],
-                    predecessor_max[src_nodes] - predecessor_mean[src_nodes],
-                ),
-                dim=-1,
-            ))
-            successor_edge = self.next_line_proj(torch.cat(
-                (
-                    successor_mean[dst_nodes],
-                    successor_max[dst_nodes],
-                    successor_max[dst_nodes] - successor_mean[dst_nodes],
-                ),
-                dim=-1,
-            ))
-            line_input = torch.cat(
-                (predecessor_edge, edge_repr, successor_edge), dim=-1
-            )
-            line_gate = torch.sigmoid(self.line_meanmax_gate(line_input))
-            edge_repr = edge_repr + (
-                torch.sigmoid(self.line_meanmax_alpha) *
-                line_gate *
-                self.line_meanmax_update(line_input)
-            )
 
         num_dst_nodes = batch[task[2]].x.size(0)
         pair_key = src_nodes.to(torch.long) * num_dst_nodes + dst_nodes.to(torch.long)
