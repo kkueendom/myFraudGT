@@ -25,6 +25,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowmainfuse',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
@@ -32,30 +33,40 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowmainfuse',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
             'pair_chain_contextseqresid',
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowmainfuse',
         }
         self.use_pair_internal_sequence = (
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebank',
                 'pair_chain_contextseqpairseqbridgebankmotiflite',
                 'pair_chain_contextseqpairseqbridgebankwindow',
+                'pair_chain_contextseqpairseqbridgebankwindowmainfuse',
             }
         )
         self.use_sequence_bridge_bank = self.edge_decoding in {
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowmainfuse',
         }
+        self.use_main_pair_fusion = (
+            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindowmainfuse'
+        )
         self.use_sequence_bridge_motif_lite = (
             self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankmotiflite'
         )
         self.use_sequence_bridge_bank_window = (
-            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindow'
+            self.edge_decoding in {
+                'pair_chain_contextseqpairseqbridgebankwindow',
+                'pair_chain_contextseqpairseqbridgebankwindowmainfuse',
+            }
         )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         self.train_inds = mask_to_index(dataset['train'][cfg.dataset.task_entity].split_mask).to(cfg.device)
@@ -129,6 +140,14 @@ class HeteroGNNEdgeHead(nn.Module):
                 self.sequence_residual_alpha = nn.Parameter(
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
+                if self.use_main_pair_fusion:
+                    self.main_pair_gate = nn.Linear(dim_in * 3, dim_in)
+                    self.main_pair_update = MLP(dim_in * 3, dim_in,
+                                                num_layers=self.head_layers,
+                                                bias=True)
+                    self.main_pair_alpha = nn.Parameter(
+                        torch.full((1,), math.log(0.10 / 0.90))
+                    )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
                 if self.use_sequence_bridge_bank_window:
                     self.fast_time_scale_log = nn.Parameter(torch.tensor(math.log(0.35)))
@@ -693,6 +712,21 @@ class HeteroGNNEdgeHead(nn.Module):
                             leg_gate *
                             self.bridge_leg_bank_update(leg_input)
                         )
+                if self.use_main_pair_fusion:
+                    pair_fuse_input = torch.cat(
+                        (
+                            pair_repr,
+                            pair_sequence_repr,
+                            pair_repr * pair_sequence_repr,
+                        ),
+                        dim=-1,
+                    )
+                    pair_fuse_gate = torch.sigmoid(self.main_pair_gate(pair_fuse_input))
+                    pair_repr = pair_repr + (
+                        torch.sigmoid(self.main_pair_alpha) *
+                        pair_fuse_gate *
+                        self.main_pair_update(pair_fuse_input)
+                    )
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
