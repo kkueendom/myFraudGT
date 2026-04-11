@@ -25,6 +25,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowsubgraphattn',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
@@ -32,30 +33,40 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowsubgraphattn',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
             'pair_chain_contextseqresid',
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowsubgraphattn',
         }
         self.use_pair_internal_sequence = (
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebank',
                 'pair_chain_contextseqpairseqbridgebankmotiflite',
                 'pair_chain_contextseqpairseqbridgebankwindow',
+                'pair_chain_contextseqpairseqbridgebankwindowsubgraphattn',
             }
         )
         self.use_sequence_bridge_bank = self.edge_decoding in {
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowsubgraphattn',
         }
+        self.use_subgraph_attention_residual = (
+            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindowsubgraphattn'
+        )
         self.use_sequence_bridge_motif_lite = (
             self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankmotiflite'
         )
         self.use_sequence_bridge_bank_window = (
-            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindow'
+            self.edge_decoding in {
+                'pair_chain_contextseqpairseqbridgebankwindow',
+                'pair_chain_contextseqpairseqbridgebankwindowsubgraphattn',
+            }
         )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         self.train_inds = mask_to_index(dataset['train'][cfg.dataset.task_entity].split_mask).to(cfg.device)
@@ -106,6 +117,24 @@ class HeteroGNNEdgeHead(nn.Module):
                                         num_layers=self.head_layers,
                                         bias=True)
                 self.context_residual_alpha = nn.Parameter(
+                    torch.full((1,), math.log(0.10 / 0.90))
+                )
+            if self.use_subgraph_attention_residual:
+                self.subgraph_role_embed = nn.Parameter(torch.zeros(5, dim_in))
+                self.subgraph_attn = nn.MultiheadAttention(
+                    embed_dim=dim_in,
+                    num_heads=4,
+                    dropout=cfg.gnn.dropout,
+                    batch_first=True,
+                )
+                self.subgraph_attn_norm = nn.LayerNorm(dim_in)
+                self.subgraph_proj = MLP(dim_in * 3, dim_in,
+                                         num_layers=self.head_layers,
+                                         bias=True)
+                self.subgraph_head = MLP(dim_in, dim_out,
+                                         num_layers=self.head_layers,
+                                         bias=True)
+                self.subgraph_residual_alpha = nn.Parameter(
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
             if self.use_sequence_context_residual:
@@ -461,6 +490,7 @@ class HeteroGNNEdgeHead(nn.Module):
             ))
         pair_context_repr = None
         pair_sequence_repr = None
+        pair_subgraph_repr = None
         fast_sequence_repr = None
         slow_sequence_repr = None
 
@@ -693,6 +723,58 @@ class HeteroGNNEdgeHead(nn.Module):
                             leg_gate *
                             self.bridge_leg_bank_update(leg_input)
                         )
+                if self.use_subgraph_attention_residual:
+                    subgraph_source_repr = pair_sequence_repr
+                    if subgraph_source_repr is None:
+                        subgraph_source_repr = pair_repr
+                    subgraph_scores = subgraph_source_repr.norm(dim=-1)
+                    predecessor_focus_weights = pyg_softmax(
+                        subgraph_scores, pair_dst, num_nodes=num_nodes
+                    )
+                    successor_focus_weights = pyg_softmax(
+                        subgraph_scores, pair_src, num_nodes=num_nodes
+                    )
+                    predecessor_focus_bank = scatter(
+                        subgraph_source_repr * predecessor_focus_weights.unsqueeze(-1),
+                        pair_dst,
+                        dim=0,
+                        dim_size=num_nodes,
+                        reduce='sum'
+                    )
+                    successor_focus_bank = scatter(
+                        subgraph_source_repr * successor_focus_weights.unsqueeze(-1),
+                        pair_src,
+                        dim=0,
+                        dim_size=num_nodes,
+                        reduce='sum'
+                    )
+                    role_tokens = torch.stack(
+                        (
+                            predecessor_focus_bank[pair_src],
+                            successor_focus_bank[pair_src],
+                            subgraph_source_repr,
+                            predecessor_focus_bank[pair_dst],
+                            successor_focus_bank[pair_dst],
+                        ),
+                        dim=1,
+                    ) + self.subgraph_role_embed.unsqueeze(0)
+                    attended_pair, _ = self.subgraph_attn(
+                        role_tokens[:, 2:3],
+                        role_tokens,
+                        role_tokens,
+                        need_weights=False,
+                    )
+                    attended_pair = self.subgraph_attn_norm(
+                        attended_pair.squeeze(1) + subgraph_source_repr
+                    )
+                    pair_subgraph_repr = self.subgraph_proj(torch.cat(
+                        (
+                            attended_pair,
+                            subgraph_source_repr,
+                            attended_pair * subgraph_source_repr,
+                        ),
+                        dim=-1,
+                    ))
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -710,6 +792,11 @@ class HeteroGNNEdgeHead(nn.Module):
                 pair_sequence_repr = torch.zeros_like(pair_repr)
             sequence_logits = self.sequence_head(pair_sequence_repr[pair_inv][mask])
             pred = pred + torch.sigmoid(self.sequence_residual_alpha) * sequence_logits
+        if self.use_subgraph_attention_residual:
+            if pair_subgraph_repr is None:
+                pair_subgraph_repr = torch.zeros_like(pair_repr)
+            subgraph_logits = self.subgraph_head(pair_subgraph_repr[pair_inv][mask])
+            pred = pred + torch.sigmoid(self.subgraph_residual_alpha) * subgraph_logits
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
