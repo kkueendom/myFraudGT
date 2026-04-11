@@ -25,7 +25,6 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
-            'pair_chain_contextseqpairseqbridgebankwindowsubalign',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
@@ -33,40 +32,30 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
-            'pair_chain_contextseqpairseqbridgebankwindowsubalign',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
             'pair_chain_contextseqresid',
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
-            'pair_chain_contextseqpairseqbridgebankwindowsubalign',
         }
         self.use_pair_internal_sequence = (
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebank',
                 'pair_chain_contextseqpairseqbridgebankmotiflite',
                 'pair_chain_contextseqpairseqbridgebankwindow',
-                'pair_chain_contextseqpairseqbridgebankwindowsubalign',
             }
         )
         self.use_sequence_bridge_bank = self.edge_decoding in {
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
-            'pair_chain_contextseqpairseqbridgebankwindowsubalign',
         }
         self.use_sequence_bridge_motif_lite = (
             self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankmotiflite'
         )
-        self.use_sequence_bridge_bank_window_sub_align = (
-            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindowsubalign'
-        )
         self.use_sequence_bridge_bank_window = (
-            self.edge_decoding in {
-                'pair_chain_contextseqpairseqbridgebankwindow',
-                'pair_chain_contextseqpairseqbridgebankwindowsubalign',
-            }
+            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindow'
         )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         self.train_inds = mask_to_index(dataset['train'][cfg.dataset.task_entity].split_mask).to(cfg.device)
@@ -119,14 +108,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 self.context_residual_alpha = nn.Parameter(
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
-                if self.use_sequence_bridge_bank_window_sub_align:
-                    self.subgraph_align_proj = MLP(dim_in * 7, dim_in,
-                                                   num_layers=self.head_layers,
-                                                   bias=True)
-                    self.subgraph_bridge_gate = nn.Linear(dim_in * 4, dim_in)
-                    self.subgraph_bridge_alpha = nn.Parameter(
-                        torch.full((1,), math.log(0.10 / 0.90))
-                    )
             if self.use_sequence_context_residual:
                 self.sequence_len = 4
                 self.outgoing_sequence_encoder = nn.GRU(
@@ -479,7 +460,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 (pair_mean, pair_max, pair_max - pair_mean), dim=-1
             ))
         pair_context_repr = None
-        pair_subgraph_repr = None
         pair_sequence_repr = None
         fast_sequence_repr = None
         slow_sequence_repr = None
@@ -529,23 +509,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
-                if self.use_sequence_bridge_bank_window_sub_align:
-                    src_in = predecessor_focus_bank[pair_src]
-                    src_out = successor_focus_bank[pair_src]
-                    dst_in = predecessor_focus_bank[pair_dst]
-                    dst_out = successor_focus_bank[pair_dst]
-                    pair_subgraph_repr = self.subgraph_align_proj(torch.cat(
-                        (
-                            src_in,
-                            src_out,
-                            dst_in,
-                            dst_out,
-                            src_in * dst_out,
-                            src_out * dst_in,
-                            pair_repr,
-                        ),
-                        dim=-1,
-                    ))
             if self.use_sequence_context_residual and hasattr(batch[task], 'timestamps'):
                 edge_timestamps = batch[task].timestamps.to(edge_repr.device).float().view(-1)
                 pair_timestamps, _ = scatter_max(
@@ -664,26 +627,6 @@ class HeteroGNNEdgeHead(nn.Module):
                         ),
                         dim=-1,
                     ))
-                    if self.use_sequence_bridge_bank_window_sub_align:
-                        if pair_subgraph_repr is None:
-                            pair_subgraph_repr = torch.zeros_like(pair_repr)
-                        subgraph_bridge_input = torch.cat(
-                            (
-                                pair_subgraph_repr,
-                                bridge_context,
-                                pair_subgraph_repr * bridge_context,
-                                torch.abs(pair_subgraph_repr - bridge_context),
-                            ),
-                            dim=-1,
-                        )
-                        subgraph_bridge_gate = torch.sigmoid(
-                            self.subgraph_bridge_gate(subgraph_bridge_input)
-                        )
-                        bridge_context = bridge_context + (
-                            torch.sigmoid(self.subgraph_bridge_alpha) *
-                            subgraph_bridge_gate *
-                            (pair_subgraph_repr - bridge_context)
-                        )
                     if self.use_sequence_bridge_bank_window:
                         window_input = torch.cat(
                             (
