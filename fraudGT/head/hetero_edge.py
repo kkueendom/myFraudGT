@@ -25,6 +25,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowroleline',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
@@ -32,30 +33,40 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowroleline',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
             'pair_chain_contextseqresid',
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowroleline',
         }
         self.use_pair_internal_sequence = (
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebank',
                 'pair_chain_contextseqpairseqbridgebankmotiflite',
                 'pair_chain_contextseqpairseqbridgebankwindow',
+                'pair_chain_contextseqpairseqbridgebankwindowroleline',
             }
         )
         self.use_sequence_bridge_bank = self.edge_decoding in {
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowroleline',
         }
+        self.use_role_line_view = (
+            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindowroleline'
+        )
         self.use_sequence_bridge_motif_lite = (
             self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankmotiflite'
         )
         self.use_sequence_bridge_bank_window = (
-            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindow'
+            self.edge_decoding in {
+                'pair_chain_contextseqpairseqbridgebankwindow',
+                'pair_chain_contextseqpairseqbridgebankwindowroleline',
+            }
         )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         self.train_inds = mask_to_index(dataset['train'][cfg.dataset.task_entity].split_mask).to(cfg.device)
@@ -108,6 +119,20 @@ class HeteroGNNEdgeHead(nn.Module):
                 self.context_residual_alpha = nn.Parameter(
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
+                if self.use_role_line_view:
+                    self.src_role_proj = MLP(dim_in * 3, dim_in,
+                                             num_layers=self.head_layers,
+                                             bias=True)
+                    self.dst_role_proj = MLP(dim_in * 3, dim_in,
+                                             num_layers=self.head_layers,
+                                             bias=True)
+                    self.role_line_gate = nn.Linear(dim_in * 3, dim_in)
+                    self.role_line_update = MLP(dim_in * 3, dim_in,
+                                                num_layers=self.head_layers,
+                                                bias=True)
+                    self.role_line_alpha = nn.Parameter(
+                        torch.full((1,), math.log(0.10 / 0.90))
+                    )
             if self.use_sequence_context_residual:
                 self.sequence_len = 4
                 self.outgoing_sequence_encoder = nn.GRU(
@@ -509,6 +534,37 @@ class HeteroGNNEdgeHead(nn.Module):
                     ),
                     dim=-1,
                 ))
+                if self.use_role_line_view:
+                    src_role = self.src_role_proj(torch.cat(
+                        (
+                            predecessor_focus_bank[pair_src],
+                            successor_focus_bank[pair_src],
+                            predecessor_focus_bank[pair_src] * successor_focus_bank[pair_src],
+                        ),
+                        dim=-1,
+                    ))
+                    dst_role = self.dst_role_proj(torch.cat(
+                        (
+                            predecessor_focus_bank[pair_dst],
+                            successor_focus_bank[pair_dst],
+                            predecessor_focus_bank[pair_dst] * successor_focus_bank[pair_dst],
+                        ),
+                        dim=-1,
+                    ))
+                    role_line_input = torch.cat(
+                        (
+                            src_role,
+                            dst_role,
+                            src_role * dst_role,
+                        ),
+                        dim=-1,
+                    )
+                    role_line_gate = torch.sigmoid(self.role_line_gate(role_line_input))
+                    pair_repr = pair_repr + (
+                        torch.sigmoid(self.role_line_alpha) *
+                        role_line_gate *
+                        self.role_line_update(role_line_input)
+                    )
             if self.use_sequence_context_residual and hasattr(batch[task], 'timestamps'):
                 edge_timestamps = batch[task].timestamps.to(edge_repr.device).float().view(-1)
                 pair_timestamps, _ = scatter_max(
