@@ -25,6 +25,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowviewmix',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
@@ -32,30 +33,40 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowviewmix',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
             'pair_chain_contextseqresid',
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowviewmix',
         }
         self.use_pair_internal_sequence = (
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebank',
                 'pair_chain_contextseqpairseqbridgebankmotiflite',
                 'pair_chain_contextseqpairseqbridgebankwindow',
+                'pair_chain_contextseqpairseqbridgebankwindowviewmix',
             }
         )
         self.use_sequence_bridge_bank = self.edge_decoding in {
             'pair_chain_contextseqpairseqbridgebank',
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
+            'pair_chain_contextseqpairseqbridgebankwindowviewmix',
         }
         self.use_sequence_bridge_motif_lite = (
             self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankmotiflite'
         )
         self.use_sequence_bridge_bank_window = (
-            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindow'
+            self.edge_decoding in {
+                'pair_chain_contextseqpairseqbridgebankwindow',
+                'pair_chain_contextseqpairseqbridgebankwindowviewmix',
+            }
+        )
+        self.use_sequence_bridge_view_mix = (
+            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindowviewmix'
         )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         self.train_inds = mask_to_index(dataset['train'][cfg.dataset.task_entity].split_mask).to(cfg.device)
@@ -151,6 +162,26 @@ class HeteroGNNEdgeHead(nn.Module):
                     self.bridge_bank_alpha = nn.Parameter(
                         torch.full((1,), math.log(0.10 / 0.90))
                     )
+                    if self.use_sequence_bridge_view_mix:
+                        self.outgoing_bridge_view_proj = MLP(
+                            dim_in * 3, dim_in,
+                            num_layers=self.head_layers,
+                            bias=True,
+                        )
+                        self.incoming_bridge_view_proj = MLP(
+                            dim_in * 3, dim_in,
+                            num_layers=self.head_layers,
+                            bias=True,
+                        )
+                        self.bridge_view_gate = nn.Linear(dim_in * 4, dim_in)
+                        self.bridge_view_update = MLP(
+                            dim_in * 4, dim_in,
+                            num_layers=self.head_layers,
+                            bias=True,
+                        )
+                        self.bridge_view_alpha = nn.Parameter(
+                            torch.full((1,), math.log(0.10 / 0.90))
+                        )
                     if self.use_sequence_bridge_motif_lite:
                         self.bridge_leg_pair_proj = MLP(dim_in * 3 + 1, dim_in,
                                                         num_layers=self.head_layers,
@@ -656,6 +687,38 @@ class HeteroGNNEdgeHead(nn.Module):
                         bridge_gate *
                         self.bridge_bank_update(bridge_input)
                     )
+                    if self.use_sequence_bridge_view_mix:
+                        outgoing_view = self.outgoing_bridge_view_proj(torch.cat(
+                            (
+                                outgoing_state,
+                                forward_bridge,
+                                outgoing_state * forward_bridge,
+                            ),
+                            dim=-1,
+                        ))
+                        incoming_view = self.incoming_bridge_view_proj(torch.cat(
+                            (
+                                incoming_state,
+                                cycle_bridge,
+                                incoming_state * cycle_bridge,
+                            ),
+                            dim=-1,
+                        ))
+                        view_input = torch.cat(
+                            (
+                                outgoing_view,
+                                incoming_view,
+                                outgoing_view * incoming_view,
+                                torch.abs(outgoing_view - incoming_view),
+                            ),
+                            dim=-1,
+                        )
+                        view_gate = torch.sigmoid(self.bridge_view_gate(view_input))
+                        pair_sequence_repr = pair_sequence_repr + (
+                            torch.sigmoid(self.bridge_view_alpha) *
+                            view_gate *
+                            self.bridge_view_update(view_input)
+                        )
                     if self.use_sequence_bridge_motif_lite:
                         outgoing_time_bank = self._build_recent_timestamp_bank(
                             pair_src, pair_timestamps, num_nodes
