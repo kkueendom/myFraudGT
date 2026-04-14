@@ -26,7 +26,6 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectmotiflite',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
@@ -35,7 +34,6 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectmotiflite',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
             'pair_chain_contextseqresid',
@@ -43,7 +41,6 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectmotiflite',
         }
         self.use_pair_internal_sequence = (
             self.edge_decoding in {
@@ -51,7 +48,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankmotiflite',
                 'pair_chain_contextseqpairseqbridgebankwindow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselect',
-                'pair_chain_contextseqpairseqbridgebankwindowseqselectmotiflite',
             }
         )
         self.use_sequence_bridge_bank = self.edge_decoding in {
@@ -59,25 +55,17 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectmotiflite',
         }
         self.use_sequence_bridge_motif_lite = (
-            self.edge_decoding in {
-                'pair_chain_contextseqpairseqbridgebankmotiflite',
-                'pair_chain_contextseqpairseqbridgebankwindowseqselectmotiflite',
-            }
+            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankmotiflite'
         )
         self.use_target_sequence_select = (
-            self.edge_decoding in {
-                'pair_chain_contextseqpairseqbridgebankwindowseqselect',
-                'pair_chain_contextseqpairseqbridgebankwindowseqselectmotiflite',
-            }
+            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindowseqselect'
         )
         self.use_sequence_bridge_bank_window = (
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebankwindow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselect',
-                'pair_chain_contextseqpairseqbridgebankwindowseqselectmotiflite',
             }
         )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
@@ -608,8 +596,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     )
                     pair_outgoing_sequence_bank = outgoing_sequence_bank[pair_src]
                     pair_incoming_sequence_bank = incoming_sequence_bank[pair_dst]
-                    pair_cycle_incoming_sequence_bank = incoming_sequence_bank[pair_src]
-                    pair_cycle_outgoing_sequence_bank = outgoing_sequence_bank[pair_dst]
                     pair_slow_outgoing_sequence_bank = slow_outgoing_sequence_bank[pair_src]
                     pair_slow_incoming_sequence_bank = slow_incoming_sequence_bank[pair_dst]
                     if self.use_target_sequence_select:
@@ -622,16 +608,6 @@ class HeteroGNNEdgeHead(nn.Module):
                             pair_incoming_sequence_bank,
                             pair_repr,
                             self.incoming_sequence_select_score,
-                        )
-                        pair_cycle_incoming_sequence_bank = self._filter_sequence_bank(
-                            pair_cycle_incoming_sequence_bank,
-                            pair_repr,
-                            self.incoming_sequence_select_score,
-                        )
-                        pair_cycle_outgoing_sequence_bank = self._filter_sequence_bank(
-                            pair_cycle_outgoing_sequence_bank,
-                            pair_repr,
-                            self.outgoing_sequence_select_score,
                         )
                         pair_slow_outgoing_sequence_bank = self._filter_sequence_bank(
                             pair_slow_outgoing_sequence_bank,
@@ -681,8 +657,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     )
                     pair_outgoing_sequence_bank = outgoing_sequence_bank[pair_src]
                     pair_incoming_sequence_bank = incoming_sequence_bank[pair_dst]
-                    pair_cycle_incoming_sequence_bank = incoming_sequence_bank[pair_src]
-                    pair_cycle_outgoing_sequence_bank = outgoing_sequence_bank[pair_dst]
                     if self.use_target_sequence_select:
                         pair_outgoing_sequence_bank = self._filter_sequence_bank(
                             pair_outgoing_sequence_bank,
@@ -693,16 +667,6 @@ class HeteroGNNEdgeHead(nn.Module):
                             pair_incoming_sequence_bank,
                             pair_repr,
                             self.incoming_sequence_select_score,
-                        )
-                        pair_cycle_incoming_sequence_bank = self._filter_sequence_bank(
-                            pair_cycle_incoming_sequence_bank,
-                            pair_repr,
-                            self.incoming_sequence_select_score,
-                        )
-                        pair_cycle_outgoing_sequence_bank = self._filter_sequence_bank(
-                            pair_cycle_outgoing_sequence_bank,
-                            pair_repr,
-                            self.outgoing_sequence_select_score,
                         )
                     outgoing_state = self.outgoing_sequence_encoder(
                         pair_outgoing_sequence_bank
@@ -783,16 +747,16 @@ class HeteroGNNEdgeHead(nn.Module):
                         forward_leg = self._recent_overlap_leg_repr(
                             outgoing_partner_bank[pair_src],
                             incoming_partner_bank[pair_dst],
-                            pair_outgoing_sequence_bank,
-                            pair_incoming_sequence_bank,
+                            outgoing_sequence_bank[pair_src],
+                            incoming_sequence_bank[pair_dst],
                             outgoing_time_bank[pair_src],
                             incoming_time_bank[pair_dst],
                         )
                         cycle_leg = self._recent_overlap_leg_repr(
                             incoming_partner_bank[pair_src],
                             outgoing_partner_bank[pair_dst],
-                            pair_cycle_incoming_sequence_bank,
-                            pair_cycle_outgoing_sequence_bank,
+                            incoming_sequence_bank[pair_src],
+                            outgoing_sequence_bank[pair_dst],
                             incoming_time_bank[pair_src],
                             outgoing_time_bank[pair_dst],
                         )
