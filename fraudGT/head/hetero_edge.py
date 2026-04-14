@@ -26,6 +26,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectpath',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
@@ -34,6 +35,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectpath',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
             'pair_chain_contextseqresid',
@@ -41,6 +43,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectpath',
         }
         self.use_pair_internal_sequence = (
             self.edge_decoding in {
@@ -48,6 +51,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankmotiflite',
                 'pair_chain_contextseqpairseqbridgebankwindow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectpath',
             }
         )
         self.use_sequence_bridge_bank = self.edge_decoding in {
@@ -55,17 +59,26 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectpath',
         }
+        self.use_sequence_window_path = (
+            self.edge_decoding ==
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectpath'
+        )
         self.use_sequence_bridge_motif_lite = (
             self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankmotiflite'
         )
         self.use_target_sequence_select = (
-            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindowseqselect'
+            self.edge_decoding in {
+                'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectpath',
+            }
         )
         self.use_sequence_bridge_bank_window = (
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebankwindow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectpath',
             }
         )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
@@ -190,6 +203,22 @@ class HeteroGNNEdgeHead(nn.Module):
                         self.bridge_leg_bank_alpha = nn.Parameter(
                             torch.full((1,), math.log(0.08 / 0.92))
                         )
+                if self.use_sequence_window_path:
+                    self.path_sequence_token = nn.Linear(dim_in * 3, dim_in)
+                    self.path_sequence_encoder = nn.GRU(
+                        input_size=dim_in,
+                        hidden_size=dim_in,
+                        batch_first=True,
+                    )
+                    self.path_sequence_proj = MLP(dim_in * 3, dim_in,
+                                                  num_layers=self.head_layers,
+                                                  bias=True)
+                    self.path_sequence_head = MLP(dim_in, dim_out,
+                                                  num_layers=self.head_layers,
+                                                  bias=True)
+                    self.path_sequence_residual_alpha = nn.Parameter(
+                        torch.full((1,), math.log(0.05 / 0.95))
+                    )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -504,6 +533,7 @@ class HeteroGNNEdgeHead(nn.Module):
             ))
         pair_context_repr = None
         pair_sequence_repr = None
+        pair_path_sequence_repr = None
         fast_sequence_repr = None
         slow_sequence_repr = None
 
@@ -774,6 +804,29 @@ class HeteroGNNEdgeHead(nn.Module):
                             leg_gate *
                             self.bridge_leg_bank_update(leg_input)
                         )
+                    if self.use_sequence_window_path:
+                        pair_center_bank = pair_repr.unsqueeze(1).expand(
+                            -1, self.sequence_len, -1
+                        )
+                        path_tokens = self.path_sequence_token(torch.cat(
+                            (
+                                pair_outgoing_sequence_bank,
+                                pair_center_bank,
+                                pair_incoming_sequence_bank,
+                            ),
+                            dim=-1,
+                        ))
+                        path_state = self.path_sequence_encoder(
+                            path_tokens
+                        )[1].squeeze(0)
+                        pair_path_sequence_repr = self.path_sequence_proj(torch.cat(
+                            (
+                                pair_sequence_repr,
+                                path_state,
+                                pair_sequence_repr * path_state,
+                            ),
+                            dim=-1,
+                        ))
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -791,6 +844,15 @@ class HeteroGNNEdgeHead(nn.Module):
                 pair_sequence_repr = torch.zeros_like(pair_repr)
             sequence_logits = self.sequence_head(pair_sequence_repr[pair_inv][mask])
             pred = pred + torch.sigmoid(self.sequence_residual_alpha) * sequence_logits
+            if self.use_sequence_window_path:
+                if pair_path_sequence_repr is None:
+                    pair_path_sequence_repr = torch.zeros_like(pair_repr)
+                path_sequence_logits = self.path_sequence_head(
+                    pair_path_sequence_repr[pair_inv][mask]
+                )
+                pred = pred + (
+                    torch.sigmoid(self.path_sequence_residual_alpha) * path_sequence_logits
+                )
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
