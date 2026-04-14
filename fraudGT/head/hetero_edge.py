@@ -26,6 +26,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectlineprop',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
@@ -34,6 +35,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectlineprop',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
             'pair_chain_contextseqresid',
@@ -41,6 +43,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectlineprop',
         }
         self.use_pair_internal_sequence = (
             self.edge_decoding in {
@@ -48,6 +51,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankmotiflite',
                 'pair_chain_contextseqpairseqbridgebankwindow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectlineprop',
             }
         )
         self.use_sequence_bridge_bank = self.edge_decoding in {
@@ -55,17 +59,26 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectlineprop',
         }
+        self.use_edge_line_propagation = (
+            self.edge_decoding ==
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectlineprop'
+        )
         self.use_sequence_bridge_motif_lite = (
             self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankmotiflite'
         )
         self.use_target_sequence_select = (
-            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindowseqselect'
+            self.edge_decoding in {
+                'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectlineprop',
+            }
         )
         self.use_sequence_bridge_bank_window = (
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebankwindow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectlineprop',
             }
         )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
@@ -94,6 +107,14 @@ class HeteroGNNEdgeHead(nn.Module):
             if self.use_sequence_bridge_bank_window:
                 self.pair_window_gate = nn.Linear(dim_in * 3, dim_in)
                 self.pair_window_alpha = nn.Parameter(
+                    torch.full((1,), math.log(0.10 / 0.90))
+                )
+            if self.use_edge_line_propagation:
+                self.line_update = MLP(dim_in * 3, dim_in,
+                                       num_layers=self.head_layers,
+                                       bias=True)
+                self.line_gate = nn.Linear(dim_in * 3, dim_in)
+                self.line_residual_alpha = nn.Parameter(
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
             self.chain_update = MLP(dim_in * 3, dim_in,
@@ -334,6 +355,19 @@ class HeteroGNNEdgeHead(nn.Module):
         valid = (sequence_bank.abs().sum(dim=-1, keepdim=True) > 0).float()
         return sequence_bank * valid * scale
 
+    def _build_focus_bank(self, source_repr, pair_nodes, num_nodes):
+        source_scores = source_repr.norm(dim=-1)
+        source_weights = pyg_softmax(
+            source_scores, pair_nodes, num_nodes=num_nodes
+        )
+        return scatter(
+            source_repr * source_weights.unsqueeze(-1),
+            pair_nodes,
+            dim=0,
+            dim_size=num_nodes,
+            reduce='sum',
+        )
+
     def _recent_overlap_partner_repr(self, bank_a, bank_b, node_x):
         valid_a = bank_a >= 0
         valid_b = bank_b >= 0
@@ -433,6 +467,25 @@ class HeteroGNNEdgeHead(nn.Module):
         edge_inputs, edge_index = self._edge_inputs(batch)
         src_nodes, dst_nodes = edge_index
         edge_repr = self.edge_proj(edge_inputs)
+        if self.use_edge_line_propagation and task[0] == task[2]:
+            num_nodes = batch[task[0]].x.size(0)
+            predecessor_bank = self._build_focus_bank(
+                edge_repr, dst_nodes, num_nodes
+            )
+            successor_bank = self._build_focus_bank(
+                edge_repr, src_nodes, num_nodes
+            )
+            prev_edge_context = predecessor_bank[src_nodes]
+            next_edge_context = successor_bank[dst_nodes]
+            line_input = torch.cat(
+                (prev_edge_context, edge_repr, next_edge_context), dim=-1
+            )
+            line_gate = torch.sigmoid(self.line_gate(line_input))
+            edge_repr = edge_repr + (
+                torch.sigmoid(self.line_residual_alpha) *
+                line_gate *
+                self.line_update(line_input)
+            )
 
         num_dst_nodes = batch[task[2]].x.size(0)
         pair_key = src_nodes.to(torch.long) * num_dst_nodes + dst_nodes.to(torch.long)
