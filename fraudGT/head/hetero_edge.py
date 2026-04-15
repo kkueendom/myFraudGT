@@ -26,7 +26,6 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectattrview',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
@@ -35,7 +34,6 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectattrview',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
             'pair_chain_contextseqresid',
@@ -43,7 +41,6 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectattrview',
         }
         self.use_pair_internal_sequence = (
             self.edge_decoding in {
@@ -51,7 +48,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankmotiflite',
                 'pair_chain_contextseqpairseqbridgebankwindow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselect',
-                'pair_chain_contextseqpairseqbridgebankwindowseqselectattrview',
             }
         )
         self.use_sequence_bridge_bank = self.edge_decoding in {
@@ -59,26 +55,17 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectattrview',
         }
         self.use_sequence_bridge_motif_lite = (
             self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankmotiflite'
         )
         self.use_target_sequence_select = (
-            self.edge_decoding in {
-                'pair_chain_contextseqpairseqbridgebankwindowseqselect',
-                'pair_chain_contextseqpairseqbridgebankwindowseqselectattrview',
-            }
-        )
-        self.use_attribute_sequence_view = (
-            self.edge_decoding ==
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectattrview'
+            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindowseqselect'
         )
         self.use_sequence_bridge_bank_window = (
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebankwindow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselect',
-                'pair_chain_contextseqpairseqbridgebankwindowseqselectattrview',
             }
         )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
@@ -153,26 +140,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 self.sequence_residual_alpha = nn.Parameter(
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
-                if self.use_attribute_sequence_view:
-                    self.attribute_outgoing_sequence_encoder = nn.GRU(
-                        input_size=dim_in,
-                        hidden_size=dim_in,
-                        batch_first=True,
-                    )
-                    self.attribute_incoming_sequence_encoder = nn.GRU(
-                        input_size=dim_in,
-                        hidden_size=dim_in,
-                        batch_first=True,
-                    )
-                    self.attribute_sequence_proj = MLP(
-                        dim_in * 3, dim_in,
-                        num_layers=self.head_layers,
-                        bias=True,
-                    )
-                    self.attribute_sequence_gate = nn.Linear(dim_in * 4, dim_in)
-                    self.attribute_sequence_alpha = nn.Parameter(
-                        torch.full((1,), math.log(0.15 / 0.85))
-                    )
                 if self.use_target_sequence_select:
                     self.outgoing_sequence_select_score = MLP(
                         dim_in * 3, 1,
@@ -539,7 +506,6 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_sequence_repr = None
         fast_sequence_repr = None
         slow_sequence_repr = None
-        attribute_sequence_repr = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -595,22 +561,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.isfinite(pair_timestamps),
                     pair_timestamps,
                     torch.zeros_like(pair_timestamps),
-                )
-                edge_outgoing_latest, _ = scatter_max(
-                    edge_timestamps, src_nodes, dim=0, dim_size=num_nodes
-                )
-                edge_outgoing_latest = torch.where(
-                    torch.isfinite(edge_outgoing_latest),
-                    edge_outgoing_latest,
-                    torch.zeros_like(edge_outgoing_latest),
-                )
-                edge_incoming_latest, _ = scatter_max(
-                    edge_timestamps, dst_nodes, dim=0, dim_size=num_nodes
-                )
-                edge_incoming_latest = torch.where(
-                    torch.isfinite(edge_incoming_latest),
-                    edge_incoming_latest,
-                    torch.zeros_like(edge_incoming_latest),
                 )
                 outgoing_latest, _ = scatter_max(
                     pair_timestamps, pair_src, dim=0, dim_size=num_nodes
@@ -732,40 +682,6 @@ class HeteroGNNEdgeHead(nn.Module):
                         ),
                         dim=-1,
                     ))
-                if self.use_attribute_sequence_view:
-                    attribute_outgoing_sequence_bank = self._build_recent_sequence_bank(
-                        edge_repr, src_nodes, edge_timestamps, num_nodes, edge_outgoing_latest
-                    )
-                    attribute_incoming_sequence_bank = self._build_recent_sequence_bank(
-                        edge_repr, dst_nodes, edge_timestamps, num_nodes, edge_incoming_latest
-                    )
-                    pair_attribute_outgoing_sequence_bank = attribute_outgoing_sequence_bank[pair_src]
-                    pair_attribute_incoming_sequence_bank = attribute_incoming_sequence_bank[pair_dst]
-                    if self.use_target_sequence_select:
-                        pair_attribute_outgoing_sequence_bank = self._filter_sequence_bank(
-                            pair_attribute_outgoing_sequence_bank,
-                            pair_repr,
-                            self.outgoing_sequence_select_score,
-                        )
-                        pair_attribute_incoming_sequence_bank = self._filter_sequence_bank(
-                            pair_attribute_incoming_sequence_bank,
-                            pair_repr,
-                            self.incoming_sequence_select_score,
-                        )
-                    attribute_outgoing_state = self.attribute_outgoing_sequence_encoder(
-                        pair_attribute_outgoing_sequence_bank
-                    )[1].squeeze(0)
-                    attribute_incoming_state = self.attribute_incoming_sequence_encoder(
-                        pair_attribute_incoming_sequence_bank
-                    )[1].squeeze(0)
-                    attribute_sequence_repr = self.attribute_sequence_proj(torch.cat(
-                        (
-                            attribute_outgoing_state,
-                            attribute_incoming_state,
-                            attribute_outgoing_state * attribute_incoming_state,
-                        ),
-                        dim=-1,
-                    ))
                 if self.use_sequence_bridge_bank:
                     outgoing_partner_bank = self._build_recent_partner_bank(
                         pair_src, pair_dst, pair_timestamps, num_nodes
@@ -806,24 +722,6 @@ class HeteroGNNEdgeHead(nn.Module):
                             torch.sigmoid(self.sequence_window_alpha) *
                             window_gate *
                             (slow_sequence_repr - fast_sequence_repr)
-                        )
-                    if self.use_attribute_sequence_view and attribute_sequence_repr is not None:
-                        attribute_input = torch.cat(
-                            (
-                                pair_sequence_repr,
-                                attribute_sequence_repr,
-                                pair_sequence_repr * attribute_sequence_repr,
-                                bridge_context,
-                            ),
-                            dim=-1,
-                        )
-                        attribute_gate = torch.sigmoid(
-                            self.attribute_sequence_gate(attribute_input)
-                        )
-                        pair_sequence_repr = pair_sequence_repr + (
-                            torch.sigmoid(self.attribute_sequence_alpha) *
-                            attribute_gate *
-                            (attribute_sequence_repr - pair_sequence_repr)
                         )
                     bridge_input = torch.cat(
                         (
