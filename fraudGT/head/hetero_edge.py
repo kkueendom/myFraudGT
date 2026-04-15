@@ -26,6 +26,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectbridgequery',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
@@ -34,6 +35,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectbridgequery',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
             'pair_chain_contextseqresid',
@@ -41,6 +43,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectbridgequery',
         }
         self.use_pair_internal_sequence = (
             self.edge_decoding in {
@@ -48,6 +51,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankmotiflite',
                 'pair_chain_contextseqpairseqbridgebankwindow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectbridgequery',
             }
         )
         self.use_sequence_bridge_bank = self.edge_decoding in {
@@ -55,17 +59,26 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectbridgequery',
         }
         self.use_sequence_bridge_motif_lite = (
             self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankmotiflite'
         )
         self.use_target_sequence_select = (
-            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindowseqselect'
+            self.edge_decoding in {
+                'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectbridgequery',
+            }
+        )
+        self.use_bridge_conditioned_sequence_select = (
+            self.edge_decoding ==
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectbridgequery'
         )
         self.use_sequence_bridge_bank_window = (
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebankwindow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectbridgequery',
             }
         )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
@@ -154,6 +167,15 @@ class HeteroGNNEdgeHead(nn.Module):
                     self.sequence_select_alpha = nn.Parameter(
                         torch.full((1,), math.log(0.30 / 0.70))
                     )
+                    if self.use_bridge_conditioned_sequence_select:
+                        self.sequence_select_bridge_query_proj = MLP(
+                            dim_in * 3, dim_in,
+                            num_layers=self.head_layers,
+                            bias=True,
+                        )
+                        self.sequence_select_bridge_query_alpha = nn.Parameter(
+                            torch.full((1,), math.log(0.15 / 0.85))
+                        )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
                 if self.use_sequence_bridge_bank_window:
                     self.fast_time_scale_log = nn.Parameter(torch.tensor(math.log(0.35)))
@@ -427,6 +449,21 @@ class HeteroGNNEdgeHead(nn.Module):
             dim=-1,
         ))
 
+    def _build_bridge_select_query(self, pair_repr, bridge_context):
+        if bridge_context is None or not self.use_bridge_conditioned_sequence_select:
+            return pair_repr
+        bridge_query = self.sequence_select_bridge_query_proj(torch.cat(
+            (
+                pair_repr,
+                bridge_context,
+                pair_repr * bridge_context,
+            ),
+            dim=-1,
+        ))
+        return pair_repr + (
+            torch.sigmoid(self.sequence_select_bridge_query_alpha) * bridge_query
+        )
+
     def _pair_chain_head(self, batch):
         task = cfg.dataset.task_entity
         mask = self._edge_mask(batch)
@@ -506,6 +543,9 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_sequence_repr = None
         fast_sequence_repr = None
         slow_sequence_repr = None
+        bridge_context = None
+        outgoing_partner_bank = None
+        incoming_partner_bank = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -578,6 +618,36 @@ class HeteroGNNEdgeHead(nn.Module):
                     incoming_latest,
                     torch.zeros_like(incoming_latest),
                 )
+                if self.use_sequence_bridge_bank:
+                    outgoing_partner_bank = self._build_recent_partner_bank(
+                        pair_src, pair_dst, pair_timestamps, num_nodes
+                    )
+                    incoming_partner_bank = self._build_recent_partner_bank(
+                        pair_dst, pair_src, pair_timestamps, num_nodes
+                    )
+                    node_x = batch[task[0]].x
+                    forward_bridge = self._recent_overlap_partner_repr(
+                        outgoing_partner_bank[pair_src],
+                        incoming_partner_bank[pair_dst],
+                        node_x,
+                    )
+                    cycle_bridge = self._recent_overlap_partner_repr(
+                        incoming_partner_bank[pair_src],
+                        outgoing_partner_bank[pair_dst],
+                        node_x,
+                    )
+                    bridge_context = self.bridge_bank_proj(torch.cat(
+                        (
+                            forward_bridge,
+                            cycle_bridge,
+                            forward_bridge * cycle_bridge,
+                        ),
+                        dim=-1,
+                    ))
+                select_query = self._build_bridge_select_query(
+                    pair_repr,
+                    bridge_context,
+                )
                 if self.use_sequence_bridge_bank_window:
                     base_time_scale = self.sequence_time_scale.abs().clamp(min=1.0)
                     fast_time_scale = base_time_scale * self.fast_time_scale_log.exp().clamp(min=0.1, max=10.0)
@@ -601,22 +671,22 @@ class HeteroGNNEdgeHead(nn.Module):
                     if self.use_target_sequence_select:
                         pair_outgoing_sequence_bank = self._filter_sequence_bank(
                             pair_outgoing_sequence_bank,
-                            pair_repr,
+                            select_query,
                             self.outgoing_sequence_select_score,
                         )
                         pair_incoming_sequence_bank = self._filter_sequence_bank(
                             pair_incoming_sequence_bank,
-                            pair_repr,
+                            select_query,
                             self.incoming_sequence_select_score,
                         )
                         pair_slow_outgoing_sequence_bank = self._filter_sequence_bank(
                             pair_slow_outgoing_sequence_bank,
-                            pair_repr,
+                            select_query,
                             self.outgoing_sequence_select_score,
                         )
                         pair_slow_incoming_sequence_bank = self._filter_sequence_bank(
                             pair_slow_incoming_sequence_bank,
-                            pair_repr,
+                            select_query,
                             self.incoming_sequence_select_score,
                         )
                     outgoing_state = self.outgoing_sequence_encoder(
@@ -660,12 +730,12 @@ class HeteroGNNEdgeHead(nn.Module):
                     if self.use_target_sequence_select:
                         pair_outgoing_sequence_bank = self._filter_sequence_bank(
                             pair_outgoing_sequence_bank,
-                            pair_repr,
+                            select_query,
                             self.outgoing_sequence_select_score,
                         )
                         pair_incoming_sequence_bank = self._filter_sequence_bank(
                             pair_incoming_sequence_bank,
-                            pair_repr,
+                            select_query,
                             self.incoming_sequence_select_score,
                         )
                     outgoing_state = self.outgoing_sequence_encoder(
@@ -683,31 +753,32 @@ class HeteroGNNEdgeHead(nn.Module):
                         dim=-1,
                     ))
                 if self.use_sequence_bridge_bank:
-                    outgoing_partner_bank = self._build_recent_partner_bank(
-                        pair_src, pair_dst, pair_timestamps, num_nodes
-                    )
-                    incoming_partner_bank = self._build_recent_partner_bank(
-                        pair_dst, pair_src, pair_timestamps, num_nodes
-                    )
-                    node_x = batch[task[0]].x
-                    forward_bridge = self._recent_overlap_partner_repr(
-                        outgoing_partner_bank[pair_src],
-                        incoming_partner_bank[pair_dst],
-                        node_x,
-                    )
-                    cycle_bridge = self._recent_overlap_partner_repr(
-                        incoming_partner_bank[pair_src],
-                        outgoing_partner_bank[pair_dst],
-                        node_x,
-                    )
-                    bridge_context = self.bridge_bank_proj(torch.cat(
-                        (
-                            forward_bridge,
-                            cycle_bridge,
-                            forward_bridge * cycle_bridge,
-                        ),
-                        dim=-1,
-                    ))
+                    if bridge_context is None:
+                        outgoing_partner_bank = self._build_recent_partner_bank(
+                            pair_src, pair_dst, pair_timestamps, num_nodes
+                        )
+                        incoming_partner_bank = self._build_recent_partner_bank(
+                            pair_dst, pair_src, pair_timestamps, num_nodes
+                        )
+                        node_x = batch[task[0]].x
+                        forward_bridge = self._recent_overlap_partner_repr(
+                            outgoing_partner_bank[pair_src],
+                            incoming_partner_bank[pair_dst],
+                            node_x,
+                        )
+                        cycle_bridge = self._recent_overlap_partner_repr(
+                            incoming_partner_bank[pair_src],
+                            outgoing_partner_bank[pair_dst],
+                            node_x,
+                        )
+                        bridge_context = self.bridge_bank_proj(torch.cat(
+                            (
+                                forward_bridge,
+                                cycle_bridge,
+                                forward_bridge * cycle_bridge,
+                            ),
+                            dim=-1,
+                        ))
                     if self.use_sequence_bridge_bank_window:
                         window_input = torch.cat(
                             (
