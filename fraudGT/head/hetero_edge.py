@@ -26,6 +26,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectdynfuse',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
@@ -34,6 +35,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectdynfuse',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
             'pair_chain_contextseqresid',
@@ -41,6 +43,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectdynfuse',
         }
         self.use_pair_internal_sequence = (
             self.edge_decoding in {
@@ -48,6 +51,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankmotiflite',
                 'pair_chain_contextseqpairseqbridgebankwindow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectdynfuse',
             }
         )
         self.use_sequence_bridge_bank = self.edge_decoding in {
@@ -55,17 +59,26 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectdynfuse',
         }
         self.use_sequence_bridge_motif_lite = (
             self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankmotiflite'
         )
         self.use_target_sequence_select = (
-            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindowseqselect'
+            self.edge_decoding in {
+                'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectdynfuse',
+            }
+        )
+        self.use_dynamic_expert_fusion = (
+            self.edge_decoding ==
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectdynfuse'
         )
         self.use_sequence_bridge_bank_window = (
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebankwindow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectdynfuse',
             }
         )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
@@ -190,6 +203,20 @@ class HeteroGNNEdgeHead(nn.Module):
                         self.bridge_leg_bank_alpha = nn.Parameter(
                             torch.full((1,), math.log(0.08 / 0.92))
                         )
+                if self.use_dynamic_expert_fusion:
+                    self.dynamic_expert_gate = nn.Linear(dim_in * 6, 3)
+                    with torch.no_grad():
+                        self.dynamic_expert_gate.bias.copy_(
+                            torch.tensor([1.0, 0.0, 0.0])
+                        )
+                    self.dynamic_expert_head = MLP(
+                        dim_in * 3, dim_out,
+                        num_layers=self.head_layers,
+                        bias=True,
+                    )
+                    self.dynamic_expert_alpha = nn.Parameter(
+                        torch.full((1,), math.log(0.10 / 0.90))
+                    )
         else:
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
@@ -781,16 +808,58 @@ class HeteroGNNEdgeHead(nn.Module):
             (edge_repr[mask], pair_edge_repr[mask], edge_repr[mask] * pair_edge_repr[mask]),
             dim=-1
         ))
+        main_hidden = pair_edge_repr[mask]
+        context_hidden = None
+        sequence_hidden = None
         if self.use_chain_context_residual:
             if pair_context_repr is None:
                 pair_context_repr = torch.zeros_like(pair_repr)
-            context_logits = self.context_head(pair_context_repr[pair_inv][mask])
-            pred = pred + torch.sigmoid(self.context_residual_alpha) * context_logits
+            context_hidden = pair_context_repr[pair_inv][mask]
+            if not self.use_dynamic_expert_fusion:
+                context_logits = self.context_head(context_hidden)
+                pred = pred + torch.sigmoid(self.context_residual_alpha) * context_logits
         if self.use_sequence_context_residual:
             if pair_sequence_repr is None:
                 pair_sequence_repr = torch.zeros_like(pair_repr)
-            sequence_logits = self.sequence_head(pair_sequence_repr[pair_inv][mask])
-            pred = pred + torch.sigmoid(self.sequence_residual_alpha) * sequence_logits
+            sequence_hidden = pair_sequence_repr[pair_inv][mask]
+            if not self.use_dynamic_expert_fusion:
+                sequence_logits = self.sequence_head(sequence_hidden)
+                pred = pred + torch.sigmoid(self.sequence_residual_alpha) * sequence_logits
+        if self.use_dynamic_expert_fusion:
+            if context_hidden is None:
+                context_hidden = torch.zeros_like(main_hidden)
+            if sequence_hidden is None:
+                sequence_hidden = torch.zeros_like(main_hidden)
+            gate_input = torch.cat(
+                (
+                    main_hidden,
+                    context_hidden,
+                    sequence_hidden,
+                    main_hidden * context_hidden,
+                    main_hidden * sequence_hidden,
+                    context_hidden * sequence_hidden,
+                ),
+                dim=-1,
+            )
+            expert_weights = torch.softmax(
+                self.dynamic_expert_gate(gate_input), dim=-1
+            )
+            fused_hidden = (
+                expert_weights[:, 0:1] * main_hidden +
+                expert_weights[:, 1:2] * context_hidden +
+                expert_weights[:, 2:3] * sequence_hidden
+            )
+            dynamic_logits = self.dynamic_expert_head(torch.cat(
+                (
+                    main_hidden,
+                    fused_hidden,
+                    main_hidden * fused_hidden,
+                ),
+                dim=-1,
+            ))
+            pred = pred + (
+                torch.sigmoid(self.dynamic_expert_alpha) * dynamic_logits
+            )
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
