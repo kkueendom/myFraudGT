@@ -26,6 +26,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectgaptoken',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
@@ -34,6 +35,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectgaptoken',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
             'pair_chain_contextseqresid',
@@ -41,6 +43,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectgaptoken',
         }
         self.use_pair_internal_sequence = (
             self.edge_decoding in {
@@ -48,6 +51,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankmotiflite',
                 'pair_chain_contextseqpairseqbridgebankwindow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectgaptoken',
             }
         )
         self.use_sequence_bridge_bank = self.edge_decoding in {
@@ -55,17 +59,26 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectgaptoken',
         }
         self.use_sequence_bridge_motif_lite = (
             self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankmotiflite'
         )
         self.use_target_sequence_select = (
-            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindowseqselect'
+            self.edge_decoding in {
+                'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectgaptoken',
+            }
+        )
+        self.use_sequence_gap_token = (
+            self.edge_decoding ==
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectgaptoken'
         )
         self.use_sequence_bridge_bank_window = (
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebankwindow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectgaptoken',
             }
         )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
@@ -155,6 +168,23 @@ class HeteroGNNEdgeHead(nn.Module):
                         torch.full((1,), math.log(0.30 / 0.70))
                     )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
+                if self.use_sequence_gap_token:
+                    self.sequence_gap_token_proj = MLP(
+                        1, dim_in,
+                        num_layers=self.head_layers,
+                        bias=True,
+                    )
+                    self.pair_sequence_gap_token_proj = MLP(
+                        1, dim_in,
+                        num_layers=self.head_layers,
+                        bias=True,
+                    )
+                    self.sequence_gap_token_alpha = nn.Parameter(
+                        torch.full((1,), math.log(0.08 / 0.92))
+                    )
+                    self.pair_sequence_gap_token_alpha = nn.Parameter(
+                        torch.full((1,), math.log(0.08 / 0.92))
+                    )
                 if self.use_sequence_bridge_bank_window:
                     self.fast_time_scale_log = nn.Parameter(torch.tensor(math.log(0.35)))
                     self.slow_time_scale_log = nn.Parameter(torch.tensor(math.log(3.0)))
@@ -228,12 +258,19 @@ class HeteroGNNEdgeHead(nn.Module):
             chosen_indices = slot_indices[valid_nodes]
             chosen_times = pair_timestamps[chosen_indices]
             chosen_repr = pair_repr[chosen_indices]
-            recency = torch.exp(
-                -(
-                    latest_timestamps[valid_nodes] - chosen_times
-                ).clamp(min=0) / time_scale
-            ).unsqueeze(-1)
-            seq_bank[valid_nodes, slot] = chosen_repr * recency
+            time_gap = (
+                latest_timestamps[valid_nodes] - chosen_times
+            ).clamp(min=0).unsqueeze(-1)
+            recency = torch.exp(-time_gap / time_scale)
+            slot_repr = chosen_repr * recency
+            if self.use_sequence_gap_token:
+                gap_token = self.sequence_gap_token_proj(
+                    torch.log1p(time_gap / time_scale)
+                )
+                slot_repr = slot_repr + (
+                    torch.sigmoid(self.sequence_gap_token_alpha) * gap_token
+                )
+            seq_bank[valid_nodes, slot] = slot_repr
             remaining_scores[chosen_indices] = score_floor
             remaining_mask[chosen_indices] = False
 
@@ -260,12 +297,19 @@ class HeteroGNNEdgeHead(nn.Module):
             chosen_indices = slot_indices[valid_pairs]
             chosen_times = edge_timestamps[chosen_indices]
             chosen_repr = edge_repr[chosen_indices]
-            recency = torch.exp(
-                -(
-                    latest_timestamps[valid_pairs] - chosen_times
-                ).clamp(min=0) / time_scale
-            ).unsqueeze(-1)
-            seq_bank[valid_pairs, slot] = chosen_repr * recency
+            time_gap = (
+                latest_timestamps[valid_pairs] - chosen_times
+            ).clamp(min=0).unsqueeze(-1)
+            recency = torch.exp(-time_gap / time_scale)
+            slot_repr = chosen_repr * recency
+            if self.use_sequence_gap_token:
+                gap_token = self.pair_sequence_gap_token_proj(
+                    torch.log1p(time_gap / time_scale)
+                )
+                slot_repr = slot_repr + (
+                    torch.sigmoid(self.pair_sequence_gap_token_alpha) * gap_token
+                )
+            seq_bank[valid_pairs, slot] = slot_repr
             remaining_scores[chosen_indices] = score_floor
             remaining_mask[chosen_indices] = False
 
