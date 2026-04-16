@@ -26,6 +26,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectlogitgate',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
@@ -34,6 +35,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectlogitgate',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
             'pair_chain_contextseqresid',
@@ -41,6 +43,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectlogitgate',
         }
         self.use_pair_internal_sequence = (
             self.edge_decoding in {
@@ -48,6 +51,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankmotiflite',
                 'pair_chain_contextseqpairseqbridgebankwindow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectlogitgate',
             }
         )
         self.use_sequence_bridge_bank = self.edge_decoding in {
@@ -55,17 +59,26 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectlogitgate',
         }
         self.use_sequence_bridge_motif_lite = (
             self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankmotiflite'
         )
         self.use_target_sequence_select = (
-            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindowseqselect'
+            self.edge_decoding in {
+                'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectlogitgate',
+            }
+        )
+        self.use_adaptive_logit_residual_gate = (
+            self.edge_decoding ==
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectlogitgate'
         )
         self.use_sequence_bridge_bank_window = (
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebankwindow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectlogitgate',
             }
         )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
@@ -119,6 +132,12 @@ class HeteroGNNEdgeHead(nn.Module):
                 self.context_residual_alpha = nn.Parameter(
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
+                if self.use_adaptive_logit_residual_gate:
+                    self.context_residual_gate = MLP(
+                        dim_in * 3, 1,
+                        num_layers=self.head_layers,
+                        bias=True,
+                    )
             if self.use_sequence_context_residual:
                 self.sequence_len = 4
                 self.outgoing_sequence_encoder = nn.GRU(
@@ -140,6 +159,12 @@ class HeteroGNNEdgeHead(nn.Module):
                 self.sequence_residual_alpha = nn.Parameter(
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
+                if self.use_adaptive_logit_residual_gate:
+                    self.sequence_residual_gate = MLP(
+                        dim_in * 3, 1,
+                        num_layers=self.head_layers,
+                        bias=True,
+                    )
                 if self.use_target_sequence_select:
                     self.outgoing_sequence_select_score = MLP(
                         dim_in * 3, 1,
@@ -784,13 +809,41 @@ class HeteroGNNEdgeHead(nn.Module):
         if self.use_chain_context_residual:
             if pair_context_repr is None:
                 pair_context_repr = torch.zeros_like(pair_repr)
-            context_logits = self.context_head(pair_context_repr[pair_inv][mask])
-            pred = pred + torch.sigmoid(self.context_residual_alpha) * context_logits
+            pair_context_edge_repr = pair_context_repr[pair_inv][mask]
+            context_logits = self.context_head(pair_context_edge_repr)
+            context_scale = torch.sigmoid(self.context_residual_alpha)
+            if self.use_adaptive_logit_residual_gate:
+                context_gate_input = torch.cat(
+                    (
+                        pair_edge_repr[mask],
+                        pair_context_edge_repr,
+                        pair_edge_repr[mask] * pair_context_edge_repr,
+                    ),
+                    dim=-1,
+                )
+                context_scale = context_scale * torch.sigmoid(
+                    self.context_residual_gate(context_gate_input)
+                )
+            pred = pred + context_scale * context_logits
         if self.use_sequence_context_residual:
             if pair_sequence_repr is None:
                 pair_sequence_repr = torch.zeros_like(pair_repr)
-            sequence_logits = self.sequence_head(pair_sequence_repr[pair_inv][mask])
-            pred = pred + torch.sigmoid(self.sequence_residual_alpha) * sequence_logits
+            pair_sequence_edge_repr = pair_sequence_repr[pair_inv][mask]
+            sequence_logits = self.sequence_head(pair_sequence_edge_repr)
+            sequence_scale = torch.sigmoid(self.sequence_residual_alpha)
+            if self.use_adaptive_logit_residual_gate:
+                sequence_gate_input = torch.cat(
+                    (
+                        pair_edge_repr[mask],
+                        pair_sequence_edge_repr,
+                        pair_edge_repr[mask] * pair_sequence_edge_repr,
+                    ),
+                    dim=-1,
+                )
+                sequence_scale = sequence_scale * torch.sigmoid(
+                    self.sequence_residual_gate(sequence_gate_input)
+                )
+            pred = pred + sequence_scale * sequence_logits
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
