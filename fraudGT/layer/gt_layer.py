@@ -91,10 +91,6 @@ class GTLayer(nn.Module):
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxwinnerproj'
         )
-        self.directional_meanfastslowadaptiveproj_writeback = (
-            global_model_type == 'SparseNodeTransformer' and
-            cfg.gt.edge_writeback == 'dir_meanfastslowadaptiveproj'
-        )
         self.directional_meanmaxtopkprojpluswinner_writeback = (
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxtopkprojpluswinner'
@@ -236,7 +232,6 @@ class GTLayer(nn.Module):
                         self.directional_meanmaxwinnermix_writeback or
                         self.directional_meanmaxwinnerplus_writeback or
                         self.directional_meanmaxwinnerproj_writeback or
-                        self.directional_meanfastslowadaptiveproj_writeback or
                         self.directional_meanmaxtopkprojpluswinner_writeback or
                         self.directional_meanmaxwinnerdecomp_writeback or
                         self.directional_meanmaxwinnercohclip_writeback or
@@ -269,16 +264,6 @@ class GTLayer(nn.Module):
                 if self.directional_meanmaxwinnerproj_writeback:
                     self.writeback_winner_proj_add = nn.Parameter(
                         torch.full((2,), math.log(0.15 / 0.85))
-                    )
-                if self.directional_meanfastslowadaptiveproj_writeback:
-                    self.writeback_temporal_alpha = nn.Parameter(
-                        torch.zeros(2)
-                    )
-                    self.writeback_temporal_gap = nn.Parameter(
-                        torch.full((2,), 1.0)
-                    )
-                    self.writeback_proj_residual = nn.Parameter(
-                        torch.full((1,), math.log(0.10 / 0.90))
                     )
                 if self.directional_meanmaxtopkprojpluswinner_writeback:
                     self.writeback_focus_proj_add = nn.Parameter(
@@ -369,8 +354,7 @@ class GTLayer(nn.Module):
                 for node_type in metadata[0]:
                     if (
                         self.directional_meanmaxadd_writeback or
-                        self.directional_dualgate_writeback or
-                        self.directional_meanfastslowadaptiveproj_writeback
+                        self.directional_dualgate_writeback
                     ):
                         self.writeback_mean_update[node_type] = Linear(
                             dim_out * 2, dim_out
@@ -378,10 +362,7 @@ class GTLayer(nn.Module):
                         self.writeback_anomaly_update[node_type] = Linear(
                             dim_out * 2, dim_out
                         )
-                    if (
-                        self.directional_dualgate_writeback or
-                        self.directional_meanfastslowadaptiveproj_writeback
-                    ):
+                    if self.directional_dualgate_writeback:
                         self.writeback_anomaly_gate[node_type] = Linear(
                             dim_out * 3, dim_out
                         )
@@ -391,10 +372,6 @@ class GTLayer(nn.Module):
                     else:
                         self.writeback_update[node_type] = Linear(
                             writeback_context_dim, dim_out
-                        )
-                    if self.directional_meanfastslowadaptiveproj_writeback:
-                        self.writeback_winner_update[node_type] = Linear(
-                            dim_out * 2, dim_out
                         )
                     if self.directional_meanmaxspikeresid_writeback:
                         self.writeback_spike_update[node_type] = Linear(
@@ -560,17 +537,6 @@ class GTLayer(nn.Module):
 
         return selected_sum / selected_count.clamp(min=1.0).unsqueeze(-1)
 
-    def _group_weighted_mean(self, edge_values, group_nodes, group_weights, num_nodes):
-        selected_sum = torch.zeros(
-            (num_nodes, edge_values.shape[-1]), device=edge_values.device
-        )
-        selected_sum.index_add_(
-            0, group_nodes, edge_values * group_weights.unsqueeze(-1)
-        )
-        total_weight = torch.zeros(num_nodes, device=edge_values.device)
-        total_weight.index_add_(0, group_nodes, group_weights)
-        return selected_sum / total_weight.clamp(min=1e-6).unsqueeze(-1)
-
     def _group_top1_select(self, edge_values, group_nodes, group_scores, num_nodes):
         max_scores, max_indices = scatter_max(
             group_scores, group_nodes, dim=0, dim_size=num_nodes
@@ -595,8 +561,7 @@ class GTLayer(nn.Module):
         return selected
 
     def _apply_edge_writeback(self, out, edge_state, src_nodes, dst_nodes,
-                              node_type_tensor, batch, edge_weights=None,
-                              edge_timestamps=None):
+                              node_type_tensor, batch, edge_weights=None):
         num_nodes = out.shape[0]
         incoming = torch.zeros((num_nodes, edge_state.shape[-1]), device=out.device)
         outgoing = torch.zeros_like(incoming)
@@ -626,7 +591,6 @@ class GTLayer(nn.Module):
             self.directional_meanmaxwinnermix_writeback or
             self.directional_meanmaxwinnerplus_writeback or
             self.directional_meanmaxwinnerproj_writeback or
-            self.directional_meanfastslowadaptiveproj_writeback or
             self.directional_meanmaxtopkprojpluswinner_writeback or
             self.directional_meanmaxwinnerdecomp_writeback or
             self.directional_meanmaxwinnercohclip_writeback or
@@ -782,92 +746,6 @@ class GTLayer(nn.Module):
                             outgoing_max + winner_proj_add[1] * outgoing_proj,
                         ),
                         dim=-1
-                    )
-                elif self.directional_meanfastslowadaptiveproj_writeback:
-                    if edge_timestamps is None:
-                        incoming_slow = incoming
-                        outgoing_slow = outgoing
-                        incoming_fast = incoming
-                        outgoing_fast = outgoing
-                    else:
-                        incoming_delta = self._compute_temporal_delta(
-                            dst_nodes, edge_timestamps, num_nodes
-                        )
-                        outgoing_delta = self._compute_temporal_delta(
-                            src_nodes, edge_timestamps, num_nodes
-                        )
-                        slow_alpha = F.softplus(self.writeback_temporal_alpha) + 1e-6
-                        fast_alpha = slow_alpha + F.softplus(
-                            self.writeback_temporal_gap
-                        )
-                        incoming_slow = self._group_weighted_mean(
-                            edge_state,
-                            dst_nodes,
-                            edge_weights * torch.exp(-slow_alpha[0] * incoming_delta),
-                            num_nodes,
-                        )
-                        outgoing_slow = self._group_weighted_mean(
-                            edge_state,
-                            src_nodes,
-                            edge_weights * torch.exp(-slow_alpha[1] * outgoing_delta),
-                            num_nodes,
-                        )
-                        incoming_fast = self._group_weighted_mean(
-                            edge_state,
-                            dst_nodes,
-                            edge_weights * torch.exp(-fast_alpha[0] * incoming_delta),
-                            num_nodes,
-                        )
-                        outgoing_fast = self._group_weighted_mean(
-                            edge_state,
-                            src_nodes,
-                            edge_weights * torch.exp(-fast_alpha[1] * outgoing_delta),
-                            num_nodes,
-                        )
-                    incoming_trend = incoming_fast - incoming_slow
-                    outgoing_trend = outgoing_fast - outgoing_slow
-                    incoming_anomaly_scores = (
-                        (edge_state - incoming_slow[dst_nodes]).norm(dim=-1) *
-                        edge_weights
-                    )
-                    outgoing_anomaly_scores = (
-                        (edge_state - outgoing_slow[src_nodes]).norm(dim=-1) *
-                        edge_weights
-                    )
-                    incoming_winner = self._group_top1_select(
-                        edge_state, dst_nodes, incoming_anomaly_scores, num_nodes
-                    )
-                    outgoing_winner = self._group_top1_select(
-                        edge_state, src_nodes, outgoing_anomaly_scores, num_nodes
-                    )
-                    incoming_winner_residual = incoming_winner - incoming_slow
-                    outgoing_winner_residual = outgoing_winner - outgoing_slow
-                    incoming_proj_coeff = (
-                        (incoming_winner_residual * incoming_trend).sum(
-                            dim=-1, keepdim=True
-                        ) /
-                        incoming_trend.pow(2).sum(dim=-1, keepdim=True).clamp(
-                            min=1e-6
-                        )
-                    )
-                    outgoing_proj_coeff = (
-                        (outgoing_winner_residual * outgoing_trend).sum(
-                            dim=-1, keepdim=True
-                        ) /
-                        outgoing_trend.pow(2).sum(dim=-1, keepdim=True).clamp(
-                            min=1e-6
-                        )
-                    )
-                    incoming_proj = F.relu(incoming_proj_coeff) * incoming_trend
-                    outgoing_proj = F.relu(outgoing_proj_coeff) * outgoing_trend
-                    mean_context_raw = torch.cat(
-                        (incoming_slow, outgoing_slow), dim=-1
-                    )
-                    anomaly_context_raw = torch.cat(
-                        (incoming_fast, outgoing_fast), dim=-1
-                    )
-                    proj_context_raw = torch.cat(
-                        (incoming_proj, outgoing_proj), dim=-1
                     )
                 elif self.directional_meanmaxtopkprojpluswinner_writeback:
                     anomaly_scores = weighted_edge_state.norm(dim=-1)
@@ -1316,30 +1194,6 @@ class GTLayer(nn.Module):
                     torch.sigmoid(self.writeback_winner_residual) *
                     winner_residual
                 )
-            elif self.directional_meanfastslowadaptiveproj_writeback:
-                slow_context = self.activation(
-                    self.writeback_mean_update[node_type](mean_context_raw[mask])
-                )
-                fast_context = self.activation(
-                    self.writeback_anomaly_update[node_type](
-                        anomaly_context_raw[mask]
-                    )
-                )
-                window_gate = torch.sigmoid(
-                    self.writeback_anomaly_gate[node_type](
-                        torch.cat((node_out, slow_context, fast_context), dim=-1)
-                    )
-                )
-                proj_context = self.activation(
-                    self.writeback_winner_update[node_type](
-                        proj_context_raw[mask]
-                    )
-                )
-                node_context = (
-                    slow_context +
-                    window_gate * fast_context +
-                    torch.sigmoid(self.writeback_proj_residual) * proj_context
-                )
             elif self.directional_meanmaxadd_writeback:
                 mean_context = self.activation(
                     self.writeback_mean_update[node_type](mean_context_raw[mask])
@@ -1526,8 +1380,6 @@ class GTLayer(nn.Module):
                 writeback_weights = None
 
                 if cfg.gt.attn_mask in ['Edge', 'kHop']:
-                    edge_timestamps = None
-                    temporal_delta = None
                     if cfg.gt.attn_mask in ['kHop']:
                         with torch.no_grad():
                             edge_index_list = [edge_index]
@@ -1551,19 +1403,13 @@ class GTLayer(nn.Module):
                     else:
                         src_nodes, dst_nodes = edge_index
                         num_edges = edge_index.shape[1]
-                    needs_edge_timestamps = (
-                        self.temporal_bias_enabled or
-                        self.temporal_gate_enabled or
-                        self.directional_meanfastslowadaptiveproj_writeback
-                    )
-                    if needs_edge_timestamps and cfg.gt.attn_mask == 'Edge':
+                    if (self.temporal_bias_enabled or self.temporal_gate_enabled) and cfg.gt.attn_mask == 'Edge':
                         edge_timestamps = self._collect_edge_timestamps(
                             batch, edge_type_tensor, q.device
                         )
-                        if self.temporal_bias_enabled or self.temporal_gate_enabled:
-                            temporal_delta = self._compute_temporal_delta(
-                                dst_nodes, edge_timestamps, L
-                            )
+                        temporal_delta = self._compute_temporal_delta(
+                            dst_nodes, edge_timestamps, L
+                        )
                     # Compute query and key for each edge
                     edge_q = q[:, dst_nodes, :]  # Queries for destination nodes # num_heads * num_edges * d_k
                     edge_k = k[:, src_nodes, :]  # Keys for source nodes
@@ -1648,8 +1494,7 @@ class GTLayer(nn.Module):
                         out = self._apply_edge_writeback(
                             out, edge_state, src_nodes, dst_nodes,
                             node_type_tensor, batch,
-                            edge_weights=writeback_weights,
-                            edge_timestamps=edge_timestamps
+                            edge_weights=writeback_weights
                         )
 
                 for idx, node_type in enumerate(batch.node_types):
