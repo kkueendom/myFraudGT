@@ -78,6 +78,7 @@ def set_cfg_gt(cfg):
     cfg.gt.hops = 2
 
     # Relative recency bias for SparseNodeTransformer attention logits.
+    # Options: none, simple, dual_scale
     cfg.gt.temporal_bias = 'none'
     cfg.gt.temporal_bias_init = 1.0
     cfg.gt.temporal_bias_scale = 86400.0

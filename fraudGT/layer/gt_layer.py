@@ -43,6 +43,10 @@ class GTLayer(nn.Module):
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.temporal_bias != 'none'
         )
+        self.dual_scale_temporal_bias = (
+            self.temporal_bias_enabled and
+            cfg.gt.temporal_bias == 'dual_scale'
+        )
         self.temporal_gate_enabled = (
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.temporal_gate
@@ -208,10 +212,27 @@ class GTLayer(nn.Module):
                 self.temporal_alpha = nn.Parameter(
                     torch.full((self.num_heads,), cfg.gt.temporal_bias_init)
                 )
+                if self.dual_scale_temporal_bias:
+                    self.temporal_alpha_gap = nn.Parameter(
+                        torch.zeros(self.num_heads)
+                    )
+                    self.temporal_mix_bias = nn.Parameter(
+                        torch.zeros(self.num_heads)
+                    )
+                    self.temporal_mix_qk = nn.Parameter(
+                        torch.zeros(self.num_heads)
+                    )
+                    self.temporal_mix_edge = nn.Parameter(
+                        torch.zeros(self.num_heads)
+                    )
             if self.temporal_gate_enabled:
                 self.temporal_gate_alpha = nn.Parameter(
                     torch.full((self.num_heads,), cfg.gt.temporal_gate_init)
                 )
+                if self.dual_scale_temporal_bias:
+                    self.temporal_gate_alpha_gap = nn.Parameter(
+                        torch.zeros(self.num_heads)
+                    )
             if self.edge_writeback_enabled:
                 self.writeback_update = torch.nn.ModuleDict()
                 self.writeback_gate = torch.nn.ModuleDict()
@@ -1414,6 +1435,11 @@ class GTLayer(nn.Module):
                     edge_q = q[:, dst_nodes, :]  # Queries for destination nodes # num_heads * num_edges * d_k
                     edge_k = k[:, src_nodes, :]  # Keys for source nodes
                     edge_v = v[:, src_nodes, :]
+                    temporal_mix = None
+                    temporal_delta_expanded = (
+                        temporal_delta.unsqueeze(0)
+                        if temporal_delta is not None else None
+                    )
 
                     if hasattr(self, 'edge_weights'):
                         edge_weight = self.edge_weights[edge_type_tensor]  # (num_edges, num_heads, d_k, d_k)
@@ -1438,21 +1464,71 @@ class GTLayer(nn.Module):
                         edge_scores = edge_scores + edge_attr
                         edge_v = edge_v * F.sigmoid(edge_gate)
                         edge_attr = edge_scores
-                    if temporal_delta is not None and self.temporal_gate_enabled:
-                        temporal_gate = torch.exp(
-                            -F.softplus(self.temporal_gate_alpha).unsqueeze(-1) *
-                            temporal_delta.unsqueeze(0)
+                    if temporal_delta is not None and self.dual_scale_temporal_bias:
+                        temporal_content_score = torch.sum(
+                            edge_q * edge_k, dim=-1
+                        ) / math.sqrt(D)
+                        mix_logits = (
+                            self.temporal_mix_bias.unsqueeze(-1) +
+                            self.temporal_mix_qk.unsqueeze(-1) *
+                            temporal_content_score
                         )
+                        if has_edge_attr:
+                            mix_logits = mix_logits + (
+                                self.temporal_mix_edge.unsqueeze(-1) *
+                                edge_attr.norm(dim=-1)
+                            )
+                        temporal_mix = torch.sigmoid(mix_logits)
+                    if temporal_delta is not None and self.temporal_gate_enabled:
+                        if self.dual_scale_temporal_bias:
+                            slow_gate_alpha = F.softplus(
+                                self.temporal_gate_alpha
+                            ).unsqueeze(-1)
+                            fast_gate_alpha = (
+                                slow_gate_alpha +
+                                F.softplus(self.temporal_gate_alpha_gap).unsqueeze(-1)
+                            )
+                            slow_gate = torch.exp(
+                                -slow_gate_alpha * temporal_delta_expanded
+                            )
+                            fast_gate = torch.exp(
+                                -fast_gate_alpha * temporal_delta_expanded
+                            )
+                            temporal_gate = (
+                                (1.0 - temporal_mix) * slow_gate +
+                                temporal_mix * fast_gate
+                            )
+                        else:
+                            temporal_gate = torch.exp(
+                                -F.softplus(self.temporal_gate_alpha).unsqueeze(-1) *
+                                temporal_delta_expanded
+                            )
                         edge_v = edge_v * temporal_gate.unsqueeze(-1)
                         if has_edge_attr:
                             edge_attr = edge_attr * temporal_gate.unsqueeze(-1)
                     
                     edge_scores = torch.sum(edge_scores, dim=-1) / math.sqrt(D) # num_heads * num_edges
                     if temporal_delta is not None and self.temporal_bias_enabled:
-                        edge_scores = edge_scores - (
-                            F.softplus(self.temporal_alpha).unsqueeze(-1) *
-                            temporal_delta.unsqueeze(0)
-                        )
+                        if self.dual_scale_temporal_bias:
+                            slow_bias_alpha = F.softplus(
+                                self.temporal_alpha
+                            ).unsqueeze(-1)
+                            fast_bias_alpha = (
+                                slow_bias_alpha +
+                                F.softplus(self.temporal_alpha_gap).unsqueeze(-1)
+                            )
+                            temporal_bias = (
+                                (1.0 - temporal_mix) *
+                                slow_bias_alpha * temporal_delta_expanded +
+                                temporal_mix *
+                                fast_bias_alpha * temporal_delta_expanded
+                            )
+                            edge_scores = edge_scores - temporal_bias
+                        else:
+                            edge_scores = edge_scores - (
+                                F.softplus(self.temporal_alpha).unsqueeze(-1) *
+                                temporal_delta_expanded
+                            )
                     edge_scores = torch.clamp(edge_scores, min=-5, max=5)
                     if cfg.gt.attn_mask in ['kHop']:
                         edge_scores = edge_scores + attn_mask[dst_nodes, src_nodes]
