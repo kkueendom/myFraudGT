@@ -91,10 +91,6 @@ class GTLayer(nn.Module):
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxwinnerproj'
         )
-        self.directional_meanmaxwinnerprojtemporal_writeback = (
-            global_model_type == 'SparseNodeTransformer' and
-            cfg.gt.edge_writeback == 'dir_meanmaxwinnerprojtemporal'
-        )
         self.directional_meanmaxtopkprojpluswinner_writeback = (
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxtopkprojpluswinner'
@@ -236,7 +232,6 @@ class GTLayer(nn.Module):
                         self.directional_meanmaxwinnermix_writeback or
                         self.directional_meanmaxwinnerplus_writeback or
                         self.directional_meanmaxwinnerproj_writeback or
-                        self.directional_meanmaxwinnerprojtemporal_writeback or
                         self.directional_meanmaxtopkprojpluswinner_writeback or
                         self.directional_meanmaxwinnerdecomp_writeback or
                         self.directional_meanmaxwinnercohclip_writeback or
@@ -269,13 +264,6 @@ class GTLayer(nn.Module):
                 if self.directional_meanmaxwinnerproj_writeback:
                     self.writeback_winner_proj_add = nn.Parameter(
                         torch.full((2,), math.log(0.15 / 0.85))
-                    )
-                if self.directional_meanmaxwinnerprojtemporal_writeback:
-                    self.writeback_winner_proj_add = nn.Parameter(
-                        torch.full((2,), math.log(0.15 / 0.85))
-                    )
-                    self.writeback_temporal_alpha = nn.Parameter(
-                        torch.full((2,), 0.0)
                     )
                 if self.directional_meanmaxtopkprojpluswinner_writeback:
                     self.writeback_focus_proj_add = nn.Parameter(
@@ -549,17 +537,6 @@ class GTLayer(nn.Module):
 
         return selected_sum / selected_count.clamp(min=1.0).unsqueeze(-1)
 
-    def _group_weighted_mean(self, edge_values, group_nodes, group_weights, num_nodes):
-        selected_sum = torch.zeros(
-            (num_nodes, edge_values.shape[-1]), device=edge_values.device
-        )
-        selected_sum.index_add_(
-            0, group_nodes, edge_values * group_weights.unsqueeze(-1)
-        )
-        total_weight = torch.zeros(num_nodes, device=edge_values.device)
-        total_weight.index_add_(0, group_nodes, group_weights)
-        return selected_sum / total_weight.clamp(min=1e-6).unsqueeze(-1)
-
     def _group_top1_select(self, edge_values, group_nodes, group_scores, num_nodes):
         max_scores, max_indices = scatter_max(
             group_scores, group_nodes, dim=0, dim_size=num_nodes
@@ -584,8 +561,7 @@ class GTLayer(nn.Module):
         return selected
 
     def _apply_edge_writeback(self, out, edge_state, src_nodes, dst_nodes,
-                              node_type_tensor, batch, edge_weights=None,
-                              edge_timestamps=None):
+                              node_type_tensor, batch, edge_weights=None):
         num_nodes = out.shape[0]
         incoming = torch.zeros((num_nodes, edge_state.shape[-1]), device=out.device)
         outgoing = torch.zeros_like(incoming)
@@ -615,7 +591,6 @@ class GTLayer(nn.Module):
             self.directional_meanmaxwinnermix_writeback or
             self.directional_meanmaxwinnerplus_writeback or
             self.directional_meanmaxwinnerproj_writeback or
-            self.directional_meanmaxwinnerprojtemporal_writeback or
             self.directional_meanmaxtopkprojpluswinner_writeback or
             self.directional_meanmaxwinnerdecomp_writeback or
             self.directional_meanmaxwinnercohclip_writeback or
@@ -767,88 +742,6 @@ class GTLayer(nn.Module):
                         (
                             incoming,
                             outgoing,
-                            incoming_max + winner_proj_add[0] * incoming_proj,
-                            outgoing_max + winner_proj_add[1] * outgoing_proj,
-                        ),
-                        dim=-1
-                    )
-                elif self.directional_meanmaxwinnerprojtemporal_writeback:
-                    if edge_timestamps is None:
-                        incoming_recent = incoming
-                        outgoing_recent = outgoing
-                        incoming_recency = torch.ones_like(edge_weights)
-                        outgoing_recency = torch.ones_like(edge_weights)
-                    else:
-                        incoming_delta = self._compute_temporal_delta(
-                            dst_nodes, edge_timestamps, num_nodes
-                        )
-                        outgoing_delta = self._compute_temporal_delta(
-                            src_nodes, edge_timestamps, num_nodes
-                        )
-                        temporal_alpha = F.softplus(self.writeback_temporal_alpha)
-                        incoming_recency = torch.exp(
-                            -temporal_alpha[0] * incoming_delta
-                        )
-                        outgoing_recency = torch.exp(
-                            -temporal_alpha[1] * outgoing_delta
-                        )
-                        incoming_recent = self._group_weighted_mean(
-                            edge_state,
-                            dst_nodes,
-                            edge_weights * incoming_recency,
-                            num_nodes,
-                        )
-                        outgoing_recent = self._group_weighted_mean(
-                            edge_state,
-                            src_nodes,
-                            edge_weights * outgoing_recency,
-                            num_nodes,
-                        )
-                    incoming_anomaly_scores = (
-                        weighted_edge_state.norm(dim=-1) * incoming_recency
-                    )
-                    outgoing_anomaly_scores = (
-                        weighted_edge_state.norm(dim=-1) * outgoing_recency
-                    )
-                    incoming_winner = self._group_top1_select(
-                        weighted_edge_state,
-                        dst_nodes,
-                        incoming_anomaly_scores,
-                        num_nodes,
-                    )
-                    outgoing_winner = self._group_top1_select(
-                        weighted_edge_state,
-                        src_nodes,
-                        outgoing_anomaly_scores,
-                        num_nodes,
-                    )
-                    winner_proj_add = torch.sigmoid(self.writeback_winner_proj_add)
-                    incoming_spike = incoming_max - incoming_recent
-                    outgoing_spike = outgoing_max - outgoing_recent
-                    incoming_winner_residual = incoming_winner - incoming_recent
-                    outgoing_winner_residual = outgoing_winner - outgoing_recent
-                    incoming_proj_coeff = (
-                        (incoming_winner_residual * incoming_spike).sum(
-                            dim=-1, keepdim=True
-                        ) /
-                        incoming_spike.pow(2).sum(dim=-1, keepdim=True).clamp(
-                            min=1e-6
-                        )
-                    )
-                    outgoing_proj_coeff = (
-                        (outgoing_winner_residual * outgoing_spike).sum(
-                            dim=-1, keepdim=True
-                        ) /
-                        outgoing_spike.pow(2).sum(dim=-1, keepdim=True).clamp(
-                            min=1e-6
-                        )
-                    )
-                    incoming_proj = F.relu(incoming_proj_coeff) * incoming_spike
-                    outgoing_proj = F.relu(outgoing_proj_coeff) * outgoing_spike
-                    edge_context = torch.cat(
-                        (
-                            incoming_recent,
-                            outgoing_recent,
                             incoming_max + winner_proj_add[0] * incoming_proj,
                             outgoing_max + winner_proj_add[1] * outgoing_proj,
                         ),
@@ -1510,20 +1403,13 @@ class GTLayer(nn.Module):
                     else:
                         src_nodes, dst_nodes = edge_index
                         num_edges = edge_index.shape[1]
-                    edge_timestamps = None
-                    needs_edge_timestamps = (
-                        self.temporal_bias_enabled or
-                        self.temporal_gate_enabled or
-                        self.directional_meanmaxwinnerprojtemporal_writeback
-                    )
-                    if needs_edge_timestamps and cfg.gt.attn_mask == 'Edge':
+                    if (self.temporal_bias_enabled or self.temporal_gate_enabled) and cfg.gt.attn_mask == 'Edge':
                         edge_timestamps = self._collect_edge_timestamps(
                             batch, edge_type_tensor, q.device
                         )
-                        if self.temporal_bias_enabled or self.temporal_gate_enabled:
-                            temporal_delta = self._compute_temporal_delta(
-                                dst_nodes, edge_timestamps, L
-                            )
+                        temporal_delta = self._compute_temporal_delta(
+                            dst_nodes, edge_timestamps, L
+                        )
                     # Compute query and key for each edge
                     edge_q = q[:, dst_nodes, :]  # Queries for destination nodes # num_heads * num_edges * d_k
                     edge_k = k[:, src_nodes, :]  # Keys for source nodes
@@ -1608,8 +1494,7 @@ class GTLayer(nn.Module):
                         out = self._apply_edge_writeback(
                             out, edge_state, src_nodes, dst_nodes,
                             node_type_tensor, batch,
-                            edge_weights=writeback_weights,
-                            edge_timestamps=edge_timestamps
+                            edge_weights=writeback_weights
                         )
 
                 for idx, node_type in enumerate(batch.node_types):
