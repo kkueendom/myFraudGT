@@ -26,6 +26,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectshape',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
@@ -34,6 +35,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectshape',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
             'pair_chain_contextseqresid',
@@ -41,6 +43,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectshape',
         }
         self.use_pair_internal_sequence = (
             self.edge_decoding in {
@@ -48,6 +51,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankmotiflite',
                 'pair_chain_contextseqpairseqbridgebankwindow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectshape',
             }
         )
         self.use_sequence_bridge_bank = self.edge_decoding in {
@@ -55,17 +59,26 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectshape',
         }
         self.use_sequence_bridge_motif_lite = (
             self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankmotiflite'
         )
         self.use_target_sequence_select = (
-            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindowseqselect'
+            self.edge_decoding in {
+                'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectshape',
+            }
+        )
+        self.use_pair_shape_signature = (
+            self.edge_decoding ==
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectshape'
         )
         self.use_sequence_bridge_bank_window = (
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebankwindow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectshape',
             }
         )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
@@ -176,6 +189,20 @@ class HeteroGNNEdgeHead(nn.Module):
                     self.bridge_bank_alpha = nn.Parameter(
                         torch.full((1,), math.log(0.10 / 0.90))
                     )
+                    if self.use_pair_shape_signature:
+                        self.pair_shape_proj = MLP(
+                            dim_in + 12, dim_in,
+                            num_layers=self.head_layers,
+                            bias=True,
+                        )
+                        self.pair_shape_head = MLP(
+                            dim_in, dim_out,
+                            num_layers=self.head_layers,
+                            bias=True,
+                        )
+                        self.pair_shape_alpha = nn.Parameter(
+                            torch.full((1,), math.log(0.08 / 0.92))
+                        )
                     if self.use_sequence_bridge_motif_lite:
                         self.bridge_leg_pair_proj = MLP(dim_in * 3 + 1, dim_in,
                                                         num_layers=self.head_layers,
@@ -368,6 +395,23 @@ class HeteroGNNEdgeHead(nn.Module):
             dim=-1,
         ))
 
+    def _recent_overlap_partner_stats(self, bank_a, bank_b):
+        valid_a = bank_a >= 0
+        valid_b = bank_b >= 0
+        eq = (
+            bank_a.unsqueeze(2) == bank_b.unsqueeze(1)
+        ) & valid_a.unsqueeze(2) & valid_b.unsqueeze(1)
+        match_any = eq.any(dim=2)
+        overlap_count = (match_any.float() * valid_a.float()).sum(dim=1)
+        slot_index = torch.arange(
+            bank_a.size(1), device=bank_a.device, dtype=torch.float32
+        )
+        slot_weight = 1.0 / (1.0 + slot_index)
+        weighted_overlap = (
+            match_any.float() * slot_weight.unsqueeze(0)
+        ).sum(dim=1)
+        return overlap_count, weighted_overlap
+
     def _recent_overlap_leg_repr(self, bank_a, bank_b, seq_a, seq_b, time_a, time_b):
         batch_size = bank_a.size(0)
         dim = seq_a.size(-1)
@@ -504,6 +548,7 @@ class HeteroGNNEdgeHead(nn.Module):
             ))
         pair_context_repr = None
         pair_sequence_repr = None
+        pair_shape_repr = None
         fast_sequence_repr = None
         slow_sequence_repr = None
 
@@ -700,6 +745,79 @@ class HeteroGNNEdgeHead(nn.Module):
                         outgoing_partner_bank[pair_dst],
                         node_x,
                     )
+                    if self.use_pair_shape_signature:
+                        forward_overlap_count, forward_weighted_overlap = (
+                            self._recent_overlap_partner_stats(
+                                outgoing_partner_bank[pair_src],
+                                incoming_partner_bank[pair_dst],
+                            )
+                        )
+                        cycle_overlap_count, cycle_weighted_overlap = (
+                            self._recent_overlap_partner_stats(
+                                incoming_partner_bank[pair_src],
+                                outgoing_partner_bank[pair_dst],
+                            )
+                        )
+                        reverse_pair_key = (
+                            pair_dst.to(torch.long) * num_dst_nodes +
+                            pair_src.to(torch.long)
+                        )
+                        reverse_pos = torch.searchsorted(pair_keys, reverse_pair_key)
+                        reverse_exists = (
+                            (reverse_pos < num_pairs) &
+                            (pair_keys[reverse_pos] == reverse_pair_key)
+                        )
+                        reverse_timestamps = torch.zeros_like(pair_timestamps)
+                        reverse_timestamps[reverse_exists] = pair_timestamps[
+                            reverse_pos[reverse_exists]
+                        ]
+                        time_scale = self.sequence_time_scale.abs().clamp(min=1.0)
+                        reciprocal_flag = reverse_exists.float()
+                        reciprocal_align = reciprocal_flag * torch.exp(
+                            -(pair_timestamps - reverse_timestamps).abs() / time_scale
+                        )
+                        src_out_count = (
+                            outgoing_partner_bank[pair_src] >= 0
+                        ).float().sum(dim=1) / self.sequence_len
+                        dst_in_count = (
+                            incoming_partner_bank[pair_dst] >= 0
+                        ).float().sum(dim=1) / self.sequence_len
+                        src_in_count = (
+                            incoming_partner_bank[pair_src] >= 0
+                        ).float().sum(dim=1) / self.sequence_len
+                        dst_out_count = (
+                            outgoing_partner_bank[pair_dst] >= 0
+                        ).float().sum(dim=1) / self.sequence_len
+                        weighted_norm = sum(
+                            1.0 / (1.0 + idx) for idx in range(self.sequence_len)
+                        )
+                        bridge_balance = (
+                            forward_overlap_count - cycle_overlap_count
+                        ).abs() / self.sequence_len
+                        sync_score = torch.exp(
+                            -(outgoing_latest[pair_src] - incoming_latest[pair_dst]).abs() /
+                            time_scale
+                        )
+                        shape_features = torch.stack(
+                            (
+                                forward_overlap_count / self.sequence_len,
+                                forward_weighted_overlap / weighted_norm,
+                                cycle_overlap_count / self.sequence_len,
+                                cycle_weighted_overlap / weighted_norm,
+                                reciprocal_flag,
+                                reciprocal_align,
+                                src_out_count,
+                                dst_in_count,
+                                src_in_count,
+                                dst_out_count,
+                                bridge_balance,
+                                sync_score,
+                            ),
+                            dim=-1,
+                        )
+                        pair_shape_repr = self.pair_shape_proj(
+                            torch.cat((pair_repr, shape_features), dim=-1)
+                        )
                     bridge_context = self.bridge_bank_proj(torch.cat(
                         (
                             forward_bridge,
@@ -791,6 +909,11 @@ class HeteroGNNEdgeHead(nn.Module):
                 pair_sequence_repr = torch.zeros_like(pair_repr)
             sequence_logits = self.sequence_head(pair_sequence_repr[pair_inv][mask])
             pred = pred + torch.sigmoid(self.sequence_residual_alpha) * sequence_logits
+        if self.use_pair_shape_signature:
+            if pair_shape_repr is None:
+                pair_shape_repr = torch.zeros_like(pair_repr)
+            shape_logits = self.pair_shape_head(pair_shape_repr[pair_inv][mask])
+            pred = pred + torch.sigmoid(self.pair_shape_alpha) * shape_logits
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
