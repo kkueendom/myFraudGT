@@ -26,6 +26,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqcausal',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
@@ -34,6 +35,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqcausal',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
             'pair_chain_contextseqresid',
@@ -41,6 +43,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqcausal',
         }
         self.use_pair_internal_sequence = (
             self.edge_decoding in {
@@ -48,6 +51,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankmotiflite',
                 'pair_chain_contextseqpairseqbridgebankwindow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+                'pair_chain_contextseqpairseqbridgebankwindowseqcausal',
             }
         )
         self.use_sequence_bridge_bank = self.edge_decoding in {
@@ -55,6 +59,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqcausal',
         }
         self.use_sequence_bridge_motif_lite = (
             self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankmotiflite'
@@ -62,10 +67,14 @@ class HeteroGNNEdgeHead(nn.Module):
         self.use_target_sequence_select = (
             self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindowseqselect'
         )
+        self.use_target_sequence_causal = (
+            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindowseqcausal'
+        )
         self.use_sequence_bridge_bank_window = (
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebankwindow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+                'pair_chain_contextseqpairseqbridgebankwindowseqcausal',
             }
         )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
@@ -153,6 +162,34 @@ class HeteroGNNEdgeHead(nn.Module):
                     )
                     self.sequence_select_alpha = nn.Parameter(
                         torch.full((1,), math.log(0.30 / 0.70))
+                    )
+                if self.use_target_sequence_causal:
+                    self.outgoing_sequence_causal_score = MLP(
+                        dim_in * 3, 1,
+                        num_layers=self.head_layers,
+                        bias=True,
+                    )
+                    self.incoming_sequence_causal_score = MLP(
+                        dim_in * 3, 1,
+                        num_layers=self.head_layers,
+                        bias=True,
+                    )
+                    self.sequence_split_alpha = nn.Parameter(
+                        torch.full((1,), math.log(0.20 / 0.80))
+                    )
+                    self.environment_sequence_proj = MLP(
+                        dim_in * 3, dim_in,
+                        num_layers=self.head_layers,
+                        bias=True,
+                    )
+                    self.environment_sequence_gate = nn.Linear(dim_in * 3, dim_in)
+                    self.environment_sequence_update = MLP(
+                        dim_in * 3, dim_in,
+                        num_layers=self.head_layers,
+                        bias=True,
+                    )
+                    self.environment_sequence_alpha = nn.Parameter(
+                        torch.full((1,), math.log(0.08 / 0.92))
                     )
                 self.sequence_time_scale = nn.Parameter(torch.tensor(86400.0))
                 if self.use_sequence_bridge_bank_window:
@@ -334,6 +371,25 @@ class HeteroGNNEdgeHead(nn.Module):
         valid = (sequence_bank.abs().sum(dim=-1, keepdim=True) > 0).float()
         return sequence_bank * valid * scale
 
+    def _split_sequence_bank(self, sequence_bank, query_repr, scorer):
+        query_bank = query_repr.unsqueeze(1).expand(-1, sequence_bank.size(1), -1)
+        split_input = torch.cat(
+            (
+                query_bank,
+                sequence_bank,
+                query_bank * sequence_bank,
+            ),
+            dim=-1,
+        )
+        keep_score = torch.sigmoid(
+            scorer(split_input.reshape(-1, split_input.size(-1)))
+        ).view(sequence_bank.size(0), sequence_bank.size(1), 1)
+        valid = (sequence_bank.abs().sum(dim=-1, keepdim=True) > 0).float()
+        env_alpha = torch.sigmoid(self.sequence_split_alpha)
+        environment_weight = valid * env_alpha * (1.0 - keep_score)
+        causal_weight = valid - environment_weight
+        return sequence_bank * causal_weight, sequence_bank * environment_weight
+
     def _recent_overlap_partner_repr(self, bank_a, bank_b, node_x):
         valid_a = bank_a >= 0
         valid_b = bank_b >= 0
@@ -506,6 +562,7 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_sequence_repr = None
         fast_sequence_repr = None
         slow_sequence_repr = None
+        environment_sequence_repr = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -619,6 +676,39 @@ class HeteroGNNEdgeHead(nn.Module):
                             pair_repr,
                             self.incoming_sequence_select_score,
                         )
+                    elif self.use_target_sequence_causal:
+                        (
+                            pair_outgoing_sequence_bank,
+                            pair_outgoing_environment_bank,
+                        ) = self._split_sequence_bank(
+                            pair_outgoing_sequence_bank,
+                            pair_repr,
+                            self.outgoing_sequence_causal_score,
+                        )
+                        (
+                            pair_incoming_sequence_bank,
+                            pair_incoming_environment_bank,
+                        ) = self._split_sequence_bank(
+                            pair_incoming_sequence_bank,
+                            pair_repr,
+                            self.incoming_sequence_causal_score,
+                        )
+                        (
+                            pair_slow_outgoing_sequence_bank,
+                            pair_slow_outgoing_environment_bank,
+                        ) = self._split_sequence_bank(
+                            pair_slow_outgoing_sequence_bank,
+                            pair_repr,
+                            self.outgoing_sequence_causal_score,
+                        )
+                        (
+                            pair_slow_incoming_sequence_bank,
+                            pair_slow_incoming_environment_bank,
+                        ) = self._split_sequence_bank(
+                            pair_slow_incoming_sequence_bank,
+                            pair_repr,
+                            self.incoming_sequence_causal_score,
+                        )
                     outgoing_state = self.outgoing_sequence_encoder(
                         pair_outgoing_sequence_bank
                     )[1].squeeze(0)
@@ -647,6 +737,38 @@ class HeteroGNNEdgeHead(nn.Module):
                         ),
                         dim=-1,
                     ))
+                    if self.use_target_sequence_causal:
+                        environment_outgoing_state = self.outgoing_sequence_encoder(
+                            pair_outgoing_environment_bank
+                        )[1].squeeze(0)
+                        environment_incoming_state = self.incoming_sequence_encoder(
+                            pair_incoming_environment_bank
+                        )[1].squeeze(0)
+                        slow_environment_outgoing_state = self.outgoing_sequence_encoder(
+                            pair_slow_outgoing_environment_bank
+                        )[1].squeeze(0)
+                        slow_environment_incoming_state = self.incoming_sequence_encoder(
+                            pair_slow_incoming_environment_bank
+                        )[1].squeeze(0)
+                        fast_environment_repr = self.environment_sequence_proj(torch.cat(
+                            (
+                                environment_outgoing_state,
+                                environment_incoming_state,
+                                environment_outgoing_state * environment_incoming_state,
+                            ),
+                            dim=-1,
+                        ))
+                        slow_environment_repr = self.environment_sequence_proj(torch.cat(
+                            (
+                                slow_environment_outgoing_state,
+                                slow_environment_incoming_state,
+                                slow_environment_outgoing_state * slow_environment_incoming_state,
+                            ),
+                            dim=-1,
+                        ))
+                        environment_sequence_repr = 0.5 * (
+                            fast_environment_repr + slow_environment_repr
+                        )
                     pair_sequence_repr = fast_sequence_repr
                 else:
                     outgoing_sequence_bank = self._build_recent_sequence_bank(
@@ -668,6 +790,23 @@ class HeteroGNNEdgeHead(nn.Module):
                             pair_repr,
                             self.incoming_sequence_select_score,
                         )
+                    elif self.use_target_sequence_causal:
+                        (
+                            pair_outgoing_sequence_bank,
+                            pair_outgoing_environment_bank,
+                        ) = self._split_sequence_bank(
+                            pair_outgoing_sequence_bank,
+                            pair_repr,
+                            self.outgoing_sequence_causal_score,
+                        )
+                        (
+                            pair_incoming_sequence_bank,
+                            pair_incoming_environment_bank,
+                        ) = self._split_sequence_bank(
+                            pair_incoming_sequence_bank,
+                            pair_repr,
+                            self.incoming_sequence_causal_score,
+                        )
                     outgoing_state = self.outgoing_sequence_encoder(
                         pair_outgoing_sequence_bank
                     )[1].squeeze(0)
@@ -682,6 +821,21 @@ class HeteroGNNEdgeHead(nn.Module):
                         ),
                         dim=-1,
                     ))
+                    if self.use_target_sequence_causal:
+                        environment_outgoing_state = self.outgoing_sequence_encoder(
+                            pair_outgoing_environment_bank
+                        )[1].squeeze(0)
+                        environment_incoming_state = self.incoming_sequence_encoder(
+                            pair_incoming_environment_bank
+                        )[1].squeeze(0)
+                        environment_sequence_repr = self.environment_sequence_proj(torch.cat(
+                            (
+                                environment_outgoing_state,
+                                environment_incoming_state,
+                                environment_outgoing_state * environment_incoming_state,
+                            ),
+                            dim=-1,
+                        ))
                 if self.use_sequence_bridge_bank:
                     outgoing_partner_bank = self._build_recent_partner_bank(
                         pair_src, pair_dst, pair_timestamps, num_nodes
@@ -737,6 +891,23 @@ class HeteroGNNEdgeHead(nn.Module):
                         bridge_gate *
                         self.bridge_bank_update(bridge_input)
                     )
+                    if self.use_target_sequence_causal and environment_sequence_repr is not None:
+                        environment_input = torch.cat(
+                            (
+                                pair_sequence_repr,
+                                environment_sequence_repr,
+                                pair_sequence_repr * environment_sequence_repr,
+                            ),
+                            dim=-1,
+                        )
+                        environment_gate = torch.sigmoid(
+                            self.environment_sequence_gate(environment_input)
+                        )
+                        pair_sequence_repr = pair_sequence_repr + (
+                            torch.sigmoid(self.environment_sequence_alpha) *
+                            environment_gate *
+                            self.environment_sequence_update(environment_input)
+                        )
                     if self.use_sequence_bridge_motif_lite:
                         outgoing_time_bank = self._build_recent_timestamp_bank(
                             pair_src, pair_timestamps, num_nodes
