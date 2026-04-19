@@ -95,10 +95,6 @@ class GTLayer(nn.Module):
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxwinnerprojtemporal'
         )
-        self.directional_meanmaxwinnerprojtemporalwindow_writeback = (
-            global_model_type == 'SparseNodeTransformer' and
-            cfg.gt.edge_writeback == 'dir_meanmaxwinnerprojtemporalwindow'
-        )
         self.directional_meanmaxtopkprojpluswinner_writeback = (
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanmaxtopkprojpluswinner'
@@ -241,7 +237,6 @@ class GTLayer(nn.Module):
                         self.directional_meanmaxwinnerplus_writeback or
                         self.directional_meanmaxwinnerproj_writeback or
                         self.directional_meanmaxwinnerprojtemporal_writeback or
-                        self.directional_meanmaxwinnerprojtemporalwindow_writeback or
                         self.directional_meanmaxtopkprojpluswinner_writeback or
                         self.directional_meanmaxwinnerdecomp_writeback or
                         self.directional_meanmaxwinnercohclip_writeback or
@@ -281,25 +276,6 @@ class GTLayer(nn.Module):
                     )
                     self.writeback_temporal_alpha = nn.Parameter(
                         torch.full((2,), 0.0)
-                    )
-                if self.directional_meanmaxwinnerprojtemporalwindow_writeback:
-                    self.writeback_winner_proj_add = nn.Parameter(
-                        torch.full((2,), math.log(0.15 / 0.85))
-                    )
-                    self.writeback_temporal_alpha = nn.Parameter(
-                        torch.full((2,), 0.0)
-                    )
-                    self.writeback_temporal_fast_scale = nn.Parameter(
-                        torch.full((2,), math.log(3.0))
-                    )
-                    self.writeback_temporal_slow_scale = nn.Parameter(
-                        torch.full((2,), math.log(0.35))
-                    )
-                    self.writeback_temporal_window_alpha = nn.Parameter(
-                        torch.full((2,), math.log(0.10 / 0.90))
-                    )
-                    self.writeback_temporal_window_gate = Linear(
-                        dim_out * 3, dim_out
                     )
                 if self.directional_meanmaxtopkprojpluswinner_writeback:
                     self.writeback_focus_proj_add = nn.Parameter(
@@ -640,7 +616,6 @@ class GTLayer(nn.Module):
             self.directional_meanmaxwinnerplus_writeback or
             self.directional_meanmaxwinnerproj_writeback or
             self.directional_meanmaxwinnerprojtemporal_writeback or
-            self.directional_meanmaxwinnerprojtemporalwindow_writeback or
             self.directional_meanmaxtopkprojpluswinner_writeback or
             self.directional_meanmaxwinnerdecomp_writeback or
             self.directional_meanmaxwinnercohclip_writeback or
@@ -829,144 +804,6 @@ class GTLayer(nn.Module):
                             edge_weights * outgoing_recency,
                             num_nodes,
                         )
-                    incoming_anomaly_scores = (
-                        weighted_edge_state.norm(dim=-1) * incoming_recency
-                    )
-                    outgoing_anomaly_scores = (
-                        weighted_edge_state.norm(dim=-1) * outgoing_recency
-                    )
-                    incoming_winner = self._group_top1_select(
-                        weighted_edge_state,
-                        dst_nodes,
-                        incoming_anomaly_scores,
-                        num_nodes,
-                    )
-                    outgoing_winner = self._group_top1_select(
-                        weighted_edge_state,
-                        src_nodes,
-                        outgoing_anomaly_scores,
-                        num_nodes,
-                    )
-                    winner_proj_add = torch.sigmoid(self.writeback_winner_proj_add)
-                    incoming_spike = incoming_max - incoming_recent
-                    outgoing_spike = outgoing_max - outgoing_recent
-                    incoming_winner_residual = incoming_winner - incoming_recent
-                    outgoing_winner_residual = outgoing_winner - outgoing_recent
-                    incoming_proj_coeff = (
-                        (incoming_winner_residual * incoming_spike).sum(
-                            dim=-1, keepdim=True
-                        ) /
-                        incoming_spike.pow(2).sum(dim=-1, keepdim=True).clamp(
-                            min=1e-6
-                        )
-                    )
-                    outgoing_proj_coeff = (
-                        (outgoing_winner_residual * outgoing_spike).sum(
-                            dim=-1, keepdim=True
-                        ) /
-                        outgoing_spike.pow(2).sum(dim=-1, keepdim=True).clamp(
-                            min=1e-6
-                        )
-                    )
-                    incoming_proj = F.relu(incoming_proj_coeff) * incoming_spike
-                    outgoing_proj = F.relu(outgoing_proj_coeff) * outgoing_spike
-                    edge_context = torch.cat(
-                        (
-                            incoming_recent,
-                            outgoing_recent,
-                            incoming_max + winner_proj_add[0] * incoming_proj,
-                            outgoing_max + winner_proj_add[1] * outgoing_proj,
-                        ),
-                        dim=-1
-                    )
-                elif self.directional_meanmaxwinnerprojtemporalwindow_writeback:
-                    if edge_timestamps is None:
-                        incoming_fast = incoming
-                        outgoing_fast = outgoing
-                        incoming_slow = incoming
-                        outgoing_slow = outgoing
-                        incoming_recency = torch.ones_like(edge_weights)
-                        outgoing_recency = torch.ones_like(edge_weights)
-                    else:
-                        incoming_delta = self._compute_temporal_delta(
-                            dst_nodes, edge_timestamps, num_nodes
-                        )
-                        outgoing_delta = self._compute_temporal_delta(
-                            src_nodes, edge_timestamps, num_nodes
-                        )
-                        base_alpha = F.softplus(
-                            self.writeback_temporal_alpha
-                        ) + 1e-6
-                        fast_alpha = base_alpha * self.writeback_temporal_fast_scale.exp().clamp(
-                            min=1.0, max=10.0
-                        )
-                        slow_alpha = base_alpha * self.writeback_temporal_slow_scale.exp().clamp(
-                            min=0.05, max=1.0
-                        )
-                        incoming_fast_recency = torch.exp(
-                            -fast_alpha[0] * incoming_delta
-                        )
-                        outgoing_fast_recency = torch.exp(
-                            -fast_alpha[1] * outgoing_delta
-                        )
-                        incoming_slow_recency = torch.exp(
-                            -slow_alpha[0] * incoming_delta
-                        )
-                        outgoing_slow_recency = torch.exp(
-                            -slow_alpha[1] * outgoing_delta
-                        )
-                        incoming_fast = self._group_weighted_mean(
-                            edge_state,
-                            dst_nodes,
-                            edge_weights * incoming_fast_recency,
-                            num_nodes,
-                        )
-                        outgoing_fast = self._group_weighted_mean(
-                            edge_state,
-                            src_nodes,
-                            edge_weights * outgoing_fast_recency,
-                            num_nodes,
-                        )
-                        incoming_slow = self._group_weighted_mean(
-                            edge_state,
-                            dst_nodes,
-                            edge_weights * incoming_slow_recency,
-                            num_nodes,
-                        )
-                        outgoing_slow = self._group_weighted_mean(
-                            edge_state,
-                            src_nodes,
-                            edge_weights * outgoing_slow_recency,
-                            num_nodes,
-                        )
-                        incoming_recency = 0.5 * (
-                            incoming_fast_recency + incoming_slow_recency
-                        )
-                        outgoing_recency = 0.5 * (
-                            outgoing_fast_recency + outgoing_slow_recency
-                        )
-                    incoming_window_input = torch.cat(
-                        (incoming_fast, incoming_slow, incoming_max), dim=-1
-                    )
-                    outgoing_window_input = torch.cat(
-                        (outgoing_fast, outgoing_slow, outgoing_max), dim=-1
-                    )
-                    incoming_window_gate = torch.sigmoid(
-                        self.writeback_temporal_window_gate(incoming_window_input)
-                    )
-                    outgoing_window_gate = torch.sigmoid(
-                        self.writeback_temporal_window_gate(outgoing_window_input)
-                    )
-                    incoming_recent = incoming_fast + (
-                        torch.sigmoid(self.writeback_temporal_window_alpha[0]) *
-                        incoming_window_gate *
-                        (incoming_slow - incoming_fast)
-                    )
-                    outgoing_recent = outgoing_fast + (
-                        torch.sigmoid(self.writeback_temporal_window_alpha[1]) *
-                        outgoing_window_gate *
-                        (outgoing_slow - outgoing_fast)
-                    )
                     incoming_anomaly_scores = (
                         weighted_edge_state.norm(dim=-1) * incoming_recency
                     )
@@ -1677,8 +1514,7 @@ class GTLayer(nn.Module):
                     needs_edge_timestamps = (
                         self.temporal_bias_enabled or
                         self.temporal_gate_enabled or
-                        self.directional_meanmaxwinnerprojtemporal_writeback or
-                        self.directional_meanmaxwinnerprojtemporalwindow_writeback
+                        self.directional_meanmaxwinnerprojtemporal_writeback
                     )
                     if needs_edge_timestamps and cfg.gt.attn_mask == 'Edge':
                         edge_timestamps = self._collect_edge_timestamps(
