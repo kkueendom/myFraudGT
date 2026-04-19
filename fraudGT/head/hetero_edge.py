@@ -26,6 +26,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowbridge',
         }
         self.use_chain_context_residual = self.edge_decoding in {
             'pair_chain_contextresid',
@@ -34,6 +35,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowbridge',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
             'pair_chain_contextseqresid',
@@ -41,6 +43,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowbridge',
         }
         self.use_pair_internal_sequence = (
             self.edge_decoding in {
@@ -48,6 +51,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankmotiflite',
                 'pair_chain_contextseqpairseqbridgebankwindow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowbridge',
             }
         )
         self.use_sequence_bridge_bank = self.edge_decoding in {
@@ -55,17 +59,25 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankmotiflite',
             'pair_chain_contextseqpairseqbridgebankwindow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowbridge',
         }
         self.use_sequence_bridge_motif_lite = (
             self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankmotiflite'
         )
         self.use_target_sequence_select = (
-            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindowseqselect'
+            self.edge_decoding in {
+                'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowbridge',
+            }
+        )
+        self.use_terminal_role_flow = (
+            self.edge_decoding == 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowbridge'
         )
         self.use_sequence_bridge_bank_window = (
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebankwindow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselect',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowbridge',
             }
         )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
@@ -176,6 +188,30 @@ class HeteroGNNEdgeHead(nn.Module):
                     self.bridge_bank_alpha = nn.Parameter(
                         torch.full((1,), math.log(0.10 / 0.90))
                     )
+                    if self.use_terminal_role_flow:
+                        self.terminal_role_proj = MLP(
+                            dim_in * 3, dim_in,
+                            num_layers=self.head_layers,
+                            bias=True,
+                        )
+                        self.terminal_bridge_context_proj = MLP(
+                            dim_in * 3, dim_in,
+                            num_layers=self.head_layers,
+                            bias=True,
+                        )
+                        self.terminal_flow_proj = MLP(
+                            dim_in * 4 + 6, dim_in,
+                            num_layers=self.head_layers,
+                            bias=True,
+                        )
+                        self.terminal_flow_head = MLP(
+                            dim_in, dim_out,
+                            num_layers=self.head_layers,
+                            bias=True,
+                        )
+                        self.terminal_flow_residual_alpha = nn.Parameter(
+                            torch.full((1,), math.log(0.08 / 0.92))
+                        )
                     if self.use_sequence_bridge_motif_lite:
                         self.bridge_leg_pair_proj = MLP(dim_in * 3 + 1, dim_in,
                                                         num_layers=self.head_layers,
@@ -427,6 +463,16 @@ class HeteroGNNEdgeHead(nn.Module):
             dim=-1,
         ))
 
+    def _pairwise_fusion_inputs(self, left_repr, right_repr):
+        return torch.cat(
+            (
+                left_repr,
+                right_repr,
+                left_repr * right_repr,
+            ),
+            dim=-1,
+        )
+
     def _pair_chain_head(self, batch):
         task = cfg.dataset.task_entity
         mask = self._edge_mask(batch)
@@ -506,6 +552,7 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_sequence_repr = None
         fast_sequence_repr = None
         slow_sequence_repr = None
+        pair_terminal_role_repr = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -737,6 +784,80 @@ class HeteroGNNEdgeHead(nn.Module):
                         bridge_gate *
                         self.bridge_bank_update(bridge_input)
                     )
+                    if self.use_terminal_role_flow:
+                        src_incoming_sequence_bank = incoming_sequence_bank[pair_src]
+                        dst_outgoing_sequence_bank = outgoing_sequence_bank[pair_dst]
+                        if self.use_target_sequence_select:
+                            src_incoming_sequence_bank = self._filter_sequence_bank(
+                                src_incoming_sequence_bank,
+                                pair_repr,
+                                self.incoming_sequence_select_score,
+                            )
+                            dst_outgoing_sequence_bank = self._filter_sequence_bank(
+                                dst_outgoing_sequence_bank,
+                                pair_repr,
+                                self.outgoing_sequence_select_score,
+                            )
+                        src_incoming_state = self.incoming_sequence_encoder(
+                            src_incoming_sequence_bank
+                        )[1].squeeze(0)
+                        dst_outgoing_state = self.outgoing_sequence_encoder(
+                            dst_outgoing_sequence_bank
+                        )[1].squeeze(0)
+                        src_role_repr = self.terminal_role_proj(
+                            self._pairwise_fusion_inputs(
+                                outgoing_state,
+                                src_incoming_state,
+                            )
+                        )
+                        dst_role_repr = self.terminal_role_proj(
+                            self._pairwise_fusion_inputs(
+                                incoming_state,
+                                dst_outgoing_state,
+                            )
+                        )
+                        src_out_count = (
+                            outgoing_partner_bank[pair_src] >= 0
+                        ).float().sum(dim=1, keepdim=True) / float(self.sequence_len)
+                        src_in_count = (
+                            incoming_partner_bank[pair_src] >= 0
+                        ).float().sum(dim=1, keepdim=True) / float(self.sequence_len)
+                        dst_out_count = (
+                            outgoing_partner_bank[pair_dst] >= 0
+                        ).float().sum(dim=1, keepdim=True) / float(self.sequence_len)
+                        dst_in_count = (
+                            incoming_partner_bank[pair_dst] >= 0
+                        ).float().sum(dim=1, keepdim=True) / float(self.sequence_len)
+                        role_stats = torch.cat(
+                            (
+                                src_out_count,
+                                src_in_count,
+                                dst_out_count,
+                                dst_in_count,
+                                src_out_count - src_in_count,
+                                dst_in_count - dst_out_count,
+                            ),
+                            dim=-1,
+                        )
+                        terminal_bridge_context = self.terminal_bridge_context_proj(
+                            self._pairwise_fusion_inputs(
+                                bridge_context,
+                                pair_sequence_repr,
+                            )
+                        )
+                        pair_terminal_role_repr = self.terminal_flow_proj(
+                            torch.cat(
+                                (
+                                    self._pairwise_fusion_inputs(
+                                        src_role_repr,
+                                        dst_role_repr,
+                                    ),
+                                    terminal_bridge_context,
+                                    role_stats,
+                                ),
+                                dim=-1,
+                            )
+                        )
                     if self.use_sequence_bridge_motif_lite:
                         outgoing_time_bank = self._build_recent_timestamp_bank(
                             pair_src, pair_timestamps, num_nodes
@@ -791,6 +912,16 @@ class HeteroGNNEdgeHead(nn.Module):
                 pair_sequence_repr = torch.zeros_like(pair_repr)
             sequence_logits = self.sequence_head(pair_sequence_repr[pair_inv][mask])
             pred = pred + torch.sigmoid(self.sequence_residual_alpha) * sequence_logits
+        if self.use_terminal_role_flow:
+            if pair_terminal_role_repr is None:
+                pair_terminal_role_repr = torch.zeros_like(pair_repr)
+            terminal_role_logits = self.terminal_flow_head(
+                pair_terminal_role_repr[pair_inv][mask]
+            )
+            pred = pred + (
+                torch.sigmoid(self.terminal_flow_residual_alpha) *
+                terminal_role_logits
+            )
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
