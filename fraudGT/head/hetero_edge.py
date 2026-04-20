@@ -29,6 +29,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagshape',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
         }
         self.use_chain_context_residual = self.edge_decoding in {
@@ -41,6 +42,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagshape',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
@@ -52,6 +54,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagshape',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
         }
         self.use_pair_internal_sequence = (
@@ -63,6 +66,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagshape',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
             }
         )
@@ -74,6 +78,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagshape',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
         }
         self.use_sequence_bridge_motif_lite = (
@@ -85,6 +90,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagshape',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
             }
         )
@@ -98,12 +104,19 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagshape',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
             }
         )
         self.use_boundary_lag_flow = (
+            self.edge_decoding in {
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagshape',
+            }
+        )
+        self.use_shape_signature = (
             self.edge_decoding ==
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag'
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagshape'
         )
         self.use_sequence_bridge_bank_window = (
             self.edge_decoding in {
@@ -112,6 +125,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagshape',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
             }
         )
@@ -264,6 +278,20 @@ class HeteroGNNEdgeHead(nn.Module):
                             self.boundary_lag_residual_alpha = nn.Parameter(
                                 torch.full((1,), math.log(0.05 / 0.95))
                             )
+                            if self.use_shape_signature:
+                                self.shape_signature_proj = MLP(
+                                    12, dim_in,
+                                    num_layers=self.head_layers,
+                                    bias=True,
+                                )
+                                self.shape_signature_head = MLP(
+                                    dim_in, dim_out,
+                                    num_layers=self.head_layers,
+                                    bias=True,
+                                )
+                                self.shape_signature_alpha = nn.Parameter(
+                                    torch.full((1,), math.log(0.08 / 0.92))
+                                )
                     if self.use_sequence_bridge_motif_lite:
                         self.bridge_leg_pair_proj = MLP(dim_in * 3 + 1, dim_in,
                                                         num_layers=self.head_layers,
@@ -455,6 +483,25 @@ class HeteroGNNEdgeHead(nn.Module):
             ),
             dim=-1,
         ))
+
+    def _partner_overlap_stats(self, bank_a, bank_b):
+        valid_a = bank_a >= 0
+        valid_b = bank_b >= 0
+        eq = (
+            bank_a.unsqueeze(2) == bank_b.unsqueeze(1)
+        ) & valid_a.unsqueeze(2) & valid_b.unsqueeze(1)
+        match_any = eq.any(dim=2)
+        overlap_ratio = (
+            match_any.float() * valid_a.float()
+        ).sum(dim=1, keepdim=True) / float(self.sequence_len)
+        slot_index = torch.arange(
+            bank_a.size(1), device=bank_a.device, dtype=torch.float32
+        )
+        slot_weight = 1.0 / (1.0 + slot_index)
+        weighted_overlap = (
+            match_any.float() * slot_weight.unsqueeze(0)
+        ).sum(dim=1, keepdim=True) / slot_weight.sum()
+        return overlap_ratio, weighted_overlap
 
     def _recent_overlap_leg_repr(self, bank_a, bank_b, seq_a, seq_b, time_a, time_b):
         batch_size = bank_a.size(0)
@@ -655,6 +702,7 @@ class HeteroGNNEdgeHead(nn.Module):
         slow_sequence_repr = None
         pair_terminal_role_repr = None
         pair_boundary_lag_repr = None
+        pair_shape_repr = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -841,6 +889,56 @@ class HeteroGNNEdgeHead(nn.Module):
                         outgoing_partner_bank[pair_dst],
                         node_x,
                     )
+                    if self.use_shape_signature:
+                        forward_overlap, forward_weighted_overlap = (
+                            self._partner_overlap_stats(
+                                outgoing_partner_bank[pair_src],
+                                incoming_partner_bank[pair_dst],
+                            )
+                        )
+                        cycle_overlap, cycle_weighted_overlap = (
+                            self._partner_overlap_stats(
+                                incoming_partner_bank[pair_src],
+                                outgoing_partner_bank[pair_dst],
+                            )
+                        )
+                        src_out_count = (
+                            outgoing_partner_bank[pair_src] >= 0
+                        ).float().sum(dim=1, keepdim=True) / float(self.sequence_len)
+                        src_in_count = (
+                            incoming_partner_bank[pair_src] >= 0
+                        ).float().sum(dim=1, keepdim=True) / float(self.sequence_len)
+                        dst_out_count = (
+                            outgoing_partner_bank[pair_dst] >= 0
+                        ).float().sum(dim=1, keepdim=True) / float(self.sequence_len)
+                        dst_in_count = (
+                            incoming_partner_bank[pair_dst] >= 0
+                        ).float().sum(dim=1, keepdim=True) / float(self.sequence_len)
+                        reciprocal_key = (
+                            pair_dst.to(torch.long) * num_dst_nodes +
+                            pair_src.to(torch.long)
+                        )
+                        reciprocal_flag = torch.isin(
+                            reciprocal_key,
+                            pair_keys,
+                        ).float().unsqueeze(-1)
+                        pair_shape_repr = self.shape_signature_proj(torch.cat(
+                            (
+                                forward_overlap,
+                                forward_weighted_overlap,
+                                cycle_overlap,
+                                cycle_weighted_overlap,
+                                forward_overlap - cycle_overlap,
+                                src_out_count,
+                                src_in_count,
+                                dst_out_count,
+                                dst_in_count,
+                                src_in_count - src_out_count,
+                                dst_out_count - dst_in_count,
+                                reciprocal_flag,
+                            ),
+                            dim=-1,
+                        ))
                     bridge_context = self.bridge_bank_proj(
                         self._pairwise_fusion_inputs(
                             forward_bridge,
@@ -1029,6 +1127,16 @@ class HeteroGNNEdgeHead(nn.Module):
             pred = pred + (
                 torch.sigmoid(self.boundary_lag_residual_alpha) *
                 boundary_lag_logits
+            )
+        if self.use_shape_signature:
+            if pair_shape_repr is None:
+                pair_shape_repr = torch.zeros_like(pair_repr)
+            shape_logits = self.shape_signature_head(
+                pair_shape_repr[pair_inv][mask]
+            )
+            pred = pred + (
+                torch.sigmoid(self.shape_signature_alpha) *
+                shape_logits
             )
         return pred, batch[task].y[mask]
 
