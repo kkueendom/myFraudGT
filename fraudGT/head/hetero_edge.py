@@ -29,7 +29,6 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagmultiscale',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
         }
         self.use_chain_context_residual = self.edge_decoding in {
@@ -42,7 +41,6 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagmultiscale',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
@@ -54,7 +52,6 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagmultiscale',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
         }
         self.use_pair_internal_sequence = (
@@ -66,7 +63,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
-                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagmultiscale',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
             }
         )
@@ -78,7 +74,6 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagmultiscale',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
         }
         self.use_sequence_bridge_motif_lite = (
@@ -90,7 +85,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
-                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagmultiscale',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
             }
         )
@@ -104,19 +98,12 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
-                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagmultiscale',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
             }
         )
         self.use_boundary_lag_flow = (
-            self.edge_decoding in {
-                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
-                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagmultiscale',
-            }
-        )
-        self.use_boundary_lag_multiscale_flow = (
             self.edge_decoding ==
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagmultiscale'
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag'
         )
         self.use_sequence_bridge_bank_window = (
             self.edge_decoding in {
@@ -125,7 +112,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
-                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagmultiscale',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
             }
         )
@@ -260,9 +246,8 @@ class HeteroGNNEdgeHead(nn.Module):
                             torch.full((1,), math.log(0.08 / 0.92))
                         )
                         if self.use_boundary_lag_flow:
-                            lag_feature_dim = 5 if self.use_boundary_lag_multiscale_flow else 2
                             self.boundary_lag_slot_proj = MLP(
-                                dim_in * bridge_fusion_mult + lag_feature_dim, dim_in,
+                                dim_in * bridge_fusion_mult + 2, dim_in,
                                 num_layers=self.head_layers,
                                 bias=True,
                             )
@@ -536,21 +521,11 @@ class HeteroGNNEdgeHead(nn.Module):
         lag = (dst_time - src_time).unsqueeze(-1)
         lag_align = torch.exp(-lag.abs() / time_scale)
         after = (lag >= 0).float()
-        lag_features = [lag_align, after]
-        if self.use_boundary_lag_multiscale_flow:
-            fast_time_scale = time_scale * self.fast_time_scale_log.exp().clamp(min=0.1, max=10.0)
-            slow_time_scale = time_scale * self.slow_time_scale_log.exp().clamp(min=0.25, max=20.0)
-            lag_features.extend(
-                [
-                    torch.exp(-lag.abs() / fast_time_scale),
-                    torch.exp(-lag.abs() / slow_time_scale),
-                    torch.tanh(lag / time_scale),
-                ]
-            )
         slot_input = torch.cat(
             (
                 self._pairwise_fusion_inputs(src_seq, dst_seq),
-                *lag_features,
+                lag_align,
+                after,
             ),
             dim=-1,
         )
