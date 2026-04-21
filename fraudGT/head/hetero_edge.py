@@ -29,6 +29,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylaglineflow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
         }
         self.use_chain_context_residual = self.edge_decoding in {
@@ -41,6 +42,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylaglineflow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
@@ -52,6 +54,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylaglineflow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
         }
         self.use_pair_internal_sequence = (
@@ -63,6 +66,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylaglineflow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
             }
         )
@@ -74,6 +78,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylaglineflow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
         }
         self.use_sequence_bridge_motif_lite = (
@@ -85,6 +90,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylaglineflow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
             }
         )
@@ -98,12 +104,19 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylaglineflow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
             }
         )
-        self.use_boundary_lag_flow = (
+        self.use_edge_line_flow = (
             self.edge_decoding ==
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag'
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylaglineflow'
+        )
+        self.use_boundary_lag_flow = (
+            self.edge_decoding in {
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylaglineflow',
+            }
         )
         self.use_sequence_bridge_bank_window = (
             self.edge_decoding in {
@@ -112,6 +125,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylaglineflow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
             }
         )
@@ -124,6 +138,14 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_proj = MLP(dim_in * 3, dim_in,
                                  num_layers=self.head_layers,
                                  bias=True)
+            if self.use_edge_line_flow:
+                self.edge_line_gate = nn.Linear(dim_in * 3, dim_in)
+                self.edge_line_update = MLP(dim_in * 3, dim_in,
+                                            num_layers=self.head_layers,
+                                            bias=True)
+                self.edge_line_alpha = nn.Parameter(
+                    torch.full((1,), math.log(0.10 / 0.90))
+                )
             if self.use_pair_internal_sequence:
                 self.pair_sequence_len = 4
                 self.pair_edge_sequence_encoder = nn.GRU(
@@ -580,6 +602,43 @@ class HeteroGNNEdgeHead(nn.Module):
         edge_inputs, edge_index = self._edge_inputs(batch)
         src_nodes, dst_nodes = edge_index
         edge_repr = self.edge_proj(edge_inputs)
+        if self.use_edge_line_flow and task[0] == task[2]:
+            num_nodes = batch[task[0]].x.size(0)
+            edge_scores = edge_repr.norm(dim=-1)
+            edge_prev_weights = pyg_softmax(
+                edge_scores, dst_nodes, num_nodes=num_nodes
+            )
+            edge_next_weights = pyg_softmax(
+                edge_scores, src_nodes, num_nodes=num_nodes
+            )
+            edge_prev_bank = scatter(
+                edge_repr * edge_prev_weights.unsqueeze(-1),
+                dst_nodes,
+                dim=0,
+                dim_size=num_nodes,
+                reduce='sum',
+            )
+            edge_next_bank = scatter(
+                edge_repr * edge_next_weights.unsqueeze(-1),
+                src_nodes,
+                dim=0,
+                dim_size=num_nodes,
+                reduce='sum',
+            )
+            edge_line_input = torch.cat(
+                (
+                    edge_prev_bank[src_nodes],
+                    edge_repr,
+                    edge_next_bank[dst_nodes],
+                ),
+                dim=-1,
+            )
+            edge_line_gate = torch.sigmoid(self.edge_line_gate(edge_line_input))
+            edge_repr = edge_repr + (
+                torch.sigmoid(self.edge_line_alpha) *
+                edge_line_gate *
+                self.edge_line_update(edge_line_input)
+            )
 
         num_dst_nodes = batch[task[2]].x.size(0)
         pair_key = src_nodes.to(torch.long) * num_dst_nodes + dst_nodes.to(torch.long)
