@@ -34,6 +34,18 @@ def check_grad(model):
         #     elif torch.isinf(param.grad).any():
         #         print(f'{name} has Inf gradients')
 
+
+def get_aux_loss(model):
+    model_ref = getattr(model, 'module', model)
+    for attr in ('post_gt', 'post_mp'):
+        head = getattr(model_ref, attr, None)
+        if head is None:
+            continue
+        aux_loss = getattr(head, 'aux_loss', None)
+        if aux_loss is not None:
+            return aux_loss
+    return None
+
 def get_best_epoch(val_perf):
     best_epoch = int(np.array([vp['loss'] for vp in val_perf]).argmin())
     if cfg.metric_best == 'auto':
@@ -173,6 +185,9 @@ def train_epoch(cur_epoch, logger, loader, model, optimizer, scheduler, batch_ac
                 loss, pred_score = compute_loss(pred, true, cur_epoch)
             else:
                 loss, pred_score = compute_loss(pred, true)
+            aux_loss = get_aux_loss(model)
+            if aux_loss is not None:
+                loss = loss + aux_loss
             _true = true.detach().to('cpu', non_blocking=True)
             _pred = pred_score.detach().to('cpu', non_blocking=True)
             runtime_stats_cuda.end_region("loss")

@@ -29,6 +29,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagviewconsistency',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
         }
         self.use_chain_context_residual = self.edge_decoding in {
@@ -41,6 +42,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagviewconsistency',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
@@ -52,6 +54,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagviewconsistency',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
         }
         self.use_pair_internal_sequence = (
@@ -63,6 +66,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagviewconsistency',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
             }
         )
@@ -74,6 +78,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagviewconsistency',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
         }
         self.use_sequence_bridge_motif_lite = (
@@ -85,6 +90,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagviewconsistency',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
             }
         )
@@ -98,12 +104,19 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagviewconsistency',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
             }
         )
-        self.use_boundary_lag_flow = (
+        self.use_branch_view_consistency = (
             self.edge_decoding ==
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag'
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagviewconsistency'
+        )
+        self.use_boundary_lag_flow = (
+            self.edge_decoding in {
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagviewconsistency',
+            }
         )
         self.use_sequence_bridge_bank_window = (
             self.edge_decoding in {
@@ -112,10 +125,13 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagviewconsistency',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
             }
         )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
+        self.consistency_weight = float(getattr(cfg.model, 'consistency_weight', 0.05))
+        self.aux_loss = None
         self.train_inds = mask_to_index(dataset['train'][cfg.dataset.task_entity].split_mask).to(cfg.device)
         self.val_inds = mask_to_index(dataset['val'][cfg.dataset.task_entity].split_mask).to(cfg.device)
         self.test_inds = mask_to_index(dataset['test'][cfg.dataset.task_entity].split_mask).to(cfg.device)
@@ -574,6 +590,30 @@ class HeteroGNNEdgeHead(nn.Module):
             dim=-1,
         )
 
+    def _view_consistency_loss(self, branch_logits, labels):
+        if len(branch_logits) < 2:
+            return None
+        probs = [torch.softmax(logits, dim=-1) for logits in branch_logits]
+        log_probs = [torch.log_softmax(logits, dim=-1) for logits in branch_logits]
+        confidence = torch.stack(
+            [prob.detach().max(dim=-1).values for prob in probs], dim=0
+        ).mean(dim=0)
+        consistency = 0.0
+        pair_count = 0
+        for i in range(len(branch_logits)):
+            for j in range(i + 1, len(branch_logits)):
+                consistency = consistency + 0.5 * (
+                    F.kl_div(log_probs[i], probs[j], reduction='none').sum(dim=-1) +
+                    F.kl_div(log_probs[j], probs[i], reduction='none').sum(dim=-1)
+                )
+                pair_count += 1
+        if pair_count == 0:
+            return None
+        pos_weight = 1.0 + labels.float()
+        return self.consistency_weight * (
+            (consistency / float(pair_count)) * confidence * pos_weight
+        ).mean()
+
     def _pair_chain_head(self, batch):
         task = cfg.dataset.task_entity
         mask = self._edge_mask(batch)
@@ -996,6 +1036,7 @@ class HeteroGNNEdgeHead(nn.Module):
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
+        branch_logits = []
         pred = self.layer_post_mp(torch.cat(
             (edge_repr[mask], pair_edge_repr[mask], edge_repr[mask] * pair_edge_repr[mask]),
             dim=-1
@@ -1010,6 +1051,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 pair_sequence_repr = torch.zeros_like(pair_repr)
             sequence_logits = self.sequence_head(pair_sequence_repr[pair_inv][mask])
             pred = pred + torch.sigmoid(self.sequence_residual_alpha) * sequence_logits
+            branch_logits.append(sequence_logits)
         if self.use_terminal_role_flow:
             if pair_terminal_role_repr is None:
                 pair_terminal_role_repr = torch.zeros_like(pair_repr)
@@ -1020,6 +1062,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 torch.sigmoid(self.terminal_flow_residual_alpha) *
                 terminal_role_logits
             )
+            branch_logits.append(terminal_role_logits)
         if self.use_boundary_lag_flow:
             if pair_boundary_lag_repr is None:
                 pair_boundary_lag_repr = torch.zeros_like(pair_repr)
@@ -1029,6 +1072,12 @@ class HeteroGNNEdgeHead(nn.Module):
             pred = pred + (
                 torch.sigmoid(self.boundary_lag_residual_alpha) *
                 boundary_lag_logits
+            )
+            branch_logits.append(boundary_lag_logits)
+        if self.use_branch_view_consistency and getattr(batch, 'split', None) == 'train':
+            self.aux_loss = self._view_consistency_loss(
+                branch_logits,
+                batch[task].y[mask],
             )
         return pred, batch[task].y[mask]
 
@@ -1045,6 +1094,7 @@ class HeteroGNNEdgeHead(nn.Module):
                batch[task].y[mask]
 
     def forward(self, batch):
+        self.aux_loss = None
         if self.use_pair_chain_head:
             return self._pair_chain_head(batch)
         pred, label = self._apply_index(batch)
