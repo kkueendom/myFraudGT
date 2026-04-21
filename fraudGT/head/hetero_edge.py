@@ -29,6 +29,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsubgraphxalign',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
         }
         self.use_chain_context_residual = self.edge_decoding in {
@@ -41,6 +42,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsubgraphxalign',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
         }
         self.use_sequence_context_residual = self.edge_decoding in {
@@ -52,6 +54,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsubgraphxalign',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
         }
         self.use_pair_internal_sequence = (
@@ -63,6 +66,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsubgraphxalign',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
             }
         )
@@ -74,6 +78,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsubgraphxalign',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
         }
         self.use_sequence_bridge_motif_lite = (
@@ -85,6 +90,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsubgraphxalign',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
             }
         )
@@ -98,12 +104,23 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsubgraphxalign',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
             }
         )
-        self.use_boundary_lag_flow = (
+        self.use_subgraph_context_residual = (
             self.edge_decoding ==
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag'
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsubgraphxalign'
+        )
+        self.use_sequence_cross_align = (
+            self.edge_decoding ==
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsubgraphxalign'
+        )
+        self.use_boundary_lag_flow = (
+            self.edge_decoding in {
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsubgraphxalign',
+            }
         )
         self.use_sequence_bridge_bank_window = (
             self.edge_decoding in {
@@ -112,6 +129,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusion',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflow',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsubgraphxalign',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
             }
         )
@@ -167,6 +185,23 @@ class HeteroGNNEdgeHead(nn.Module):
                 self.context_residual_alpha = nn.Parameter(
                     torch.full((1,), math.log(0.10 / 0.90))
                 )
+            if self.use_subgraph_context_residual:
+                self.subgraph_proj = MLP(dim_in * 7, dim_in,
+                                         num_layers=self.head_layers,
+                                         bias=True)
+                self.subgraph_head = MLP(dim_in, dim_out,
+                                         num_layers=self.head_layers,
+                                         bias=True)
+                self.subgraph_residual_alpha = nn.Parameter(
+                    torch.full((1,), math.log(0.10 / 0.90))
+                )
+                self.subgraph_bridge_gate = nn.Linear(dim_in * 3, dim_in)
+                self.subgraph_bridge_update = MLP(dim_in * 3, dim_in,
+                                                  num_layers=self.head_layers,
+                                                  bias=True)
+                self.subgraph_bridge_alpha = nn.Parameter(
+                    torch.full((1,), math.log(0.10 / 0.90))
+                )
             if self.use_sequence_context_residual:
                 self.sequence_len = 4
                 self.outgoing_sequence_encoder = nn.GRU(
@@ -210,6 +245,26 @@ class HeteroGNNEdgeHead(nn.Module):
                     self.sequence_window_gate = nn.Linear(dim_in * 3, dim_in)
                     self.sequence_window_alpha = nn.Parameter(
                         torch.full((1,), math.log(0.10 / 0.90))
+                    )
+                if self.use_sequence_cross_align:
+                    self.sequence_cross_align_score = MLP(
+                        dim_in * 4 + 2, 1,
+                        num_layers=self.head_layers,
+                        bias=True,
+                    )
+                    self.sequence_cross_align_gate = nn.Linear(
+                        dim_in * 3, dim_in
+                    )
+                    self.sequence_cross_align_update = MLP(
+                        dim_in * 3, dim_in,
+                        num_layers=self.head_layers,
+                        bias=True,
+                    )
+                    self.sequence_cross_align_alpha = nn.Parameter(
+                        torch.full((1,), math.log(0.10 / 0.90))
+                    )
+                    self.sequence_cross_align_time_log = nn.Parameter(
+                        torch.tensor(math.log(1.5))
                     )
                 if self.use_sequence_bridge_bank:
                     self.bridge_partner_proj = MLP(dim_in * 2 + 2, dim_in,
@@ -421,6 +476,107 @@ class HeteroGNNEdgeHead(nn.Module):
         scale = 1.0 - alpha + alpha * gate
         valid = (sequence_bank.abs().sum(dim=-1, keepdim=True) > 0).float()
         return sequence_bank * valid * scale
+
+    def _masked_slot_softmax(self, scores, mask, dim):
+        masked_scores = scores.masked_fill(~mask, -1e9)
+        weights = torch.softmax(masked_scores, dim=dim)
+        weights = weights * mask.float()
+        return weights / weights.sum(dim=dim, keepdim=True).clamp(min=1e-6)
+
+    def _cross_align_sequence_banks(self, source_bank, target_bank, pair_repr,
+                                    source_time_bank, target_time_bank):
+        source_valid = source_bank.abs().sum(dim=-1) > 0
+        target_valid = target_bank.abs().sum(dim=-1) > 0
+        if not source_valid.any() or not target_valid.any():
+            return source_bank, target_bank
+
+        source_slots = source_bank.size(1)
+        target_slots = target_bank.size(1)
+        source_expand = source_bank.unsqueeze(2).expand(
+            -1, source_slots, target_slots, -1
+        )
+        target_expand = target_bank.unsqueeze(1).expand(
+            -1, source_slots, target_slots, -1
+        )
+        pair_expand = pair_repr.unsqueeze(1).unsqueeze(2).expand(
+            -1, source_slots, target_slots, -1
+        )
+        time_scale = (
+            self.sequence_time_scale.abs().clamp(min=1.0) *
+            self.sequence_cross_align_time_log.exp().clamp(min=0.25, max=8.0)
+        )
+        time_delta = (
+            source_time_bank.unsqueeze(2) - target_time_bank.unsqueeze(1)
+        ) / time_scale
+        time_closeness = torch.exp(-time_delta.abs()).unsqueeze(-1)
+        time_direction = torch.tanh(time_delta).unsqueeze(-1)
+        align_input = torch.cat(
+            (
+                source_expand,
+                target_expand,
+                source_expand * target_expand,
+                pair_expand,
+                time_closeness,
+                time_direction,
+            ),
+            dim=-1,
+        )
+        align_scores = self.sequence_cross_align_score(
+            align_input.reshape(-1, align_input.size(-1))
+        ).view(source_bank.size(0), source_slots, target_slots)
+        valid_mask = source_valid.unsqueeze(2) & target_valid.unsqueeze(1)
+
+        source_to_target = self._masked_slot_softmax(
+            align_scores, valid_mask, dim=2
+        )
+        target_to_source = self._masked_slot_softmax(
+            align_scores, valid_mask, dim=1
+        ).transpose(1, 2)
+        aligned_target = torch.matmul(source_to_target, target_bank)
+        aligned_source = torch.matmul(target_to_source, source_bank)
+
+        alpha = torch.sigmoid(self.sequence_cross_align_alpha)
+        source_input = torch.cat(
+            (
+                source_bank,
+                aligned_target,
+                source_bank * aligned_target,
+            ),
+            dim=-1,
+        )
+        source_gate = torch.sigmoid(self.sequence_cross_align_gate(source_input))
+        source_has_match = (
+            source_valid & target_valid.any(dim=1, keepdim=True)
+        ).unsqueeze(-1).float()
+        source_bank = source_bank + (
+            alpha *
+            source_has_match *
+            source_gate *
+            self.sequence_cross_align_update(source_input)
+        )
+
+        target_input = torch.cat(
+            (
+                target_bank,
+                aligned_source,
+                target_bank * aligned_source,
+            ),
+            dim=-1,
+        )
+        target_gate = torch.sigmoid(self.sequence_cross_align_gate(target_input))
+        target_has_match = (
+            target_valid & source_valid.any(dim=1, keepdim=True)
+        ).unsqueeze(-1).float()
+        target_bank = target_bank + (
+            alpha *
+            target_has_match *
+            target_gate *
+            self.sequence_cross_align_update(target_input)
+        )
+
+        source_bank = source_bank * source_valid.unsqueeze(-1).float()
+        target_bank = target_bank * target_valid.unsqueeze(-1).float()
+        return source_bank, target_bank
 
     def _recent_overlap_partner_repr(self, bank_a, bank_b, node_x):
         valid_a = bank_a >= 0
@@ -650,6 +806,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 (pair_mean, pair_max, pair_max - pair_mean), dim=-1
             ))
         pair_context_repr = None
+        pair_subgraph_repr = None
         pair_sequence_repr = None
         fast_sequence_repr = None
         slow_sequence_repr = None
@@ -699,6 +856,23 @@ class HeteroGNNEdgeHead(nn.Module):
                         successor_focus_bank[pair_dst],
                     )
                 )
+            if self.use_subgraph_context_residual:
+                src_in = predecessor_focus_bank[pair_src]
+                src_out = successor_focus_bank[pair_src]
+                dst_in = predecessor_focus_bank[pair_dst]
+                dst_out = successor_focus_bank[pair_dst]
+                pair_subgraph_repr = self.subgraph_proj(torch.cat(
+                    (
+                        src_in,
+                        src_out,
+                        dst_in,
+                        dst_out,
+                        src_in * dst_out,
+                        src_out * dst_in,
+                        pair_repr,
+                    ),
+                    dim=-1,
+                ))
             if self.use_sequence_context_residual and hasattr(batch[task], 'timestamps'):
                 edge_timestamps = batch[task].timestamps.to(edge_repr.device).float().view(-1)
                 pair_timestamps, _ = scatter_max(
@@ -725,6 +899,15 @@ class HeteroGNNEdgeHead(nn.Module):
                     incoming_latest,
                     torch.zeros_like(incoming_latest),
                 )
+                if self.use_sequence_cross_align:
+                    outgoing_time_bank = self._build_recent_timestamp_bank(
+                        pair_src, pair_timestamps, num_nodes
+                    )
+                    incoming_time_bank = self._build_recent_timestamp_bank(
+                        pair_dst, pair_timestamps, num_nodes
+                    )
+                    pair_outgoing_time_bank = outgoing_time_bank[pair_src]
+                    pair_incoming_time_bank = incoming_time_bank[pair_dst]
                 if self.use_sequence_bridge_bank_window:
                     base_time_scale = self.sequence_time_scale.abs().clamp(min=1.0)
                     fast_time_scale = base_time_scale * self.fast_time_scale_log.exp().clamp(min=0.1, max=10.0)
@@ -765,6 +948,27 @@ class HeteroGNNEdgeHead(nn.Module):
                             pair_slow_incoming_sequence_bank,
                             pair_repr,
                             self.incoming_sequence_select_score,
+                        )
+                    if self.use_sequence_cross_align:
+                        (
+                            pair_outgoing_sequence_bank,
+                            pair_incoming_sequence_bank,
+                        ) = self._cross_align_sequence_banks(
+                            pair_outgoing_sequence_bank,
+                            pair_incoming_sequence_bank,
+                            pair_repr,
+                            pair_outgoing_time_bank,
+                            pair_incoming_time_bank,
+                        )
+                        (
+                            pair_slow_outgoing_sequence_bank,
+                            pair_slow_incoming_sequence_bank,
+                        ) = self._cross_align_sequence_banks(
+                            pair_slow_outgoing_sequence_bank,
+                            pair_slow_incoming_sequence_bank,
+                            pair_repr,
+                            pair_outgoing_time_bank,
+                            pair_incoming_time_bank,
                         )
                     outgoing_state = self.outgoing_sequence_encoder(
                         pair_outgoing_sequence_bank
@@ -811,6 +1015,17 @@ class HeteroGNNEdgeHead(nn.Module):
                             pair_repr,
                             self.incoming_sequence_select_score,
                         )
+                    if self.use_sequence_cross_align:
+                        (
+                            pair_outgoing_sequence_bank,
+                            pair_incoming_sequence_bank,
+                        ) = self._cross_align_sequence_banks(
+                            pair_outgoing_sequence_bank,
+                            pair_incoming_sequence_bank,
+                            pair_repr,
+                            pair_outgoing_time_bank,
+                            pair_incoming_time_bank,
+                        )
                     outgoing_state = self.outgoing_sequence_encoder(
                         pair_outgoing_sequence_bank
                     )[1].squeeze(0)
@@ -847,6 +1062,25 @@ class HeteroGNNEdgeHead(nn.Module):
                             cycle_bridge,
                         )
                     )
+                    if self.use_subgraph_context_residual:
+                        if pair_subgraph_repr is None:
+                            pair_subgraph_repr = torch.zeros_like(pair_repr)
+                        subgraph_bridge_input = torch.cat(
+                            (
+                                pair_subgraph_repr,
+                                bridge_context,
+                                pair_subgraph_repr * bridge_context,
+                            ),
+                            dim=-1,
+                        )
+                        subgraph_bridge_gate = torch.sigmoid(
+                            self.subgraph_bridge_gate(subgraph_bridge_input)
+                        )
+                        bridge_context = bridge_context + (
+                            torch.sigmoid(self.subgraph_bridge_alpha) *
+                            subgraph_bridge_gate *
+                            self.subgraph_bridge_update(subgraph_bridge_input)
+                        )
                     if self.use_sequence_bridge_bank_window:
                         window_input = torch.cat(
                             (
@@ -1029,6 +1263,14 @@ class HeteroGNNEdgeHead(nn.Module):
             pred = pred + (
                 torch.sigmoid(self.boundary_lag_residual_alpha) *
                 boundary_lag_logits
+            )
+        if self.use_subgraph_context_residual:
+            if pair_subgraph_repr is None:
+                pair_subgraph_repr = torch.zeros_like(pair_repr)
+            subgraph_logits = self.subgraph_head(pair_subgraph_repr[pair_inv][mask])
+            pred = pred + (
+                torch.sigmoid(self.subgraph_residual_alpha) *
+                subgraph_logits
             )
         return pred, batch[task].y[mask]
 
