@@ -159,14 +159,6 @@ class GTLayer(nn.Module):
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.edge_writeback == 'dir_meanspike_dualgate'
         )
-        self.directional_pairmeanmax_writeback = (
-            global_model_type == 'SparseNodeTransformer' and
-            cfg.gt.edge_writeback == 'dir_pairmeanmax'
-        )
-        self.directional_pairmeanmax_temporal_writeback = (
-            global_model_type == 'SparseNodeTransformer' and
-            cfg.gt.edge_writeback == 'dir_pairmeanmax_temporal'
-        )
         self.directional_dualgate_writeback = (
             self.directional_meanmax_dualgate_writeback or
             self.directional_meanspike_dualgate_writeback
@@ -259,8 +251,6 @@ class GTLayer(nn.Module):
                         self.directional_meanmaxplusspike_writeback or
                         self.directional_meanmaxsoftclip_writeback or
                         self.directional_meanmaxsoftmix_writeback or
-                        self.directional_pairmeanmax_writeback or
-                        self.directional_pairmeanmax_temporal_writeback or
                         self.directional_dualgate_writeback
                     ) else 2
                 )
@@ -284,10 +274,6 @@ class GTLayer(nn.Module):
                     self.writeback_winner_proj_add = nn.Parameter(
                         torch.full((2,), math.log(0.15 / 0.85))
                     )
-                    self.writeback_temporal_alpha = nn.Parameter(
-                        torch.full((2,), 0.0)
-                    )
-                if self.directional_pairmeanmax_temporal_writeback:
                     self.writeback_temporal_alpha = nn.Parameter(
                         torch.full((2,), 0.0)
                     )
@@ -597,96 +583,6 @@ class GTLayer(nn.Module):
         selected[valid_nodes] = edge_values[selected_edges]
         return selected
 
-    def _pair_level_meanmax_context(self, edge_state, src_nodes, dst_nodes,
-                                    num_nodes, edge_weights,
-                                    edge_timestamps=None):
-        pair_key = (
-            src_nodes.to(torch.long) * int(num_nodes) +
-            dst_nodes.to(torch.long)
-        )
-        pair_keys, pair_inv = torch.unique(
-            pair_key, sorted=True, return_inverse=True
-        )
-        num_pairs = pair_keys.numel()
-        if num_pairs == 0:
-            return edge_state.new_zeros((num_nodes, edge_state.shape[-1] * 4))
-
-        pair_src = torch.div(pair_keys, num_nodes, rounding_mode='floor')
-        pair_dst = torch.remainder(pair_keys, num_nodes)
-        pair_unit_weights = torch.ones(
-            num_pairs, device=edge_state.device, dtype=edge_state.dtype
-        )
-
-        if (
-            self.directional_pairmeanmax_temporal_writeback and
-            edge_timestamps is not None
-        ):
-            pair_latest, _ = scatter_max(
-                edge_timestamps, pair_inv, dim=0, dim_size=num_pairs
-            )
-            pair_latest = torch.where(
-                torch.isfinite(pair_latest),
-                pair_latest,
-                torch.zeros_like(pair_latest),
-            )
-            pair_delta = self._normalize_temporal_delta(
-                (pair_latest[pair_inv] - edge_timestamps).clamp(min=0)
-            )
-            pair_temporal_alpha = F.softplus(self.writeback_temporal_alpha)
-            incoming_pair_state = self._group_weighted_mean(
-                edge_state,
-                pair_inv,
-                edge_weights * torch.exp(-pair_temporal_alpha[0] * pair_delta),
-                num_pairs,
-            )
-            outgoing_pair_state = self._group_weighted_mean(
-                edge_state,
-                pair_inv,
-                edge_weights * torch.exp(-pair_temporal_alpha[1] * pair_delta),
-                num_pairs,
-            )
-        else:
-            pair_state = self._group_weighted_mean(
-                edge_state, pair_inv, edge_weights, num_pairs
-            )
-            incoming_pair_state = pair_state
-            outgoing_pair_state = pair_state
-
-        pair_peak, _ = scatter_max(
-            edge_state, pair_inv, dim=0, dim_size=num_pairs
-        )
-        pair_peak = torch.where(
-            torch.isfinite(pair_peak), pair_peak, torch.zeros_like(pair_peak)
-        )
-
-        incoming_pair = self._group_weighted_mean(
-            incoming_pair_state, pair_dst, pair_unit_weights, num_nodes
-        )
-        outgoing_pair = self._group_weighted_mean(
-            outgoing_pair_state, pair_src, pair_unit_weights, num_nodes
-        )
-        incoming_pair_max, _ = scatter_max(
-            pair_peak, pair_dst, dim=0, dim_size=num_nodes
-        )
-        outgoing_pair_max, _ = scatter_max(
-            pair_peak, pair_src, dim=0, dim_size=num_nodes
-        )
-        incoming_pair_max = torch.where(
-            torch.isfinite(incoming_pair_max),
-            incoming_pair_max,
-            torch.zeros_like(incoming_pair_max),
-        )
-        outgoing_pair_max = torch.where(
-            torch.isfinite(outgoing_pair_max),
-            outgoing_pair_max,
-            torch.zeros_like(outgoing_pair_max),
-        )
-
-        return torch.cat(
-            (incoming_pair, outgoing_pair, incoming_pair_max, outgoing_pair_max),
-            dim=-1,
-        )
-
     def _apply_edge_writeback(self, out, edge_state, src_nodes, dst_nodes,
                               node_type_tensor, batch, edge_weights=None,
                               edge_timestamps=None):
@@ -734,8 +630,6 @@ class GTLayer(nn.Module):
             self.directional_meanmaxplusspike_writeback or
             self.directional_meanmaxsoftclip_writeback or
             self.directional_meanmaxsoftmix_writeback or
-            self.directional_pairmeanmax_writeback or
-            self.directional_pairmeanmax_temporal_writeback or
             self.directional_dualgate_writeback
         ):
             if self.directional_meansoftmax_writeback:
@@ -799,18 +693,6 @@ class GTLayer(nn.Module):
                 if self.directional_meanmax_writeback:
                     edge_context = torch.cat(
                         (incoming, outgoing, incoming_max, outgoing_max), dim=-1
-                    )
-                elif (
-                    self.directional_pairmeanmax_writeback or
-                    self.directional_pairmeanmax_temporal_writeback
-                ):
-                    edge_context = self._pair_level_meanmax_context(
-                        edge_state,
-                        src_nodes,
-                        dst_nodes,
-                        num_nodes,
-                        edge_weights,
-                        edge_timestamps=edge_timestamps,
                     )
                 elif self.directional_meanmaxwinnermix_writeback:
                     anomaly_scores = weighted_edge_state.norm(dim=-1)
