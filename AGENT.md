@@ -4,6 +4,13 @@
 - The target is no longer just AML Small-HI.
 - Relative to the original FraudGT paper, achieve at least `+2.00` F1 points on **every** AML dataset in Table 2.
 - Use the paper's strongest published FraudGT-family result on each dataset as the baseline target unless the user explicitly changes the comparison rule.
+- Current per-dataset thresholds are:
+- `Small-HI > 78.13`
+- `Small-LI > 49.01`
+- `Medium-HI > 77.93`
+- `Medium-LI > 46.06`
+- `Large-HI > 75.34`
+- `Large-LI > 39.43`
 
 ## Autonomy
 - Operate with high autonomy.
@@ -22,19 +29,25 @@
 - If a run does not beat the relevant paper baseline trajectory, launch the next experiment automatically.
 - Use short pilot runs only as screening; do not treat them as final evidence when the model is known to peak late.
 - Prefer one coherent model family with dataset-specific configs over unrelated per-dataset hacks.
+- Do not judge a run from only the first evaluation point.
+- If a run is clearly dead, allow `1-3` evaluation points before stopping.
+- If a run is borderline, watch at least `5` evaluation points before deciding.
+- If a run is promising, let the `40`-epoch pilot finish and judge by the formal best-by-val checkpoint.
 
 ## Git Discipline
 - Every code change must be tracked with git on the server repository.
+- Every code change must also be tracked in the local editing repository.
 - Before starting a new experiment, make sure the tracked server state is clean and intentional.
 - If an experiment fails, revert the failed commit explicitly instead of leaving stale code in place.
+- If an experiment fails, revert the failed commit on both local and remote branches.
 - After a revert, resync local scratch from the current tracked server files before making more edits.
 - Do not rewrite history or use destructive reset commands.
 
 ## Server Context
-- Remote repo: `/e/yyk/FraudGT`
+- Remote repo: `/e/yyk/FraudGT_multi6`
 - Local editing repo: `/Users/kun/FraudGT_multi6`
 - Conda env: `fraudgt_dual_gate`
-- Data root: `/e/yyk/data`
+- Data root: `/e/yyk/data/archive`
 
 ## Monitoring
 - Estimate runtime before long runs.
