@@ -31,7 +31,7 @@
 - Do not rewrite history or use destructive reset commands.
 
 ## Server Context
-- Remote repo: `/e/yyk/FraudGT`
+- Remote repo: `/e/yyk/FraudGT_multi6`
 - Local editing repo: `/Users/kun/FraudGT_multi6`
 - Conda env: `fraudgt_dual_gate`
 - Data root: `/e/yyk/data`
