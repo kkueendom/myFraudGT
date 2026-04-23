@@ -31,7 +31,6 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixroute',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
@@ -48,7 +47,6 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixroute',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
@@ -64,7 +62,6 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixroute',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
@@ -80,7 +77,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
-                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixroute',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
@@ -96,7 +92,6 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixroute',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
@@ -112,7 +107,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
-                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixroute',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
@@ -130,7 +124,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
-                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixroute',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
@@ -141,7 +134,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
-                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixroute',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
             }
@@ -150,7 +142,6 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
-                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixroute',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
             }
@@ -158,10 +149,6 @@ class HeteroGNNEdgeHead(nn.Module):
         self.use_sequence_consistency_filter = (
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis'
-        )
-        self.use_route_shape_bank = (
-            self.edge_decoding ==
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixroute'
         )
         self.use_support_prototype_expert = (
             self.edge_decoding ==
@@ -180,7 +167,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
-                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixroute',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
@@ -397,38 +383,6 @@ class HeteroGNNEdgeHead(nn.Module):
                             )
                             self.sequence_consistency_alpha = nn.Parameter(
                                 torch.tensor(math.log(0.35 / 0.65))
-                            )
-                        if self.use_route_shape_bank:
-                            self.route_shape_slot_proj = MLP(
-                                dim_in * 4 + 4, dim_in,
-                                num_layers=self.head_layers,
-                                bias=True,
-                            )
-                            self.route_shape_score = MLP(
-                                dim_in * 2 + 3, 1,
-                                num_layers=self.head_layers,
-                                bias=True,
-                            )
-                            self.route_shape_proj = MLP(
-                                dim_in * 3 + 4, dim_in,
-                                num_layers=self.head_layers,
-                                bias=True,
-                            )
-                            self.route_shape_head = MLP(
-                                dim_in, dim_out,
-                                num_layers=self.head_layers,
-                                bias=True,
-                            )
-                            self.route_shape_residual_alpha = nn.Parameter(
-                                torch.full((1,), math.log(0.06 / 0.94))
-                            )
-                            self.route_shape_support_gate = MLP(
-                                dim_in + self.support_feature_dim + 4, 1,
-                                num_layers=self.head_layers,
-                                bias=True,
-                            )
-                            self.route_shape_support_bias = nn.Parameter(
-                                torch.tensor(math.log(0.12 / 0.88))
                             )
                         if self.use_support_prototype_expert:
                             self.num_support_prototypes = 8
@@ -848,122 +802,6 @@ class HeteroGNNEdgeHead(nn.Module):
             dim=-1,
         ))
 
-    def _recent_route_shape_repr(self, src_seq, dst_seq, src_time, dst_time, query_repr):
-        token_list = []
-        score_list = []
-        valid_list = []
-        forward_list = []
-        match_list = []
-        time_scale = self.sequence_time_scale.abs().clamp(min=1.0)
-        batch_size = src_seq.size(0)
-        dtype = src_seq.dtype
-        device = src_seq.device
-
-        for i in range(self.sequence_len):
-            src_valid = src_time[:, i] > 0
-            src_repr = src_seq[:, i]
-            src_slot_prior = torch.full(
-                (batch_size, 1),
-                1.0 / float(1 + i),
-                dtype=dtype,
-                device=device,
-            )
-            for j in range(self.sequence_len):
-                dst_valid = dst_time[:, j] > 0
-                dst_repr = dst_seq[:, j]
-                dst_slot_prior = torch.full(
-                    (batch_size, 1),
-                    1.0 / float(1 + j),
-                    dtype=dtype,
-                    device=device,
-                )
-                valid = (src_valid & dst_valid).unsqueeze(-1).float()
-                lag = (dst_time[:, j] - src_time[:, i]).unsqueeze(-1)
-                lag_align = torch.exp(-lag.abs() / time_scale)
-                forward = (lag >= 0).float()
-                token_input = torch.cat(
-                    (
-                        src_repr,
-                        query_repr,
-                        dst_repr,
-                        src_repr * dst_repr,
-                        lag_align,
-                        forward,
-                        src_slot_prior,
-                        dst_slot_prior,
-                    ),
-                    dim=-1,
-                )
-                token = self.route_shape_slot_proj(token_input)
-                route_match = self._cosine_feature(
-                    0.5 * (src_repr + dst_repr),
-                    query_repr,
-                )
-                score_input = torch.cat(
-                    (
-                        query_repr,
-                        token,
-                        lag_align,
-                        route_match,
-                        forward,
-                    ),
-                    dim=-1,
-                )
-                score = self.route_shape_score(score_input)
-                token_list.append(token)
-                score_list.append(score)
-                valid_list.append(valid)
-                forward_list.append(forward)
-                match_list.append(route_match)
-
-        route_tokens = torch.stack(token_list, dim=1)
-        route_scores = torch.stack(score_list, dim=1).squeeze(-1)
-        route_valid = torch.stack(valid_list, dim=1).squeeze(-1)
-        route_forward = torch.stack(forward_list, dim=1).squeeze(-1)
-        route_match = torch.stack(match_list, dim=1).squeeze(-1)
-
-        masked_scores = route_scores.masked_fill(route_valid == 0, -1e9)
-        route_weight = torch.softmax(masked_scores, dim=1)
-        route_weight = route_weight * route_valid
-        route_weight = route_weight / route_weight.sum(dim=1, keepdim=True).clamp(min=1e-6)
-        route_mean = (route_tokens * route_weight.unsqueeze(-1)).sum(dim=1)
-        route_max = route_tokens.masked_fill(
-            route_valid.unsqueeze(-1) == 0,
-            -1e9,
-        ).max(dim=1).values
-        valid_count = route_valid.sum(dim=1, keepdim=True)
-        route_max = torch.where(
-            valid_count > 0,
-            route_max,
-            torch.zeros_like(route_max),
-        )
-        route_valid_ratio = valid_count / float(self.sequence_len * self.sequence_len)
-        route_forward_ratio = (
-            (route_forward * route_valid).sum(dim=1, keepdim=True) /
-            valid_count.clamp(min=1.0)
-        )
-        route_soft_forward = (route_weight * route_forward).sum(dim=1, keepdim=True)
-        route_match_strength = (route_weight * route_match).sum(dim=1, keepdim=True)
-        route_repr = self.route_shape_proj(torch.cat(
-            (
-                route_mean,
-                route_max,
-                route_mean * route_max,
-                route_valid_ratio,
-                route_forward_ratio,
-                route_soft_forward,
-                route_match_strength,
-            ),
-            dim=-1,
-        ))
-        return (
-            route_repr,
-            route_valid_ratio,
-            route_forward_ratio,
-            route_soft_forward,
-            route_match_strength,
-        )
-
     def _pairwise_fusion_inputs(self, left_repr, right_repr):
         if self.use_difference_fusion:
             return torch.cat(
@@ -1077,8 +915,6 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_sequence_support = None
         pair_terminal_support = None
         pair_boundary_support = None
-        pair_route_shape_repr = None
-        pair_route_support = None
         pair_proto_repr = None
         pair_proto_support = None
 
@@ -1099,10 +935,6 @@ class HeteroGNNEdgeHead(nn.Module):
             cycle_overlap = zero_support
             boundary_valid_ratio = zero_support
             boundary_after_ratio = zero_support
-            route_valid_ratio = zero_support
-            route_forward_ratio = zero_support
-            route_soft_forward = zero_support
-            route_match_strength = zero_support
             predecessor_bank = scatter(pair_repr, pair_dst, dim=0, dim_size=num_nodes, reduce='mean')
             successor_bank = scatter(pair_repr, pair_src, dim=0, dim_size=num_nodes, reduce='mean')
             prev_context = predecessor_bank[pair_src]
@@ -1502,20 +1334,6 @@ class HeteroGNNEdgeHead(nn.Module):
                                     outgoing_time_bank[pair_dst],
                                 )
                             )
-                            if self.use_route_shape_bank:
-                                (
-                                    pair_route_shape_repr,
-                                    route_valid_ratio,
-                                    route_forward_ratio,
-                                    route_soft_forward,
-                                    route_match_strength,
-                                ) = self._recent_route_shape_repr(
-                                    src_incoming_sequence_bank,
-                                    dst_outgoing_sequence_bank,
-                                    incoming_time_bank[pair_src],
-                                    outgoing_time_bank[pair_dst],
-                                    pair_repr,
-                                )
                     if self.use_sequence_bridge_motif_lite:
                         outgoing_time_bank = self._build_recent_timestamp_bank(
                             pair_src, pair_timestamps, num_nodes
@@ -1648,25 +1466,6 @@ class HeteroGNNEdgeHead(nn.Module):
                         )
                     )
                 )
-                if self.use_route_shape_bank:
-                    pair_route_support = torch.sigmoid(
-                        self.route_shape_support_bias +
-                        self.route_shape_support_gate(
-                            torch.cat(
-                                (
-                                    pair_route_shape_repr
-                                    if pair_route_shape_repr is not None
-                                    else torch.zeros_like(pair_repr),
-                                    pair_support_features,
-                                    route_valid_ratio,
-                                    route_forward_ratio,
-                                    route_soft_forward,
-                                    route_match_strength,
-                                ),
-                                dim=-1,
-                            )
-                        )
-                    )
                 if self.use_support_prototype_expert:
                     proto_query = pair_sequence_repr
                     if proto_query is None:
@@ -1759,20 +1558,6 @@ class HeteroGNNEdgeHead(nn.Module):
             pred = pred + (
                 torch.sigmoid(self.boundary_lag_residual_alpha) *
                 boundary_lag_logits
-            )
-        if self.use_route_shape_bank:
-            if pair_route_shape_repr is None:
-                pair_route_shape_repr = torch.zeros_like(pair_repr)
-            route_shape_logits = self.route_shape_head(
-                pair_route_shape_repr[pair_inv][mask]
-            )
-            if pair_route_support is not None:
-                route_shape_logits = (
-                    pair_route_support[pair_inv][mask] * route_shape_logits
-                )
-            pred = pred + (
-                torch.sigmoid(self.route_shape_residual_alpha) *
-                route_shape_logits
             )
         if self.use_support_conditioned_mixture and pair_structure_mix is not None:
             if self.use_dot_fallback_support_mixture:
