@@ -31,6 +31,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsissimview',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
@@ -47,6 +48,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsissimview',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
@@ -62,6 +64,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsissimview',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
@@ -77,6 +80,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsissimview',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
@@ -92,6 +96,7 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsissimview',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
@@ -107,6 +112,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsissimview',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
@@ -124,6 +130,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsissimview',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
@@ -134,6 +141,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsissimview',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
             }
@@ -142,13 +150,20 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsissimview',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
             }
         )
         self.use_sequence_consistency_filter = (
+            self.edge_decoding in {
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsissimview',
+            }
+        )
+        self.use_support_similarity_expert = (
             self.edge_decoding ==
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis'
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsissimview'
         )
         self.use_support_prototype_expert = (
             self.edge_decoding ==
@@ -167,6 +182,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsissimview',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
@@ -415,6 +431,34 @@ class HeteroGNNEdgeHead(nn.Module):
                                 bias=True,
                             )
                             self.support_proto_alpha = nn.Parameter(
+                                torch.full((1,), math.log(0.08 / 0.92))
+                            )
+                        if self.use_support_similarity_expert:
+                            self.num_support_similarity_neighbors = 8
+                            self.support_sim_query = MLP(
+                                dim_in * 2 + self.support_feature_dim, dim_in,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_sim_fuse = MLP(
+                                dim_in * 3 + self.support_feature_dim + 2, dim_in,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_sim_gate = MLP(
+                                dim_in + self.support_feature_dim + 2, 1,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_sim_bias = nn.Parameter(
+                                torch.tensor(math.log(0.12 / 0.88))
+                            )
+                            self.support_sim_head = MLP(
+                                dim_in, dim_out,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_sim_alpha = nn.Parameter(
                                 torch.full((1,), math.log(0.08 / 0.92))
                             )
                     if self.use_sequence_bridge_motif_lite:
@@ -915,6 +959,8 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_sequence_support = None
         pair_terminal_support = None
         pair_boundary_support = None
+        pair_similarity_repr = None
+        pair_similarity_support = None
         pair_proto_repr = None
         pair_proto_support = None
 
@@ -1510,6 +1556,77 @@ class HeteroGNNEdgeHead(nn.Module):
                             )
                         )
                     )
+                if self.use_support_similarity_expert:
+                    sim_query_source = pair_sequence_repr
+                    if sim_query_source is None:
+                        sim_query_source = pair_terminal_role_repr
+                    if sim_query_source is None:
+                        sim_query_source = pair_boundary_lag_repr
+                    if sim_query_source is None:
+                        sim_query_source = pair_repr
+                    sim_query = self.support_sim_query(
+                        torch.cat(
+                            (pair_repr, sim_query_source, pair_support_features),
+                            dim=-1,
+                        )
+                    )
+                    sim_query = F.normalize(sim_query, dim=-1)
+                    if sim_query.size(0) > 1:
+                        sim_scores = sim_query @ sim_query.transpose(0, 1)
+                        sim_scores = sim_scores.masked_fill(
+                            torch.eye(
+                                sim_scores.size(0),
+                                device=sim_scores.device,
+                                dtype=torch.bool,
+                            ),
+                            -1e9,
+                        )
+                        sim_k = min(
+                            self.num_support_similarity_neighbors,
+                            sim_scores.size(1) - 1,
+                        )
+                        top_scores, top_indices = torch.topk(
+                            sim_scores, k=sim_k, dim=-1
+                        )
+                        top_scores = top_scores.clamp(min=0.0)
+                        sim_weights = F.softmax(top_scores, dim=-1)
+                        sim_context = (
+                            sim_weights.unsqueeze(-1) *
+                            sim_query_source[top_indices]
+                        ).sum(dim=1)
+                        sim_top = top_scores.max(dim=-1, keepdim=True).values
+                        sim_mean = top_scores.mean(dim=-1, keepdim=True)
+                    else:
+                        sim_context = torch.zeros_like(pair_repr)
+                        sim_top = zero_support
+                        sim_mean = zero_support
+                    pair_similarity_repr = self.support_sim_fuse(
+                        torch.cat(
+                            (
+                                pair_repr,
+                                sim_context,
+                                pair_repr * sim_context,
+                                pair_support_features,
+                                sim_top,
+                                sim_mean,
+                            ),
+                            dim=-1,
+                        )
+                    )
+                    pair_similarity_support = torch.sigmoid(
+                        self.support_sim_bias +
+                        self.support_sim_gate(
+                            torch.cat(
+                                (
+                                    pair_similarity_repr,
+                                    pair_support_features,
+                                    sim_top,
+                                    sim_mean,
+                                ),
+                                dim=-1,
+                            )
+                        )
+                    )
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -1587,6 +1704,17 @@ class HeteroGNNEdgeHead(nn.Module):
             if pair_proto_support is not None:
                 proto_logits = pair_proto_support[pair_inv][mask] * proto_logits
             pred = pred + torch.sigmoid(self.support_proto_alpha) * proto_logits
+        if self.use_support_similarity_expert:
+            if pair_similarity_repr is None:
+                pair_similarity_repr = torch.zeros_like(pair_repr)
+            similarity_logits = self.support_sim_head(
+                pair_similarity_repr[pair_inv][mask]
+            )
+            if pair_similarity_support is not None:
+                similarity_logits = (
+                    pair_similarity_support[pair_inv][mask] * similarity_logits
+                )
+            pred = pred + torch.sigmoid(self.support_sim_alpha) * similarity_logits
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
