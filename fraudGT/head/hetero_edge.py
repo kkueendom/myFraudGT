@@ -31,7 +31,6 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsistransition',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
@@ -48,7 +47,6 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsistransition',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
@@ -64,7 +62,6 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsistransition',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
@@ -80,7 +77,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
-                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsistransition',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
@@ -96,7 +92,6 @@ class HeteroGNNEdgeHead(nn.Module):
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsistransition',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
@@ -112,7 +107,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
-                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsistransition',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
@@ -130,7 +124,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
-                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsistransition',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
@@ -141,7 +134,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
-                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsistransition',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
             }
@@ -150,20 +142,13 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
-                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsistransition',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
             }
         )
         self.use_sequence_consistency_filter = (
-            self.edge_decoding in {
-                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
-                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsistransition',
-            }
-        )
-        self.use_transition_cross_expert = (
             self.edge_decoding ==
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsistransition'
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis'
         )
         self.use_support_prototype_expert = (
             self.edge_decoding ==
@@ -182,7 +167,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylag',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmix',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsis',
-                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsistransition',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixproto',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflow',
@@ -337,31 +321,6 @@ class HeteroGNNEdgeHead(nn.Module):
                             self.boundary_lag_residual_alpha = nn.Parameter(
                                 torch.full((1,), math.log(0.05 / 0.95))
                             )
-                            if self.use_transition_cross_expert:
-                                self.transition_cross_slot_proj = MLP(
-                                    dim_in * (bridge_fusion_mult + 1) + 2,
-                                    dim_in,
-                                    num_layers=self.head_layers,
-                                    bias=True,
-                                )
-                                self.transition_cross_slot_gate = MLP(
-                                    dim_in * 2 + 2, 1,
-                                    num_layers=self.head_layers,
-                                    bias=True,
-                                )
-                                self.transition_cross_proj = MLP(
-                                    dim_in * 4 + 3, dim_in,
-                                    num_layers=self.head_layers,
-                                    bias=True,
-                                )
-                                self.transition_cross_head = MLP(
-                                    dim_in, dim_out,
-                                    num_layers=self.head_layers,
-                                    bias=True,
-                                )
-                                self.transition_cross_residual_alpha = nn.Parameter(
-                                    torch.full((1,), math.log(0.05 / 0.95))
-                                )
                     if self.use_support_conditioned_mixture:
                         self.support_feature_dim = (
                             18 if self.use_sequence_consistency_filter else 14
@@ -410,15 +369,6 @@ class HeteroGNNEdgeHead(nn.Module):
                         self.boundary_support_bias = nn.Parameter(
                             torch.tensor(math.log(0.10 / 0.90))
                         )
-                        if self.use_transition_cross_expert:
-                            self.transition_cross_support_gate = MLP(
-                                dim_in + self.support_feature_dim + 2, 1,
-                                num_layers=self.head_layers,
-                                bias=True,
-                            )
-                            self.transition_cross_support_bias = nn.Parameter(
-                                torch.tensor(math.log(0.10 / 0.90))
-                            )
                         if self.use_sequence_consistency_filter:
                             consistency_input_dim = dim_in * 3 + 4
                             self.outgoing_consistency_gate = MLP(
@@ -852,94 +802,6 @@ class HeteroGNNEdgeHead(nn.Module):
             dim=-1,
         ))
 
-    def _transition_cross_repr(self, pred_seq, succ_seq, pred_time, succ_time, query_repr):
-        pred_valid = pred_time > 0
-        succ_valid = succ_time > 0
-        valid = pred_valid.unsqueeze(2) & succ_valid.unsqueeze(1)
-        valid_float = valid.float()
-
-        pred_expand = pred_seq.unsqueeze(2).expand(
-            -1, pred_seq.size(1), succ_seq.size(1), -1
-        )
-        succ_expand = succ_seq.unsqueeze(1).expand(
-            -1, pred_seq.size(1), succ_seq.size(1), -1
-        )
-        query_expand = query_repr.unsqueeze(1).unsqueeze(2).expand(
-            -1, pred_seq.size(1), succ_seq.size(1), -1
-        )
-
-        time_scale = self.sequence_time_scale.abs().clamp(min=1.0)
-        lag = succ_time.unsqueeze(1) - pred_time.unsqueeze(2)
-        lag_align = torch.exp(-lag.abs() / time_scale)
-        after = (lag >= 0).float()
-
-        slot_input = torch.cat(
-            (
-                self._pairwise_fusion_inputs(pred_expand, succ_expand),
-                query_expand,
-                lag_align.unsqueeze(-1),
-                after.unsqueeze(-1),
-            ),
-            dim=-1,
-        )
-        slot_repr = self.transition_cross_slot_proj(
-            slot_input.reshape(-1, slot_input.size(-1))
-        ).view(pred_seq.size(0), pred_seq.size(1), succ_seq.size(1), -1)
-
-        slot_gate_input = torch.cat(
-            (
-                slot_repr,
-                query_expand,
-                lag_align.unsqueeze(-1),
-                after.unsqueeze(-1),
-            ),
-            dim=-1,
-        )
-        slot_gate = torch.sigmoid(
-            self.transition_cross_slot_gate(
-                slot_gate_input.reshape(-1, slot_gate_input.size(-1))
-            )
-        ).view(pred_seq.size(0), pred_seq.size(1), succ_seq.size(1), 1)
-        slot_weight = slot_gate * lag_align.unsqueeze(-1) * valid_float.unsqueeze(-1)
-        weight_sum = slot_weight.sum(dim=(1, 2))
-        mean_repr = (slot_repr * slot_weight).sum(dim=(1, 2)) / weight_sum.clamp(min=1e-6)
-
-        flat_repr = slot_repr.view(slot_repr.size(0), -1, slot_repr.size(-1))
-        flat_valid = valid.view(valid.size(0), -1)
-        max_repr = flat_repr.masked_fill(~flat_valid.unsqueeze(-1), -1e9).max(dim=1).values
-        valid_count = valid_float.sum(dim=(1, 2)).unsqueeze(-1)
-        max_repr = torch.where(
-            valid_count > 0,
-            max_repr,
-            torch.zeros_like(max_repr),
-        )
-
-        transition_density = valid_count / float(pred_seq.size(1) * succ_seq.size(1))
-        causal_ratio = (
-            (after * valid_float).sum(dim=(1, 2)).unsqueeze(-1) /
-            valid_count.clamp(min=1.0)
-        )
-        align_ratio = (
-            (lag_align * valid_float).sum(dim=(1, 2)).unsqueeze(-1) /
-            valid_count.clamp(min=1.0)
-        )
-
-        transition_repr = self.transition_cross_proj(
-            torch.cat(
-                (
-                    mean_repr,
-                    max_repr,
-                    query_repr,
-                    mean_repr * query_repr,
-                    transition_density,
-                    causal_ratio,
-                    align_ratio,
-                ),
-                dim=-1,
-            )
-        )
-        return transition_repr, transition_density, align_ratio
-
     def _pairwise_fusion_inputs(self, left_repr, right_repr):
         if self.use_difference_fusion:
             return torch.cat(
@@ -1049,12 +911,10 @@ class HeteroGNNEdgeHead(nn.Module):
         slow_sequence_repr = None
         pair_terminal_role_repr = None
         pair_boundary_lag_repr = None
-        pair_transition_cross_repr = None
         pair_structure_mix = None
         pair_sequence_support = None
         pair_terminal_support = None
         pair_boundary_support = None
-        pair_transition_support = None
         pair_proto_repr = None
         pair_proto_support = None
 
@@ -1075,8 +935,6 @@ class HeteroGNNEdgeHead(nn.Module):
             cycle_overlap = zero_support
             boundary_valid_ratio = zero_support
             boundary_after_ratio = zero_support
-            transition_density = zero_support
-            transition_align = zero_support
             predecessor_bank = scatter(pair_repr, pair_dst, dim=0, dim_size=num_nodes, reduce='mean')
             successor_bank = scatter(pair_repr, pair_src, dim=0, dim_size=num_nodes, reduce='mean')
             prev_context = predecessor_bank[pair_src]
@@ -1476,16 +1334,6 @@ class HeteroGNNEdgeHead(nn.Module):
                                     outgoing_time_bank[pair_dst],
                                 )
                             )
-                            if self.use_transition_cross_expert:
-                                pair_transition_cross_repr, transition_density, transition_align = (
-                                    self._transition_cross_repr(
-                                        src_incoming_sequence_bank,
-                                        dst_outgoing_sequence_bank,
-                                        incoming_time_bank[pair_src],
-                                        outgoing_time_bank[pair_dst],
-                                        pair_repr,
-                                    )
-                                )
                     if self.use_sequence_bridge_motif_lite:
                         outgoing_time_bank = self._build_recent_timestamp_bank(
                             pair_src, pair_timestamps, num_nodes
@@ -1618,23 +1466,6 @@ class HeteroGNNEdgeHead(nn.Module):
                         )
                     )
                 )
-                if self.use_transition_cross_expert:
-                    pair_transition_support = torch.sigmoid(
-                        self.transition_cross_support_bias +
-                        self.transition_cross_support_gate(
-                            torch.cat(
-                                (
-                                    pair_transition_cross_repr
-                                    if pair_transition_cross_repr is not None
-                                    else torch.zeros_like(pair_repr),
-                                    pair_support_features,
-                                    transition_density,
-                                    transition_align,
-                                ),
-                                dim=-1,
-                            )
-                        )
-                    )
                 if self.use_support_prototype_expert:
                     proto_query = pair_sequence_repr
                     if proto_query is None:
@@ -1727,20 +1558,6 @@ class HeteroGNNEdgeHead(nn.Module):
             pred = pred + (
                 torch.sigmoid(self.boundary_lag_residual_alpha) *
                 boundary_lag_logits
-            )
-        if self.use_transition_cross_expert:
-            if pair_transition_cross_repr is None:
-                pair_transition_cross_repr = torch.zeros_like(pair_repr)
-            transition_cross_logits = self.transition_cross_head(
-                pair_transition_cross_repr[pair_inv][mask]
-            )
-            if self.use_support_conditioned_mixture and pair_transition_support is not None:
-                transition_cross_logits = (
-                    pair_transition_support[pair_inv][mask] * transition_cross_logits
-                )
-            pred = pred + (
-                torch.sigmoid(self.transition_cross_residual_alpha) *
-                transition_cross_logits
             )
         if self.use_support_conditioned_mixture and pair_structure_mix is not None:
             if self.use_dot_fallback_support_mixture:
