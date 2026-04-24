@@ -175,6 +175,7 @@ def main():
         return 0
 
     extra_overrides = []
+    skip_fallback = False
     if args.pretrained_source_queue_log:
         if not all(
             [
@@ -194,22 +195,29 @@ def main():
         cfg_file = Path(source_out_dir) / "config.yaml"
         ckpt_dir = Path(source_out_dir) / "42" / "ckpt"
         if not cfg_file.exists() or not ckpt_dir.exists():
-            raise FileNotFoundError(
-                f"pretrained source incomplete: status={source_status} dir={source_out_dir}"
+            log(
+                "pretrained source incomplete, skipping transfer stage: "
+                f"status={source_status} dir={source_out_dir}"
             )
-        extra_overrides.extend(["pretrained.dir", source_out_dir])
-        log(f"using pretrained source {source_out_dir}")
+            skip_fallback = True
+        else:
+            extra_overrides.extend(["pretrained.dir", source_out_dir])
+            log(f"using pretrained source {source_out_dir}")
 
-    stages = [
-        {
-            "label": "fallback",
-            "cfg": args.fallback_cfg,
-            "name_tag": args.fallback_name_tag,
-            "out_dir": args.fallback_out_dir,
-            "run_log": args.fallback_run_log,
-            "extra_overrides": extra_overrides,
-        }
-    ]
+    stages = []
+    if skip_fallback:
+        log("skipping fallback stage because transfer source is unavailable")
+    else:
+        stages.append(
+            {
+                "label": "fallback",
+                "cfg": args.fallback_cfg,
+                "name_tag": args.fallback_name_tag,
+                "out_dir": args.fallback_out_dir,
+                "run_log": args.fallback_run_log,
+                "extra_overrides": extra_overrides,
+            }
+        )
     if any(
         [
             args.second_fallback_cfg,
