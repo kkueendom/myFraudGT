@@ -7,6 +7,10 @@ import sys
 import time
 from pathlib import Path
 
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+TEST_F1_INLINE = re.compile(r"test:\s*\{.*?'f1':\s*([0-9.eE+-]+)")
+TEST_F1_SUMMARY = re.compile(r"test_f1:\s*([0-9.eE+-]+)")
+
 
 def now():
     return time.strftime("%Y-%m-%d %H:%M:%S")
@@ -56,11 +60,19 @@ def wait_for_queue_finish(queue_log):
 
 
 def parse_best_test_f1(run_log):
-    text = read_text(run_log)
-    matches = re.findall(r"^test: .*'f1': ([0-9.eE+-]+)", text, flags=re.MULTILINE)
+    text = read_text(run_log).replace("\r", "\n")
+    matches = []
+    for raw_line in text.splitlines():
+        line = ANSI_ESCAPE.sub("", raw_line)
+        match = TEST_F1_INLINE.search(line)
+        if match:
+            matches.append(float(match.group(1)))
+    if not matches:
+        clean_text = ANSI_ESCAPE.sub("", text)
+        matches = [float(x) for x in TEST_F1_SUMMARY.findall(clean_text)]
     if not matches:
         return 0.0
-    return max(float(x) for x in matches)
+    return max(matches)
 
 
 def compute_run_dir(cfg_path, out_dir, name_tag, gpu):
