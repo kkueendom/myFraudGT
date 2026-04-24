@@ -2,9 +2,11 @@
 
 ## Objective
 - The target is no longer just AML Small-HI.
-- Relative to the original FraudGT paper, achieve at least `+2.00` F1 points on **every** AML dataset in Table 2.
+- Relative to the original FraudGT paper, achieve at least `+2.00` F1 points in **raw peak test F1** on **every** AML dataset in Table 2.
 - Use the paper's strongest published FraudGT-family result on each dataset as the baseline target unless the user explicitly changes the comparison rule.
-- Current per-dataset thresholds are:
+- The completion criterion is raw peak, not formal best-by-val.
+- Formal best should still be tracked, but it is now a secondary reference metric.
+- Current per-dataset raw-peak thresholds are:
 - `Small-HI > 78.13`
 - `Small-LI > 49.01`
 - `Medium-HI > 77.93`
@@ -32,7 +34,7 @@
 - Do not judge a run from only the first evaluation point.
 - If a run is clearly dead, allow `1-3` evaluation points before stopping.
 - If a run is borderline, watch at least `5` evaluation points before deciding.
-- If a run is promising, let the `40`-epoch pilot finish and judge by the formal best-by-val checkpoint.
+- If a run is promising, let the `40`-epoch pilot finish and judge primarily by raw peak, with formal best recorded as secondary evidence.
 
 ## Git Discipline
 - Every code change must be tracked with git on the server repository.
@@ -53,6 +55,9 @@
 - Estimate runtime before long runs.
 - Use sleep-based polling to watch logs and processes during training.
 - Keep track of both raw epoch metrics and the formal best-by-val checkpoint metric.
+- For `AML-Small-LI` within the `supportmixconsis` family, do not early-stop from only `epoch 1` or `epoch 3`.
+- The known baseline trajectory can remain near-zero through `epoch 3` and only becomes clearly informative around `epoch 7+`.
+- For low-risk `supportmixconsis` structural variants on `Small-LI`, watch at least through `epoch 7`; if still ambiguous, extend to `epoch 9` before stopping.
 
 ## Innovation Filter
 - Prefer changes that alter representation, context fusion, temporal modeling, subgraph reasoning, flow / role transition modeling, or edge decoding structure.
