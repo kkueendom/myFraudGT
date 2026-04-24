@@ -13,6 +13,8 @@
 - `Medium-LI > 46.06`
 - `Large-HI > 75.34`
 - `Large-LI > 39.43`
+- As of the current run history, `Small-HI`, `Small-LI`, `Medium-HI`, and `Medium-LI` have already cleared the raw-peak threshold.
+- The active unmet targets are `Large-HI > 75.34` and `Large-LI > 39.43`.
 
 ## Autonomy
 - Operate with high autonomy.
@@ -29,6 +31,8 @@
 - Monitor every launched training job to completion or explicit early-stop.
 - While one run is training, prepare the next structural candidate instead of waiting idly.
 - If a run does not beat the relevant paper baseline trajectory, launch the next experiment automatically.
+- For blocked GPU periods, keep the large-dataset training queue alive and prepare chained follow-up experiments instead of idling.
+- For the remaining large datasets, prefer an automatic chain of `mainline -> stronger mainline / transfer -> next structural fallback` so experiments continue without waiting for user input.
 - Use short pilot runs only as screening; do not treat them as final evidence when the model is known to peak late.
 - Prefer one coherent model family with dataset-specific configs over unrelated per-dataset hacks.
 - Do not judge a run from only the first evaluation point.
@@ -47,7 +51,7 @@
 
 ## Server Context
 - Remote repo: `/e/yyk/FraudGT_multi6`
-- Local editing repo: `/Users/kun/FraudGT_multi6`
+- Local editing repo: `/Users/kun/FraudGT_multi6_rawpeak_remaining`
 - Conda env: `fraudgt_dual_gate`
 - Data root: `/e/yyk/data/archive`
 
@@ -55,6 +59,7 @@
 - Estimate runtime before long runs.
 - Use sleep-based polling to watch logs and processes during training.
 - Keep track of both raw epoch metrics and the formal best-by-val checkpoint metric.
+- If a large-dataset run is waiting on occupied GPUs, keep polling queue logs and ensure chained follow-up supervisors stay alive.
 - For `AML-Small-LI` within the `supportmixconsis` family, do not early-stop from only `epoch 1` or `epoch 3`.
 - The known baseline trajectory can remain near-zero through `epoch 3` and only becomes clearly informative around `epoch 7+`.
 - For low-risk `supportmixconsis` structural variants on `Small-LI`, watch at least through `epoch 7`; if still ambiguous, extend to `epoch 9` before stopping.
@@ -63,3 +68,4 @@
 - Prefer changes that alter representation, context fusion, temporal modeling, subgraph reasoning, flow / role transition modeling, or edge decoding structure.
 - Do not rely on hyperparameter-only changes as the main contribution.
 - Reject candidates that help only AML Small-HI while collapsing on LI or larger datasets.
+- For `Large-HI` and `Large-LI`, treat transfer across scale or risk regime as a valid structural direction when the transferred model family itself contains the intended architectural innovation.
