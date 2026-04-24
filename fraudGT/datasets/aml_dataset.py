@@ -18,8 +18,6 @@ from torch_geometric.data import (
     extract_zip,
 )
 
-from torch_geometric.utils import index_to_mask
-
 from .temporal_dataset import TemporalDataset
 
 def z_norm(data):
@@ -275,67 +273,57 @@ class AMLDataset(TemporalDataset):
 
         print(f'Available Edge Features: {read_cols}')
 
-        timestamps_np = df_edges['Timestamp'].to_numpy(dtype=np.int64, copy=False)
+        print('Extracting AML columns with minimal-copy tensor conversion...')
+        n_samples = int(len(df_edges))
+        from_np = df_edges.pop('from_id').to_numpy(copy=False)
+        to_np = df_edges.pop('to_id').to_numpy(copy=False)
+        timestamps_np = df_edges.pop('Timestamp').to_numpy(dtype=np.int64, copy=False)
         timestamps_np = timestamps_np - timestamps_np.min()
-        from_np = df_edges['from_id'].to_numpy(dtype=np.int64, copy=False)
-        to_np = df_edges['to_id'].to_numpy(dtype=np.int64, copy=False)
-        amount_received_np = df_edges['Amount Received'].to_numpy(
-            dtype=np.float32, copy=False
-        )
-        received_currency_np = df_edges['Received Currency'].to_numpy(
-            dtype=np.float32, copy=False
-        )
-        payment_format_np = df_edges['Payment Format'].to_numpy(
-            dtype=np.float32, copy=False
-        )
-        y_np = df_edges['Is Laundering'].to_numpy(dtype=np.int64, copy=False)
+        amount_received_np = df_edges.pop('Amount Received').to_numpy(copy=False)
+        received_currency_np = df_edges.pop('Received Currency').to_numpy(copy=False)
+        payment_format_np = df_edges.pop('Payment Format').to_numpy(copy=False)
+        y_np = df_edges.pop('Is Laundering').to_numpy(copy=False)
         del df_edges
 
-        max_n_id = max(from_np.max(), to_np.max()) + 1
+        illicit_count = int(y_np.sum())
+        max_n_id = int(max(from_np.max(), to_np.max()) + 1)
         timestamps = torch.from_numpy(timestamps_np)
-        y = torch.from_numpy(y_np).long()
+        y = torch.as_tensor(y_np, dtype=torch.long)
+        del y_np
 
-        print(f"Illicit ratio = {sum(y)} / {len(y)} = {sum(y) / len(y) * 100:.2f}%")
+        print('Building AML tensors without stacked intermediate numpy arrays...')
+        edge_index = torch.empty((2, n_samples), dtype=torch.long)
+        edge_index[0].copy_(torch.as_tensor(from_np, dtype=torch.long))
+        edge_index[1].copy_(torch.as_tensor(to_np, dtype=torch.long))
+
+        edge_attr = torch.empty((n_samples, 4), dtype=torch.float32)
+        edge_attr[:, 0].copy_(torch.as_tensor(timestamps_np, dtype=torch.float32))
+        edge_attr[:, 1].copy_(torch.as_tensor(amount_received_np, dtype=torch.float32))
+        edge_attr[:, 2].copy_(torch.as_tensor(received_currency_np, dtype=torch.float32))
+        edge_attr[:, 3].copy_(torch.as_tensor(payment_format_np, dtype=torch.float32))
+
+        del from_np, to_np, amount_received_np, received_currency_np, payment_format_np
+
+        print(f"Illicit ratio = {illicit_count} / {len(y)} = {illicit_count / len(y) * 100:.2f}%")
         print(f"Number of nodes (holdings doing transcations) = {int(max_n_id)}")
-        print(f"Number of transactions = {len(y_np)}")
+        print(f"Number of transactions = {n_samples}")
 
         edge_features = ['Timestamp', 'Amount Received', 'Received Currency', 'Payment Format']
         print(f'Edge features being used: {edge_features}')
         print('Node features being used: [Feature] ("Feature" is a placeholder feature of all 1s)')
 
         x = torch.ones((int(max_n_id), 1), dtype=torch.float32)
-        edge_index = torch.from_numpy(
-            np.stack([from_np, to_np], axis=0)
-        ).long()
-        edge_attr = torch.from_numpy(
-            np.stack(
-                [
-                    timestamps_np.astype(np.float32, copy=False),
-                    amount_received_np,
-                    received_currency_np,
-                    payment_format_np,
-                ],
-                axis=1,
-            )
-        ).float()
-
-        n_days = int(timestamps.max() / (3600 * 24) + 1)
-        n_samples = y.shape[0]
+        day_seconds = 3600 * 24
+        day_ids = (timestamps_np // day_seconds).astype(np.int64, copy=False)
+        n_days = int(day_ids.max() + 1)
         print(f'number of days and transactions in the data: {n_days} days, {n_samples} transactions')
 
-        #data splitting
-        daily_irs, weighted_daily_irs, daily_inds, daily_trans = [], [], [], [] #irs = illicit ratios, inds = indices, trans = transactions
-        for day in range(n_days):
-            l = day * 24 * 3600
-            r = (day + 1) * 24 * 3600
-            day_inds = torch.where((timestamps >= l) & (timestamps < r))[0]
-            daily_irs.append(y[day_inds].float().mean())
-            weighted_daily_irs.append(y[day_inds].float().mean() * day_inds.shape[0] / n_samples)
-            daily_inds.append(day_inds)
-            daily_trans.append(day_inds.shape[0])
+        daily_totals = np.bincount(day_ids, minlength=n_days)
+        daily_cumulative = daily_totals.cumsum()
+        del day_ids
 
+        #data splitting
         split_per = [0.6, 0.2, 0.2]
-        daily_totals = np.array(daily_trans)
         d_ts = daily_totals
         I = list(range(len(d_ts)))
         split_scores = dict()
@@ -355,26 +343,26 @@ class AMLDataset(TemporalDataset):
         split = [list(range(i)), list(range(i, j)), list(range(j, len(daily_totals)))]
         print(f'Calculate split: {split}')
 
-        #Now, we seperate the transactions based on their indices in the timestamp array
-        split_inds = {k: [] for k in range(3)}
-        for i in range(3):
-            for day in split[i]:
-                split_inds[i].append(daily_inds[day]) #split_inds contains a list for each split (tr,val,te) which contains the indices of each day seperately
-                
-        train_inds = torch.cat(split_inds[0])
-        val_inds = torch.cat(split_inds[1])
-        test_inds = torch.cat(split_inds[2])
-        e_train = train_inds
-        e_val = torch.cat([train_inds, val_inds])
-        e_test = torch.cat([train_inds, val_inds, test_inds])
+        train_end = int(daily_cumulative[i - 1]) if i > 0 else 0
+        val_end = int(daily_cumulative[j - 1]) if j > 0 else 0
+        test_end = int(n_samples)
+        print(
+            'Derived cumulative split boundaries: '
+            f'train_end={train_end}, val_end={val_end}, test_end={test_end}'
+        )
+
+        split_bounds = {
+            'train': (train_end, 0, train_end),
+            'val': (val_end, train_end, val_end),
+            'test': (test_end, val_end, test_end),
+        }
 
         
         self.ports_dict = {}
         self.data_dict = {}
         for split in ['train', 'val', 'test']:
-            inds = eval(f'{split}_inds')
-            e_mask = eval(f'e_{split}')
-            e_count = int(e_mask.numel())
+            e_count, label_start, label_end = split_bounds[split]
+            print(f'Building {split} split with prefix edge count {e_count}')
 
             # AML edges are timestamp-sorted, so each split is a prefix of the full edge list.
             masked_edge_index = edge_index[:, :e_count]
@@ -398,7 +386,9 @@ class AMLDataset(TemporalDataset):
             data['node', 'rev_to', 'node'].edge_attr = masked_edge_attr
 
             # Define the labels in the training/validation/test sets
-            data['node', 'to', 'node'].split_mask = index_to_mask(inds, size=masked_edge_index.shape[1])
+            split_mask = torch.zeros(masked_edge_index.shape[1], dtype=torch.bool)
+            split_mask[label_start:label_end] = True
+            data['node', 'to', 'node'].split_mask = split_mask
 
             adj_list_in, adj_list_out = to_adj_nodes_with_times(data)
             in_ports = ports(data['node', 'to', 'node'].edge_index, adj_list_in)
