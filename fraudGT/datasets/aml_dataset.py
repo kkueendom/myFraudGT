@@ -27,11 +27,15 @@ def z_norm(data):
     std = torch.where(std == 0, torch.tensor(1, dtype=torch.float32).cpu(), std)
     return (data - data.mean(0).unsqueeze(0)) / std
 
-def format_dataset(inPath):
+def format_dataset(inPath, outPath=None, dataset_name=None, log_every=5_000_000):
     r'''
     Turn text attributed dataset into a dataset only contains numbers.
     '''
-    outPath = os.path.dirname(inPath) + "/formatted_transactions.csv"
+    if outPath is None:
+        outPath = os.path.dirname(inPath) + "/formatted_transactions.csv"
+    tmp_out_path = outPath + ".tmp"
+    tag = dataset_name or os.path.basename(inPath)
+    print(f"Formatting AML dataset {tag} from {inPath} -> {outPath}")
 
     raw = dt.fread(inPath, columns = dt.str32)
 
@@ -54,7 +58,7 @@ def format_dataset(inPath):
 
     firstTs = -1
 
-    with open(outPath, 'w') as writer:
+    with open(tmp_out_path, 'w') as writer:
         writer.write(header)
         for i in range(raw.nrows):
             datetime_object = datetime.strptime(raw[i,"Timestamp"], '%Y/%m/%d %H:%M')
@@ -91,11 +95,15 @@ def format_dataset(inPath):
                         (i,fromId,toId,ts,amountPaidOrig,cur2, amountReceivedOrig,cur1,fmt,isl)
 
             writer.write(line)
+            if log_every and (i + 1) % log_every == 0:
+                print(f"Formatted {i + 1} / {raw.nrows} rows for {tag}")
 
-    formatted = dt.fread(outPath)
+    formatted = dt.fread(tmp_out_path)
     formatted = formatted[:,:,sort(3)]
 
     formatted.to_csv(outPath)
+    os.remove(tmp_out_path)
+    print(f"Finished formatting AML dataset {tag}: {outPath}")
 
 def to_adj_nodes_with_times(data):
     num_nodes = data.num_nodes
@@ -229,8 +237,17 @@ class AMLDataset(TemporalDataset):
         # data['account', 'transfer_to', 'account'].val_mask = torch.from_numpy(val_mask)
         # data['account', 'transfer_to', 'account'].test_mask = torch.from_numpy(test_mask)
 
-        format_dataset(osp.join(self.root, self.csv_names[self.name]))
-        transaction_file = osp.join(self.root, "formatted_transactions.csv")
+        transaction_file = osp.join(
+            self.root, f"formatted_transactions_{self.name}.csv"
+        )
+        if not osp.exists(transaction_file):
+            format_dataset(
+                osp.join(self.root, self.csv_names[self.name]),
+                outPath=transaction_file,
+                dataset_name=self.name,
+            )
+        else:
+            print(f"Using cached formatted AML CSV: {transaction_file}")
         df_edges = pd.read_csv(transaction_file)
 
         print(f'Available Edge Features: {df_edges.columns.tolist()}')
