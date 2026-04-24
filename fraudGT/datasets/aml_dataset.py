@@ -130,6 +130,40 @@ def ports(edge_index, adj_list):
         ports[i] = ports_dict[tuple(e.numpy())]
     return ports
 
+
+def aml_ports(edge_index, num_nodes):
+    """Compute AML in/out port ids without Python adjacency lists.
+
+    AML edges are timestamp-sorted, so the first occurrence of each (src, dst)
+    pair is also its earliest interaction. We can therefore derive port ids from
+    the order in which unique pairs first appear, avoiding the huge Python
+    object overhead of per-node adjacency dictionaries.
+    """
+    src = edge_index[0].numpy()
+    dst = edge_index[1].numpy()
+    pair_keys = src * np.int64(num_nodes) + dst
+
+    pair_codes, unique_pair_keys = pd.factorize(pair_keys, sort=False)
+    unique_src = (unique_pair_keys // np.int64(num_nodes)).astype(np.int64, copy=False)
+    unique_dst = (unique_pair_keys % np.int64(num_nodes)).astype(np.int64, copy=False)
+
+    unique_in_ports = (
+        pd.Series(unique_dst)
+        .groupby(unique_dst, sort=False)
+        .cumcount()
+        .to_numpy(dtype=np.float32, copy=False)
+    )
+    unique_out_ports = (
+        pd.Series(unique_src)
+        .groupby(unique_src, sort=False)
+        .cumcount()
+        .to_numpy(dtype=np.float32, copy=False)
+    )
+
+    in_ports = torch.from_numpy(unique_in_ports[pair_codes]).reshape(-1, 1)
+    out_ports = torch.from_numpy(unique_out_ports[pair_codes]).reshape(-1, 1)
+    return in_ports, out_ports
+
 class AMLDataset(TemporalDataset):
     dataset_sizes = ['Small', 'Medium', 'Large']
     dataset_rates = ['LI', 'HI']
@@ -390,9 +424,7 @@ class AMLDataset(TemporalDataset):
             split_mask[label_start:label_end] = True
             data['node', 'to', 'node'].split_mask = split_mask
 
-            adj_list_in, adj_list_out = to_adj_nodes_with_times(data)
-            in_ports = ports(data['node', 'to', 'node'].edge_index, adj_list_in)
-            out_ports = ports(data['node', 'to', 'node'].edge_index.flipud(), adj_list_out)
+            in_ports, out_ports = aml_ports(masked_edge_index, int(x.shape[0]))
             self.ports_dict[split] = [in_ports, out_ports]
             self.data_dict[split] = data
         
