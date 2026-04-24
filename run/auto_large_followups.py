@@ -144,6 +144,10 @@ def main():
     parser.add_argument("--fallback-name-tag", required=True)
     parser.add_argument("--fallback-out-dir", required=True)
     parser.add_argument("--fallback-run-log", required=True)
+    parser.add_argument("--second-fallback-cfg")
+    parser.add_argument("--second-fallback-name-tag")
+    parser.add_argument("--second-fallback-out-dir")
+    parser.add_argument("--second-fallback-run-log")
     parser.add_argument("--pretrained-source-queue-log")
     parser.add_argument("--pretrained-source-cfg")
     parser.add_argument("--pretrained-source-out-dir")
@@ -184,18 +188,62 @@ def main():
         extra_overrides.extend(["pretrained.dir", source_out_dir])
         log(f"using pretrained source {source_out_dir}")
 
-    fallback_status, _, fallback_out_dir = run_experiment(
-        args.fallback_cfg,
-        args.fallback_name_tag,
-        args.fallback_out_dir,
-        args.fallback_run_log,
-        extra_overrides,
-    )
-    fallback_best = parse_best_test_f1(args.fallback_run_log)
-    log(
-        f"fallback finished status={fallback_status} best_test_f1={fallback_best:.6f} "
-        f"out_dir={fallback_out_dir}"
-    )
+    stages = [
+        {
+            "label": "fallback",
+            "cfg": args.fallback_cfg,
+            "name_tag": args.fallback_name_tag,
+            "out_dir": args.fallback_out_dir,
+            "run_log": args.fallback_run_log,
+            "extra_overrides": extra_overrides,
+        }
+    ]
+    if any(
+        [
+            args.second_fallback_cfg,
+            args.second_fallback_name_tag,
+            args.second_fallback_out_dir,
+            args.second_fallback_run_log,
+        ]
+    ):
+        if not all(
+            [
+                args.second_fallback_cfg,
+                args.second_fallback_name_tag,
+                args.second_fallback_out_dir,
+                args.second_fallback_run_log,
+            ]
+        ):
+            raise ValueError("second fallback args are incomplete")
+        stages.append(
+            {
+                "label": "second_fallback",
+                "cfg": args.second_fallback_cfg,
+                "name_tag": args.second_fallback_name_tag,
+                "out_dir": args.second_fallback_out_dir,
+                "run_log": args.second_fallback_run_log,
+                "extra_overrides": [],
+            }
+        )
+
+    for stage in stages:
+        status, _, out_dir = run_experiment(
+            stage["cfg"],
+            stage["name_tag"],
+            stage["out_dir"],
+            stage["run_log"],
+            stage["extra_overrides"],
+        )
+        best = parse_best_test_f1(stage["run_log"])
+        log(
+            f"{stage['label']} finished status={status} best_test_f1={best:.6f} "
+            f"out_dir={out_dir}"
+        )
+        if best >= args.threshold:
+            log(f"{stage['label']} meets target")
+            return 0
+
+    log("all configured stages finished without meeting target")
     return 0
 
 
