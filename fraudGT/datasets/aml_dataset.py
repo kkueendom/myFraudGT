@@ -248,30 +248,76 @@ class AMLDataset(TemporalDataset):
             )
         else:
             print(f"Using cached formatted AML CSV: {transaction_file}")
-        df_edges = pd.read_csv(transaction_file)
+        read_cols = [
+            'from_id',
+            'to_id',
+            'Timestamp',
+            'Amount Received',
+            'Received Currency',
+            'Payment Format',
+            'Is Laundering',
+        ]
+        dtype_map = {
+            'from_id': np.int32,
+            'to_id': np.int32,
+            'Timestamp': np.int64,
+            'Amount Received': np.float32,
+            'Received Currency': np.int16,
+            'Payment Format': np.int16,
+            'Is Laundering': np.int8,
+        }
+        print(f'Loading formatted AML CSV with constrained dtypes: {transaction_file}')
+        df_edges = pd.read_csv(
+            transaction_file,
+            usecols=read_cols,
+            dtype=dtype_map,
+        )
 
-        print(f'Available Edge Features: {df_edges.columns.tolist()}')
+        print(f'Available Edge Features: {read_cols}')
 
-        df_edges['Timestamp'] = df_edges['Timestamp'] - df_edges['Timestamp'].min()
+        timestamps_np = df_edges['Timestamp'].to_numpy(dtype=np.int64, copy=False)
+        timestamps_np = timestamps_np - timestamps_np.min()
+        from_np = df_edges['from_id'].to_numpy(dtype=np.int64, copy=False)
+        to_np = df_edges['to_id'].to_numpy(dtype=np.int64, copy=False)
+        amount_received_np = df_edges['Amount Received'].to_numpy(
+            dtype=np.float32, copy=False
+        )
+        received_currency_np = df_edges['Received Currency'].to_numpy(
+            dtype=np.float32, copy=False
+        )
+        payment_format_np = df_edges['Payment Format'].to_numpy(
+            dtype=np.float32, copy=False
+        )
+        y_np = df_edges['Is Laundering'].to_numpy(dtype=np.int64, copy=False)
+        del df_edges
 
-        max_n_id = df_edges.loc[:, ['from_id', 'to_id']].to_numpy().max() + 1
-        df_nodes = pd.DataFrame({'NodeID': np.arange(max_n_id), 'Feature': np.ones(max_n_id)})
-        timestamps = torch.Tensor(df_edges['Timestamp'].to_numpy())
-        y = torch.LongTensor(df_edges['Is Laundering'].to_numpy())
+        max_n_id = max(from_np.max(), to_np.max()) + 1
+        timestamps = torch.from_numpy(timestamps_np)
+        y = torch.from_numpy(y_np).long()
 
         print(f"Illicit ratio = {sum(y)} / {len(y)} = {sum(y) / len(y) * 100:.2f}%")
-        print(f"Number of nodes (holdings doing transcations) = {df_nodes.shape[0]}")
-        print(f"Number of transactions = {df_edges.shape[0]}")
+        print(f"Number of nodes (holdings doing transcations) = {int(max_n_id)}")
+        print(f"Number of transactions = {len(y_np)}")
 
         edge_features = ['Timestamp', 'Amount Received', 'Received Currency', 'Payment Format']
-        node_features = ['Feature']
-
         print(f'Edge features being used: {edge_features}')
-        print(f'Node features being used: {node_features} ("Feature" is a placeholder feature of all 1s)')
+        print('Node features being used: [Feature] ("Feature" is a placeholder feature of all 1s)')
 
-        x = torch.tensor(df_nodes.loc[:, node_features].to_numpy()).float()
-        edge_index = torch.LongTensor(df_edges.loc[:, ['from_id', 'to_id']].to_numpy().T)
-        edge_attr = torch.tensor(df_edges.loc[:, edge_features].to_numpy()).float()
+        x = torch.ones((int(max_n_id), 1), dtype=torch.float32)
+        edge_index = torch.from_numpy(
+            np.stack([from_np, to_np], axis=0)
+        ).long()
+        edge_attr = torch.from_numpy(
+            np.stack(
+                [
+                    timestamps_np.astype(np.float32, copy=False),
+                    amount_received_np,
+                    received_currency_np,
+                    payment_format_np,
+                ],
+                axis=1,
+            )
+        ).float()
 
         n_days = int(timestamps.max() / (3600 * 24) + 1)
         n_samples = y.shape[0]
@@ -328,11 +374,13 @@ class AMLDataset(TemporalDataset):
         for split in ['train', 'val', 'test']:
             inds = eval(f'{split}_inds')
             e_mask = eval(f'e_{split}')
+            e_count = int(e_mask.numel())
 
-            masked_edge_index = edge_index[:, e_mask]
-            masked_edge_attr = z_norm(edge_attr[e_mask])
-            masked_y = y[e_mask]
-            masked_timestamps = timestamps[e_mask]
+            # AML edges are timestamp-sorted, so each split is a prefix of the full edge list.
+            masked_edge_index = edge_index[:, :e_count]
+            masked_edge_attr = z_norm(edge_attr[:e_count])
+            masked_y = y[:e_count]
+            masked_timestamps = timestamps[:e_count]
 
             data = HeteroData()
             data['node'].x = x # z_norm(x) will render all x be 0
