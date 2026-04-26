@@ -3,19 +3,21 @@
 ## Objective
 - The target is no longer just AML Small-HI.
 - Relative to the original FraudGT paper, achieve at least `+2.00` F1 points in **raw peak test F1** on **every** AML dataset in Table 2.
+- For any paper-quality main result, the six AML datasets must be produced by **one unified model architecture / one method family**, not by mixing different winning lines across datasets.
+- Cross-dataset transfer may be explored as an auxiliary experiment, but it does **not** count as the main result unless the user explicitly relaxes that rule.
 - Use the paper's strongest published FraudGT-family result on each dataset as the baseline target unless the user explicitly changes the comparison rule.
 - The completion criterion is raw peak, not formal best-by-val.
 - Formal best should still be tracked, but it is now a secondary reference metric.
-- This objective was achieved on `2026-04-26`.
-- Final per-dataset raw-peak thresholds and achieved bests are:
+- A mixed-line exploratory upper bound was achieved on `2026-04-26`, but that is **not** sufficient for the unified-model paper objective.
+- The mixed-line exploratory upper-bound numbers were:
 - `Small-HI > 78.13`, achieved `80.995`
 - `Small-LI > 49.01`, achieved `50.890`
 - `Medium-HI > 77.93`, achieved `82.278`
 - `Medium-LI > 46.06`, achieved `50.893`
 - `Large-HI > 75.34`, achieved `76.226`
 - `Large-LI > 39.43`, achieved `49.451`
-- All six AML datasets have cleared the raw-peak threshold.
-- If the user asks for more work, default to widening the margin over the paper, improving formal best-by-val stability, or simplifying the winning structure without losing the raw-peak gain.
+- Treat those numbers as ceiling references only.
+- The active objective is now to make a **single unified architecture** clear the paper baselines across all six AML datasets.
 
 ## Autonomy
 - Operate with high autonomy.
@@ -36,6 +38,8 @@
 - For future large-dataset follow-up work, prefer an automatic chain of `mainline -> stronger mainline / transfer -> next structural fallback` so experiments continue without waiting for user input.
 - Use short pilot runs only as screening; do not treat them as final evidence when the model is known to peak late.
 - Prefer one coherent model family with dataset-specific configs over unrelated per-dataset hacks.
+- Do not claim success from a dataset-wise mixture of different architectures.
+- If the user asks for a paper-ready result, collapse to one shared architecture and rerun all datasets under that architecture.
 - Do not judge a run from only the first evaluation point.
 - If a run is clearly dead, allow `1-3` evaluation points before stopping.
 - If a run is borderline, watch at least `5` evaluation points before deciding.
