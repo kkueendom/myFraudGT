@@ -13,8 +13,8 @@
 - `Medium-LI > 46.06`
 - `Large-HI > 75.34`
 - `Large-LI > 39.43`
-- As of the current run history, `Small-HI`, `Small-LI`, `Medium-HI`, and `Medium-LI` have already cleared the raw-peak threshold.
-- The active unmet targets are `Large-HI > 75.34` and `Large-LI > 39.43`.
+- As of the current run history, `Small-HI`, `Small-LI`, `Medium-HI`, `Medium-LI`, and `Large-HI` have already cleared the raw-peak threshold.
+- The only active unmet target is `Large-LI > 39.43`.
 
 ## Autonomy
 - Operate with high autonomy.
