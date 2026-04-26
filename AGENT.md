@@ -6,15 +6,16 @@
 - Use the paper's strongest published FraudGT-family result on each dataset as the baseline target unless the user explicitly changes the comparison rule.
 - The completion criterion is raw peak, not formal best-by-val.
 - Formal best should still be tracked, but it is now a secondary reference metric.
-- Current per-dataset raw-peak thresholds are:
-- `Small-HI > 78.13`
-- `Small-LI > 49.01`
-- `Medium-HI > 77.93`
-- `Medium-LI > 46.06`
-- `Large-HI > 75.34`
-- `Large-LI > 39.43`
-- As of the current run history, `Small-HI`, `Small-LI`, `Medium-HI`, `Medium-LI`, and `Large-HI` have already cleared the raw-peak threshold.
-- The only active unmet target is `Large-LI > 39.43`.
+- This objective was achieved on `2026-04-26`.
+- Final per-dataset raw-peak thresholds and achieved bests are:
+- `Small-HI > 78.13`, achieved `80.995`
+- `Small-LI > 49.01`, achieved `50.890`
+- `Medium-HI > 77.93`, achieved `82.278`
+- `Medium-LI > 46.06`, achieved `50.893`
+- `Large-HI > 75.34`, achieved `76.226`
+- `Large-LI > 39.43`, achieved `49.451`
+- All six AML datasets have cleared the raw-peak threshold.
+- If the user asks for more work, default to widening the margin over the paper, improving formal best-by-val stability, or simplifying the winning structure without losing the raw-peak gain.
 
 ## Autonomy
 - Operate with high autonomy.
@@ -32,7 +33,7 @@
 - While one run is training, prepare the next structural candidate instead of waiting idly.
 - If a run does not beat the relevant paper baseline trajectory, launch the next experiment automatically.
 - For blocked GPU periods, keep the large-dataset training queue alive and prepare chained follow-up experiments instead of idling.
-- For the remaining large datasets, prefer an automatic chain of `mainline -> stronger mainline / transfer -> next structural fallback` so experiments continue without waiting for user input.
+- For future large-dataset follow-up work, prefer an automatic chain of `mainline -> stronger mainline / transfer -> next structural fallback` so experiments continue without waiting for user input.
 - Use short pilot runs only as screening; do not treat them as final evidence when the model is known to peak late.
 - Prefer one coherent model family with dataset-specific configs over unrelated per-dataset hacks.
 - Do not judge a run from only the first evaluation point.
@@ -50,7 +51,7 @@
 - Do not rewrite history or use destructive reset commands.
 
 ## Server Context
-- Remote repo: `/e/yyk/FraudGT_multi6`
+- Remote repo: `/e/yyk/FraudGT_multi6_wt_rawpeak_supportmixconsis_remaining`
 - Local editing repo: `/Users/kun/FraudGT_multi6_rawpeak_remaining`
 - Conda env: `fraudgt_dual_gate`
 - Data root: `/e/yyk/data/archive`
