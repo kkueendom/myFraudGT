@@ -298,6 +298,10 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflowboundarylagsupportmixconsisdualprotoconsensusdisagreeconfhardscaleboundresid'
         )
+        self.use_support_class_route_expert = (
+            self.edge_decoding ==
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflowboundarylagsupportmixconsisdualprotoconsensusdisagreeconfhardscaleclassrouteboundresid'
+        )
         self.use_dot_fallback_support_mixture = (
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot'
@@ -400,6 +404,28 @@ class HeteroGNNEdgeHead(nn.Module):
             self.use_support_prototype_expert = True
             self.use_sequence_bridge_bank_window = True
         if self.use_support_scale_route_expert:
+            self.use_support_easyhard_dual_expert = True
+            self.use_support_confidence_dual_expert = True
+            self.use_support_proto_disagreement_expert = True
+            self.use_support_proto_consensus_expert = True
+            self.use_pair_chain_head = True
+            self.use_chain_context_residual = True
+            self.use_sequence_context_residual = True
+            self.use_pair_internal_sequence = True
+            self.use_sequence_bridge_bank = True
+            self.use_target_sequence_select = True
+            self.use_difference_fusion = True
+            self.use_terminal_role_flow = True
+            self.use_boundary_lag_flow = True
+            self.use_support_conditioned_mixture = True
+            self.use_sequence_consistency_filter = True
+            self.use_support_class_prototype_expert = True
+            self.use_support_class_mixture_prototype_expert = True
+            self.use_bounded_support_residuals = True
+            self.use_support_prototype_expert = True
+            self.use_sequence_bridge_bank_window = True
+        if self.use_support_class_route_expert:
+            self.use_support_scale_route_expert = True
             self.use_support_easyhard_dual_expert = True
             self.use_support_confidence_dual_expert = True
             self.use_support_proto_disagreement_expert = True
@@ -825,6 +851,38 @@ class HeteroGNNEdgeHead(nn.Module):
                                 bias=True,
                             )
                             self.support_scale_route_alpha = nn.Parameter(
+                                torch.full((1,), math.log(0.04 / 0.96))
+                            )
+                        if self.use_support_class_route_expert:
+                            self.support_pos_class_route_fuse = MLP(
+                                dim_in * 4 + self.support_feature_dim + 16, dim_in,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_neg_class_route_fuse = MLP(
+                                dim_in * 4 + self.support_feature_dim + 16, dim_in,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_class_route_fuse = MLP(
+                                dim_in * 4 + self.support_feature_dim + 18, dim_in,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_class_route_gate = MLP(
+                                dim_in + self.support_feature_dim + 18, 1,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_class_route_bias = nn.Parameter(
+                                torch.tensor(math.log(0.58 / 0.42))
+                            )
+                            self.support_class_route_head = MLP(
+                                dim_in, dim_out,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_class_route_alpha = nn.Parameter(
                                 torch.full((1,), math.log(0.04 / 0.96))
                             )
                     if self.use_sequence_bridge_motif_lite:
@@ -1489,6 +1547,8 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_easyhard_dual_support = None
         pair_scale_route_repr = None
         pair_scale_route_support = None
+        pair_class_route_repr = None
+        pair_class_route_support = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -2405,6 +2465,109 @@ class HeteroGNNEdgeHead(nn.Module):
                                     scale_route * pair_easyhard_dual_support +
                                     (1.0 - scale_route) * pair_confidence_dual_support
                                 )
+                                if self.use_support_class_route_expert:
+                                    class_route_stats_base = torch.cat(
+                                        (
+                                            pos_sim,
+                                            neg_sim,
+                                            proto_margin,
+                                            proto_ready,
+                                            pos_peak,
+                                            neg_peak,
+                                            proto_consensus,
+                                            proto_confidence_gap,
+                                            global_confidence,
+                                            inverse_confidence,
+                                            pair_fill,
+                                            pair_log_count,
+                                            forward_overlap,
+                                            cycle_overlap,
+                                            boundary_valid_ratio,
+                                            boundary_after_ratio,
+                                        ),
+                                        dim=-1,
+                                    )
+                                    pos_class_route_repr = self.support_pos_class_route_fuse(
+                                        torch.cat(
+                                            (
+                                                pair_repr,
+                                                pos_proto,
+                                                pair_proto_consensus_repr,
+                                                pair_scale_route_repr,
+                                                pair_support_features,
+                                                class_route_stats_base,
+                                            ),
+                                            dim=-1,
+                                        )
+                                    )
+                                    neg_class_route_repr = self.support_neg_class_route_fuse(
+                                        torch.cat(
+                                            (
+                                                pair_repr,
+                                                neg_proto,
+                                                pair_proto_disagreement_repr,
+                                                pair_confidence_dual_repr,
+                                                pair_support_features,
+                                                class_route_stats_base,
+                                            ),
+                                            dim=-1,
+                                        )
+                                    )
+                                    class_branch_align = self._cosine_feature(
+                                        pos_class_route_repr,
+                                        neg_class_route_repr,
+                                    )
+                                    if class_branch_align is None:
+                                        class_branch_align = zero_support
+                                    class_route_stats = torch.cat(
+                                        (
+                                            class_route_stats_base,
+                                            pair_scale_route_support,
+                                            class_branch_align,
+                                        ),
+                                        dim=-1,
+                                    )
+                                    class_route = torch.sigmoid(
+                                        self.support_class_route_bias +
+                                        self.support_class_route_gate(
+                                            torch.cat(
+                                                (
+                                                    pair_scale_route_repr,
+                                                    pair_support_features,
+                                                    class_route_stats,
+                                                ),
+                                                dim=-1,
+                                            )
+                                        )
+                                    )
+                                    class_hybrid = neg_class_route_repr + class_route * (
+                                        pos_class_route_repr - neg_class_route_repr
+                                    )
+                                    pair_class_route_repr = self.support_class_route_fuse(
+                                        torch.cat(
+                                            (
+                                                pair_repr,
+                                                pos_class_route_repr,
+                                                neg_class_route_repr,
+                                                class_hybrid,
+                                                pair_support_features,
+                                                class_route_stats,
+                                            ),
+                                            dim=-1,
+                                        )
+                                    )
+                                    pos_branch_support = 0.5 * (
+                                        pair_proto_consensus_support +
+                                        pair_scale_route_support
+                                    )
+                                    neg_branch_support = 0.5 * (
+                                        pair_proto_disagreement_support +
+                                        pair_confidence_dual_support
+                                    )
+                                    pair_class_route_support = (
+                                        class_route * pos_branch_support +
+                                        (1.0 - class_route) * neg_branch_support
+                                    )
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -2588,6 +2751,22 @@ class HeteroGNNEdgeHead(nn.Module):
             pred = pred + (
                 torch.sigmoid(self.support_scale_route_alpha) *
                 scale_route_logits
+            )
+        if self.use_support_class_route_expert:
+            if pair_class_route_repr is None:
+                pair_class_route_repr = torch.zeros_like(pair_repr)
+            class_route_logits = self.support_class_route_head(
+                pair_class_route_repr[pair_inv][mask]
+            )
+            if pair_class_route_support is not None:
+                class_route_logits = (
+                    pair_class_route_support[pair_inv][mask] * class_route_logits
+                )
+            if self.use_bounded_support_residuals:
+                class_route_logits = torch.tanh(class_route_logits)
+            pred = pred + (
+                torch.sigmoid(self.support_class_route_alpha) *
+                class_route_logits
             )
         return pred, batch[task].y[mask]
 
