@@ -282,6 +282,10 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflowboundarylagsupportmixconsisdualprotoconsensusboundresid'
         )
+        self.use_support_proto_disagreement_expert = (
+            self.edge_decoding ==
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflowboundarylagsupportmixconsisdualprotoconsensusdisagreeboundresid'
+        )
         self.use_dot_fallback_support_mixture = (
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot'
@@ -310,6 +314,24 @@ class HeteroGNNEdgeHead(nn.Module):
             }
         )
         if self.use_support_proto_consensus_expert:
+            self.use_pair_chain_head = True
+            self.use_chain_context_residual = True
+            self.use_sequence_context_residual = True
+            self.use_pair_internal_sequence = True
+            self.use_sequence_bridge_bank = True
+            self.use_target_sequence_select = True
+            self.use_difference_fusion = True
+            self.use_terminal_role_flow = True
+            self.use_boundary_lag_flow = True
+            self.use_support_conditioned_mixture = True
+            self.use_sequence_consistency_filter = True
+            self.use_support_class_prototype_expert = True
+            self.use_support_class_mixture_prototype_expert = True
+            self.use_bounded_support_residuals = True
+            self.use_support_prototype_expert = True
+            self.use_sequence_bridge_bank_window = True
+        if self.use_support_proto_disagreement_expert:
+            self.use_support_proto_consensus_expert = True
             self.use_pair_chain_head = True
             self.use_chain_context_residual = True
             self.use_sequence_context_residual = True
@@ -639,6 +661,28 @@ class HeteroGNNEdgeHead(nn.Module):
                             )
                             self.support_proto_consensus_alpha = nn.Parameter(
                                 torch.full((1,), math.log(0.06 / 0.94))
+                            )
+                        if self.use_support_proto_disagreement_expert:
+                            self.support_proto_disagreement_fuse = MLP(
+                                dim_in * 4 + self.support_feature_dim + 14, dim_in,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_proto_disagreement_gate = MLP(
+                                dim_in + self.support_feature_dim + 14, 1,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_proto_disagreement_bias = nn.Parameter(
+                                torch.tensor(math.log(0.06 / 0.94))
+                            )
+                            self.support_proto_disagreement_head = MLP(
+                                dim_in, dim_out,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_proto_disagreement_alpha = nn.Parameter(
+                                torch.full((1,), math.log(0.04 / 0.96))
                             )
                     if self.use_sequence_bridge_motif_lite:
                         self.bridge_leg_pair_proj = MLP(dim_in * 3 + 1, dim_in,
@@ -1294,6 +1338,8 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_class_proto_support = None
         pair_proto_consensus_repr = None
         pair_proto_consensus_support = None
+        pair_proto_disagreement_repr = None
+        pair_proto_disagreement_support = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -2014,6 +2060,34 @@ class HeteroGNNEdgeHead(nn.Module):
                             )
                         )
                     )
+                    if self.use_support_proto_disagreement_expert:
+                        proto_delta = pair_proto_repr - pair_class_proto_repr
+                        pair_proto_disagreement_repr = self.support_proto_disagreement_fuse(
+                            torch.cat(
+                                (
+                                    pair_repr,
+                                    proto_delta,
+                                    proto_delta.abs(),
+                                    pair_proto_repr * pair_class_proto_repr,
+                                    pair_support_features,
+                                    consensus_stats,
+                                ),
+                                dim=-1,
+                            )
+                        )
+                        pair_proto_disagreement_support = torch.sigmoid(
+                            self.support_proto_disagreement_bias +
+                            self.support_proto_disagreement_gate(
+                                torch.cat(
+                                    (
+                                        pair_proto_disagreement_repr,
+                                        pair_support_features,
+                                        consensus_stats,
+                                    ),
+                                    dim=-1,
+                                )
+                            )
+                        )
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -2130,6 +2204,23 @@ class HeteroGNNEdgeHead(nn.Module):
             pred = pred + (
                 torch.sigmoid(self.support_proto_consensus_alpha) *
                 consensus_logits
+            )
+        if self.use_support_proto_disagreement_expert:
+            if pair_proto_disagreement_repr is None:
+                pair_proto_disagreement_repr = torch.zeros_like(pair_repr)
+            disagreement_logits = self.support_proto_disagreement_head(
+                pair_proto_disagreement_repr[pair_inv][mask]
+            )
+            if pair_proto_disagreement_support is not None:
+                disagreement_logits = (
+                    pair_proto_disagreement_support[pair_inv][mask] *
+                    disagreement_logits
+                )
+            if self.use_bounded_support_residuals:
+                disagreement_logits = torch.tanh(disagreement_logits)
+            pred = pred + (
+                torch.sigmoid(self.support_proto_disagreement_alpha) *
+                disagreement_logits
             )
         return pred, batch[task].y[mask]
 
