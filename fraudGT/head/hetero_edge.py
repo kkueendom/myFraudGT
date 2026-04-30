@@ -294,6 +294,10 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflowboundarylagsupportmixconsisdualprotoconsensusdisagreeconfhardboundresid'
         )
+        self.use_support_scale_route_expert = (
+            self.edge_decoding ==
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflowboundarylagsupportmixconsisdualprotoconsensusdisagreeconfhardscaleboundresid'
+        )
         self.use_dot_fallback_support_mixture = (
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot'
@@ -376,6 +380,27 @@ class HeteroGNNEdgeHead(nn.Module):
             self.use_support_prototype_expert = True
             self.use_sequence_bridge_bank_window = True
         if self.use_support_easyhard_dual_expert:
+            self.use_support_confidence_dual_expert = True
+            self.use_support_proto_disagreement_expert = True
+            self.use_support_proto_consensus_expert = True
+            self.use_pair_chain_head = True
+            self.use_chain_context_residual = True
+            self.use_sequence_context_residual = True
+            self.use_pair_internal_sequence = True
+            self.use_sequence_bridge_bank = True
+            self.use_target_sequence_select = True
+            self.use_difference_fusion = True
+            self.use_terminal_role_flow = True
+            self.use_boundary_lag_flow = True
+            self.use_support_conditioned_mixture = True
+            self.use_sequence_consistency_filter = True
+            self.use_support_class_prototype_expert = True
+            self.use_support_class_mixture_prototype_expert = True
+            self.use_bounded_support_residuals = True
+            self.use_support_prototype_expert = True
+            self.use_sequence_bridge_bank_window = True
+        if self.use_support_scale_route_expert:
+            self.use_support_easyhard_dual_expert = True
             self.use_support_confidence_dual_expert = True
             self.use_support_proto_disagreement_expert = True
             self.use_support_proto_consensus_expert = True
@@ -778,6 +803,28 @@ class HeteroGNNEdgeHead(nn.Module):
                                 bias=True,
                             )
                             self.support_easyhard_dual_alpha = nn.Parameter(
+                                torch.full((1,), math.log(0.04 / 0.96))
+                            )
+                        if self.use_support_scale_route_expert:
+                            self.support_scale_route_fuse = MLP(
+                                dim_in * 4 + self.support_feature_dim + 10, dim_in,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_scale_route_gate = MLP(
+                                dim_in + self.support_feature_dim + 10, 1,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_scale_route_bias = nn.Parameter(
+                                torch.tensor(math.log(0.55 / 0.45))
+                            )
+                            self.support_scale_route_head = MLP(
+                                dim_in, dim_out,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_scale_route_alpha = nn.Parameter(
                                 torch.full((1,), math.log(0.04 / 0.96))
                             )
                     if self.use_sequence_bridge_motif_lite:
@@ -1440,6 +1487,8 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_confidence_dual_support = None
         pair_easyhard_dual_repr = None
         pair_easyhard_dual_support = None
+        pair_scale_route_repr = None
+        pair_scale_route_support = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -2307,6 +2356,55 @@ class HeteroGNNEdgeHead(nn.Module):
                                 easy_route * pair_proto_consensus_support +
                                 (1.0 - easy_route) * pair_proto_disagreement_support
                             )
+                            if self.use_support_scale_route_expert:
+                                scale_stats = torch.cat(
+                                    (
+                                        pair_fill,
+                                        pair_log_count,
+                                        src_out_cov,
+                                        dst_in_cov,
+                                        src_in_cov,
+                                        dst_out_cov,
+                                        forward_overlap,
+                                        cycle_overlap,
+                                        boundary_valid_ratio,
+                                        boundary_after_ratio,
+                                    ),
+                                    dim=-1,
+                                )
+                                scale_route = torch.sigmoid(
+                                    self.support_scale_route_bias +
+                                    self.support_scale_route_gate(
+                                        torch.cat(
+                                            (
+                                                pair_easyhard_dual_repr,
+                                                pair_support_features,
+                                                scale_stats,
+                                            ),
+                                            dim=-1,
+                                        )
+                                    )
+                                )
+                                scale_hybrid = pair_confidence_dual_repr + scale_route * (
+                                    pair_easyhard_dual_repr - pair_confidence_dual_repr
+                                )
+                                pair_scale_route_repr = self.support_scale_route_fuse(
+                                    torch.cat(
+                                        (
+                                            pair_repr,
+                                            pair_confidence_dual_repr,
+                                            pair_easyhard_dual_repr,
+                                            scale_hybrid,
+                                            pair_support_features,
+                                            scale_stats,
+                                        ),
+                                        dim=-1,
+                                    )
+                                )
+                                pair_scale_route_support = (
+                                    scale_route * pair_easyhard_dual_support +
+                                    (1.0 - scale_route) * pair_confidence_dual_support
+                                )
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -2474,6 +2572,22 @@ class HeteroGNNEdgeHead(nn.Module):
             pred = pred + (
                 torch.sigmoid(self.support_easyhard_dual_alpha) *
                 easyhard_dual_logits
+            )
+        if self.use_support_scale_route_expert:
+            if pair_scale_route_repr is None:
+                pair_scale_route_repr = torch.zeros_like(pair_repr)
+            scale_route_logits = self.support_scale_route_head(
+                pair_scale_route_repr[pair_inv][mask]
+            )
+            if pair_scale_route_support is not None:
+                scale_route_logits = (
+                    pair_scale_route_support[pair_inv][mask] * scale_route_logits
+                )
+            if self.use_bounded_support_residuals:
+                scale_route_logits = torch.tanh(scale_route_logits)
+            pred = pred + (
+                torch.sigmoid(self.support_scale_route_alpha) *
+                scale_route_logits
             )
         return pred, batch[task].y[mask]
 
