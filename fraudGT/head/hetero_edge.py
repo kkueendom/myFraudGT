@@ -290,6 +290,10 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflowboundarylagsupportmixconsisdualprotoconsensusdisagreeconfboundresid'
         )
+        self.use_support_easyhard_dual_expert = (
+            self.edge_decoding ==
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflowboundarylagsupportmixconsisdualprotoconsensusdisagreeconfhardboundresid'
+        )
         self.use_dot_fallback_support_mixture = (
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot'
@@ -353,6 +357,26 @@ class HeteroGNNEdgeHead(nn.Module):
             self.use_support_prototype_expert = True
             self.use_sequence_bridge_bank_window = True
         if self.use_support_confidence_dual_expert:
+            self.use_support_proto_disagreement_expert = True
+            self.use_support_proto_consensus_expert = True
+            self.use_pair_chain_head = True
+            self.use_chain_context_residual = True
+            self.use_sequence_context_residual = True
+            self.use_pair_internal_sequence = True
+            self.use_sequence_bridge_bank = True
+            self.use_target_sequence_select = True
+            self.use_difference_fusion = True
+            self.use_terminal_role_flow = True
+            self.use_boundary_lag_flow = True
+            self.use_support_conditioned_mixture = True
+            self.use_sequence_consistency_filter = True
+            self.use_support_class_prototype_expert = True
+            self.use_support_class_mixture_prototype_expert = True
+            self.use_bounded_support_residuals = True
+            self.use_support_prototype_expert = True
+            self.use_sequence_bridge_bank_window = True
+        if self.use_support_easyhard_dual_expert:
+            self.use_support_confidence_dual_expert = True
             self.use_support_proto_disagreement_expert = True
             self.use_support_proto_consensus_expert = True
             self.use_pair_chain_head = True
@@ -727,6 +751,33 @@ class HeteroGNNEdgeHead(nn.Module):
                                 bias=True,
                             )
                             self.support_confidence_dual_alpha = nn.Parameter(
+                                torch.full((1,), math.log(0.04 / 0.96))
+                            )
+                        if self.use_support_easyhard_dual_expert:
+                            self.support_easy_dual_fuse = MLP(
+                                dim_in * 5 + self.support_feature_dim + 12, dim_in,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_hard_dual_fuse = MLP(
+                                dim_in * 5 + self.support_feature_dim + 12, dim_in,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_easyhard_dual_gate = MLP(
+                                dim_in + self.support_feature_dim + 12, 1,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_easyhard_dual_bias = nn.Parameter(
+                                torch.tensor(math.log(0.60 / 0.40))
+                            )
+                            self.support_easyhard_dual_head = MLP(
+                                dim_in, dim_out,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_easyhard_dual_alpha = nn.Parameter(
                                 torch.full((1,), math.log(0.04 / 0.96))
                             )
                     if self.use_sequence_bridge_motif_lite:
@@ -1387,6 +1438,8 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_proto_disagreement_support = None
         pair_confidence_dual_repr = None
         pair_confidence_dual_support = None
+        pair_easyhard_dual_repr = None
+        pair_easyhard_dual_support = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -2188,6 +2241,72 @@ class HeteroGNNEdgeHead(nn.Module):
                                 )
                             )
                         )
+                        if self.use_support_easyhard_dual_expert:
+                            easy_stats = torch.cat(
+                                (
+                                    global_confidence,
+                                    inverse_confidence,
+                                    proto_consensus,
+                                    proto_confidence_gap,
+                                    pair_proto_support,
+                                    pair_class_proto_support,
+                                    pair_proto_consensus_support,
+                                    pair_proto_disagreement_support,
+                                    pos_sim,
+                                    neg_sim,
+                                    proto_margin,
+                                    proto_ready,
+                                ),
+                                dim=-1,
+                            )
+                            easy_repr = self.support_easy_dual_fuse(
+                                torch.cat(
+                                    (
+                                        pair_repr,
+                                        pair_proto_repr,
+                                        pair_class_proto_repr,
+                                        confidence_hybrid,
+                                        pair_proto_consensus_repr,
+                                        pair_support_features,
+                                        easy_stats,
+                                    ),
+                                    dim=-1,
+                                )
+                            )
+                            hard_repr = self.support_hard_dual_fuse(
+                                torch.cat(
+                                    (
+                                        pair_repr,
+                                        pair_proto_repr,
+                                        pair_class_proto_repr,
+                                        pair_proto_disagreement_repr,
+                                        pair_confidence_dual_repr,
+                                        pair_support_features,
+                                        easy_stats,
+                                    ),
+                                    dim=-1,
+                                )
+                            )
+                            easy_route = torch.sigmoid(
+                                self.support_easyhard_dual_bias +
+                                self.support_easyhard_dual_gate(
+                                    torch.cat(
+                                        (
+                                            pair_confidence_dual_repr,
+                                            pair_support_features,
+                                            easy_stats,
+                                        ),
+                                        dim=-1,
+                                    )
+                                )
+                            )
+                            pair_easyhard_dual_repr = hard_repr + easy_route * (
+                                easy_repr - hard_repr
+                            )
+                            pair_easyhard_dual_support = (
+                                easy_route * pair_proto_consensus_support +
+                                (1.0 - easy_route) * pair_proto_disagreement_support
+                            )
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -2338,6 +2457,23 @@ class HeteroGNNEdgeHead(nn.Module):
             pred = pred + (
                 torch.sigmoid(self.support_confidence_dual_alpha) *
                 confidence_dual_logits
+            )
+        if self.use_support_easyhard_dual_expert:
+            if pair_easyhard_dual_repr is None:
+                pair_easyhard_dual_repr = torch.zeros_like(pair_repr)
+            easyhard_dual_logits = self.support_easyhard_dual_head(
+                pair_easyhard_dual_repr[pair_inv][mask]
+            )
+            if pair_easyhard_dual_support is not None:
+                easyhard_dual_logits = (
+                    pair_easyhard_dual_support[pair_inv][mask] *
+                    easyhard_dual_logits
+                )
+            if self.use_bounded_support_residuals:
+                easyhard_dual_logits = torch.tanh(easyhard_dual_logits)
+            pred = pred + (
+                torch.sigmoid(self.support_easyhard_dual_alpha) *
+                easyhard_dual_logits
             )
         return pred, batch[task].y[mask]
 
