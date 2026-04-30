@@ -69,6 +69,14 @@ FAMILIES = {
         "configs/AML-Large-HI/AML-Large-HI-SparseNodeGT+ports+Ego+WBDirMeanMaxWinnerProjTemporalPairChainContextSeqPairSeqBridgeBankWindowSeqSelectDeltaFusionRoleFlowBoundaryLagSupportMixConsisDualProtoConsensusDisagreeBoundResid240UnifiedFullCalibMemSafe.yaml",
         "configs/AML-Large-LI/AML-Large-LI-SparseNodeGT+ports+Ego+WBDirMeanMaxWinnerProjTemporalPairChainContextSeqPairSeqBridgeBankWindowSeqSelectDeltaFusionRoleFlowBoundaryLagSupportMixConsisDualProtoConsensusDisagreeBoundResid240UnifiedFullCalibMemSafe.yaml",
     ],
+    "supportmixconsisdeltafusiondualprotoconsensusdisagreeconfboundresid_full240": [
+        "configs/AML-Small-HI/AML-Small-HI-SparseNodeGT+ports+Ego+WBDirMeanMaxWinnerProjTemporalPairChainContextSeqPairSeqBridgeBankWindowSeqSelectDeltaFusionRoleFlowBoundaryLagSupportMixConsisDualProtoConsensusDisagreeConfBoundResid240UnifiedFullCalibMemSafe.yaml",
+        "configs/AML-Small-LI/AML-Small-LI-SparseNodeGT+ports+Ego+WBDirMeanMaxWinnerProjTemporalPairChainContextSeqPairSeqBridgeBankWindowSeqSelectDeltaFusionRoleFlowBoundaryLagSupportMixConsisDualProtoConsensusDisagreeConfBoundResid240UnifiedFullCalibMemSafe.yaml",
+        "configs/AML-Medium-HI/AML-Medium-HI-SparseNodeGT+ports+Ego+WBDirMeanMaxWinnerProjTemporalPairChainContextSeqPairSeqBridgeBankWindowSeqSelectDeltaFusionRoleFlowBoundaryLagSupportMixConsisDualProtoConsensusDisagreeConfBoundResid240UnifiedFullCalibMemSafe.yaml",
+        "configs/AML-Medium-LI/AML-Medium-LI-SparseNodeGT+ports+Ego+WBDirMeanMaxWinnerProjTemporalPairChainContextSeqPairSeqBridgeBankWindowSeqSelectDeltaFusionRoleFlowBoundaryLagSupportMixConsisDualProtoConsensusDisagreeConfBoundResid240UnifiedFullCalibMemSafe.yaml",
+        "configs/AML-Large-HI/AML-Large-HI-SparseNodeGT+ports+Ego+WBDirMeanMaxWinnerProjTemporalPairChainContextSeqPairSeqBridgeBankWindowSeqSelectDeltaFusionRoleFlowBoundaryLagSupportMixConsisDualProtoConsensusDisagreeConfBoundResid240UnifiedFullCalibMemSafe.yaml",
+        "configs/AML-Large-LI/AML-Large-LI-SparseNodeGT+ports+Ego+WBDirMeanMaxWinnerProjTemporalPairChainContextSeqPairSeqBridgeBankWindowSeqSelectDeltaFusionRoleFlowBoundaryLagSupportMixConsisDualProtoConsensusDisagreeConfBoundResid240UnifiedFullCalibMemSafe.yaml",
+    ],
 }
 
 
