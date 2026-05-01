@@ -11,13 +11,20 @@ TEST_LINE = re.compile(r"'epoch': (\d+).+?'f1': ([0-9.eE+-]+)")
 OUT_DIR_LINE = re.compile(r"^out_dir:\s*(.+?)\s*$")
 DATASET_LINE = re.compile(r"^\s*name:\s*(.+?)\s*$")
 
-THRESHOLDS = {
+TARGET_MARGIN = 0.02
+
+PAPER_BASELINES = {
     "Small-HI": 0.7813,
     "Small-LI": 0.4901,
     "Medium-HI": 0.7793,
     "Medium-LI": 0.4606,
     "Large-HI": 0.7534,
     "Large-LI": 0.3943,
+}
+
+THRESHOLDS = {
+    dataset: round(score + TARGET_MARGIN, 4)
+    for dataset, score in PAPER_BASELINES.items()
 }
 
 FAMILIES = {

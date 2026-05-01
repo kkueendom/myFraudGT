@@ -17,7 +17,7 @@
 - `Large-HI > 75.34`, achieved `76.226`
 - `Large-LI > 39.43`, achieved `49.451`
 - Treat those numbers as ceiling references only.
-- The active objective is now to make a **single unified architecture** clear the paper baselines across all six AML datasets.
+- The active objective is now to make a **single unified architecture** exceed the paper baseline by at least `+2.00` F1 points on all six AML datasets.
 
 ## Autonomy
 - Operate with high autonomy.
@@ -33,7 +33,7 @@
 ## Experiment Policy
 - Monitor every launched training job to completion or explicit early-stop.
 - While one run is training, prepare the next structural candidate instead of waiting idly.
-- If a run does not beat the relevant paper baseline trajectory, launch the next experiment automatically.
+- If a run does not show a plausible path to the relevant `paper + 2.00` raw-peak target, launch the next experiment automatically.
 - For blocked GPU periods, keep the large-dataset training queue alive and prepare chained follow-up experiments instead of idling.
 - For future large-dataset follow-up work, prefer an automatic chain of `mainline -> stronger mainline / transfer -> next structural fallback` so experiments continue without waiting for user input.
 - Use short pilot runs only as screening; do not treat them as final evidence when the model is known to peak late.
