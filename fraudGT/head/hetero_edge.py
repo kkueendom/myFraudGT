@@ -302,6 +302,10 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflowboundarylagsupportmixconsisdualprotoconsensusdisagreeconfhardscaleclassrouteboundresid'
         )
+        self.use_support_class_slot_route_expert = (
+            self.edge_decoding ==
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflowboundarylagsupportmixconsisdualprotoconsensusdisagreeconfhardscaleclassslotrouteboundresid'
+        )
         self.use_dot_fallback_support_mixture = (
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot'
@@ -425,6 +429,29 @@ class HeteroGNNEdgeHead(nn.Module):
             self.use_support_prototype_expert = True
             self.use_sequence_bridge_bank_window = True
         if self.use_support_class_route_expert:
+            self.use_support_scale_route_expert = True
+            self.use_support_easyhard_dual_expert = True
+            self.use_support_confidence_dual_expert = True
+            self.use_support_proto_disagreement_expert = True
+            self.use_support_proto_consensus_expert = True
+            self.use_pair_chain_head = True
+            self.use_chain_context_residual = True
+            self.use_sequence_context_residual = True
+            self.use_pair_internal_sequence = True
+            self.use_sequence_bridge_bank = True
+            self.use_target_sequence_select = True
+            self.use_difference_fusion = True
+            self.use_terminal_role_flow = True
+            self.use_boundary_lag_flow = True
+            self.use_support_conditioned_mixture = True
+            self.use_sequence_consistency_filter = True
+            self.use_support_class_prototype_expert = True
+            self.use_support_class_mixture_prototype_expert = True
+            self.use_bounded_support_residuals = True
+            self.use_support_prototype_expert = True
+            self.use_sequence_bridge_bank_window = True
+        if self.use_support_class_slot_route_expert:
+            self.use_support_class_route_expert = True
             self.use_support_scale_route_expert = True
             self.use_support_easyhard_dual_expert = True
             self.use_support_confidence_dual_expert = True
@@ -885,6 +912,38 @@ class HeteroGNNEdgeHead(nn.Module):
                             self.support_class_route_alpha = nn.Parameter(
                                 torch.full((1,), math.log(0.04 / 0.96))
                             )
+                        if self.use_support_class_slot_route_expert:
+                            self.support_pos_class_slot_fuse = MLP(
+                                dim_in * 4 + self.support_feature_dim + 12, dim_in,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_neg_class_slot_fuse = MLP(
+                                dim_in * 4 + self.support_feature_dim + 12, dim_in,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_class_slot_route_fuse = MLP(
+                                dim_in * 4 + self.support_feature_dim + 12, dim_in,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_class_slot_route_gate = MLP(
+                                dim_in + self.support_feature_dim + 12, 1,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_class_slot_route_bias = nn.Parameter(
+                                torch.tensor(math.log(0.56 / 0.44))
+                            )
+                            self.support_class_slot_route_head = MLP(
+                                dim_in, dim_out,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_class_slot_route_alpha = nn.Parameter(
+                                torch.full((1,), math.log(0.04 / 0.96))
+                            )
                     if self.use_sequence_bridge_motif_lite:
                         self.bridge_leg_pair_proj = MLP(dim_in * 3 + 1, dim_in,
                                                         num_layers=self.head_layers,
@@ -1253,6 +1312,80 @@ class HeteroGNNEdgeHead(nn.Module):
             neg_spread,
         )
 
+    def _support_class_slot_summary(self, query_repr, class_idx):
+        zero_proto = torch.zeros_like(query_repr)
+        zero_score = query_repr.new_zeros((query_repr.size(0), 1))
+        if not self.use_support_class_prototype_expert:
+            return zero_proto, zero_score, zero_score, zero_score, zero_score
+        ready_mask = self.support_class_proto_ready[class_idx] > 0
+        ready_count = int(ready_mask.sum().item())
+        if ready_count == 0:
+            return zero_proto, zero_score, zero_score, zero_score, zero_score
+
+        class_bank = F.normalize(
+            self.support_class_proto_bank[class_idx, ready_mask],
+            dim=-1,
+            eps=1e-6,
+        )
+        query_norm = F.normalize(query_repr, dim=-1, eps=1e-6)
+        temperature = self.support_class_proto_temperature.exp().clamp(min=0.25, max=4.0)
+        logits = query_norm @ class_bank.transpose(0, 1)
+        weights = F.softmax(logits / temperature, dim=-1)
+        top_peak, top_idx = weights.max(dim=-1, keepdim=True)
+        top_proto = class_bank[top_idx.squeeze(-1)]
+        top_sim = 0.5 * (
+            F.cosine_similarity(query_repr, top_proto, dim=-1, eps=1e-6).unsqueeze(-1) + 1.0
+        )
+        if ready_count > 1:
+            top2 = weights.topk(k=2, dim=-1).values
+            slot_gap = top2[:, :1] - top2[:, 1:2]
+        else:
+            slot_gap = zero_score + 1.0
+        ready_score = zero_score + (
+            float(ready_count) / float(self.num_class_proto_slots)
+        )
+        return top_proto, top_sim, top_peak, slot_gap, ready_score
+
+    def _support_class_slot_context(self, query_repr):
+        zero_proto = torch.zeros_like(query_repr)
+        zero_score = query_repr.new_zeros((query_repr.size(0), 1))
+        if not self.use_support_class_slot_route_expert:
+            return (
+                zero_proto, zero_proto, zero_score, zero_score, zero_score,
+                zero_score, zero_score, zero_score, zero_score, zero_score,
+            )
+        if self.num_class_prototypes < 2:
+            return (
+                zero_proto, zero_proto, zero_score, zero_score, zero_score,
+                zero_score, zero_score, zero_score, zero_score, zero_score,
+            )
+
+        pos_proto, pos_sim, pos_peak, pos_gap, pos_ready = (
+            self._support_class_slot_summary(query_repr, 1)
+        )
+        neg_proto, neg_sim, neg_peak, neg_gap, neg_ready = (
+            self._support_class_slot_summary(query_repr, 0)
+        )
+        ready = torch.minimum(pos_ready, neg_ready)
+        if ready.max().item() == 0.0:
+            return (
+                zero_proto, zero_proto, zero_score, zero_score, zero_score,
+                zero_score, zero_score, zero_score, zero_score, zero_score,
+            )
+        slot_margin = pos_sim - neg_sim
+        return (
+            pos_proto,
+            neg_proto,
+            pos_sim,
+            neg_sim,
+            slot_margin,
+            ready,
+            pos_peak,
+            neg_peak,
+            pos_gap,
+            neg_gap,
+        )
+
     def _cosine_feature(self, left_repr, right_repr):
         if left_repr is None or right_repr is None:
             return None
@@ -1535,6 +1668,7 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_boundary_support = None
         pair_proto_repr = None
         pair_proto_support = None
+        class_proto_query = None
         pair_class_proto_repr = None
         pair_class_proto_support = None
         pair_proto_consensus_repr = None
@@ -1549,6 +1683,8 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_scale_route_support = None
         pair_class_route_repr = None
         pair_class_route_support = None
+        pair_class_slot_route_repr = None
+        pair_class_slot_route_support = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -2568,6 +2704,97 @@ class HeteroGNNEdgeHead(nn.Module):
                                         class_route * pos_branch_support +
                                         (1.0 - class_route) * neg_branch_support
                                     )
+                                    if self.use_support_class_slot_route_expert:
+                                        (
+                                            pos_slot_proto,
+                                            neg_slot_proto,
+                                            pos_slot_sim,
+                                            neg_slot_sim,
+                                            slot_margin,
+                                            slot_ready,
+                                            pos_slot_peak,
+                                            neg_slot_peak,
+                                            pos_slot_gap,
+                                            neg_slot_gap,
+                                        ) = self._support_class_slot_context(class_proto_query)
+                                        slot_route_stats = torch.cat(
+                                            (
+                                                pos_slot_sim,
+                                                neg_slot_sim,
+                                                slot_margin,
+                                                slot_ready,
+                                                pos_slot_peak,
+                                                neg_slot_peak,
+                                                pos_slot_gap,
+                                                neg_slot_gap,
+                                                pair_class_route_support,
+                                                pair_scale_route_support,
+                                                pair_proto_consensus_support,
+                                                pair_proto_disagreement_support,
+                                            ),
+                                            dim=-1,
+                                        )
+                                        pos_slot_route_repr = self.support_pos_class_slot_fuse(
+                                            torch.cat(
+                                                (
+                                                    pair_repr,
+                                                    pos_slot_proto,
+                                                    pair_class_route_repr,
+                                                    pair_scale_route_repr,
+                                                    pair_support_features,
+                                                    slot_route_stats,
+                                                ),
+                                                dim=-1,
+                                            )
+                                        )
+                                        neg_slot_route_repr = self.support_neg_class_slot_fuse(
+                                            torch.cat(
+                                                (
+                                                    pair_repr,
+                                                    neg_slot_proto,
+                                                    pair_proto_disagreement_repr,
+                                                    pair_confidence_dual_repr,
+                                                    pair_support_features,
+                                                    slot_route_stats,
+                                                ),
+                                                dim=-1,
+                                            )
+                                        )
+                                        slot_route = torch.sigmoid(
+                                            self.support_class_slot_route_bias +
+                                            self.support_class_slot_route_gate(
+                                                torch.cat(
+                                                    (
+                                                        pair_class_route_repr,
+                                                        pair_support_features,
+                                                        slot_route_stats,
+                                                    ),
+                                                    dim=-1,
+                                                )
+                                            )
+                                        )
+                                        slot_hybrid = neg_slot_route_repr + slot_route * (
+                                            pos_slot_route_repr - neg_slot_route_repr
+                                        )
+                                        pair_class_slot_route_repr = (
+                                            self.support_class_slot_route_fuse(
+                                                torch.cat(
+                                                    (
+                                                        pair_repr,
+                                                        pos_slot_route_repr,
+                                                        neg_slot_route_repr,
+                                                        slot_hybrid,
+                                                        pair_support_features,
+                                                        slot_route_stats,
+                                                    ),
+                                                    dim=-1,
+                                                )
+                                            )
+                                        )
+                                        pair_class_slot_route_support = (
+                                            slot_route * pair_class_route_support +
+                                            (1.0 - slot_route) * pair_proto_disagreement_support
+                                        )
 
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
@@ -2767,6 +2994,23 @@ class HeteroGNNEdgeHead(nn.Module):
             pred = pred + (
                 torch.sigmoid(self.support_class_route_alpha) *
                 class_route_logits
+            )
+        if self.use_support_class_slot_route_expert:
+            if pair_class_slot_route_repr is None:
+                pair_class_slot_route_repr = torch.zeros_like(pair_repr)
+            class_slot_route_logits = self.support_class_slot_route_head(
+                pair_class_slot_route_repr[pair_inv][mask]
+            )
+            if pair_class_slot_route_support is not None:
+                class_slot_route_logits = (
+                    pair_class_slot_route_support[pair_inv][mask] *
+                    class_slot_route_logits
+                )
+            if self.use_bounded_support_residuals:
+                class_slot_route_logits = torch.tanh(class_slot_route_logits)
+            pred = pred + (
+                torch.sigmoid(self.support_class_slot_route_alpha) *
+                class_slot_route_logits
             )
         return pred, batch[task].y[mask]
 
