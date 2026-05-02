@@ -302,6 +302,10 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflowboundarylagsupportmixconsisdualprotoconsensusdisagreeconfhardscaleclassrouteboundresid'
         )
+        self.use_support_class_mix_slot_route_expert = (
+            self.edge_decoding ==
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixslotrouteboundresid'
+        )
         self.use_support_class_slot_route_expert = (
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflowboundarylagsupportmixconsisdualprotoconsensusdisagreeconfhardscaleclassslotrouteboundresid'
@@ -449,6 +453,21 @@ class HeteroGNNEdgeHead(nn.Module):
             self.use_support_class_mixture_prototype_expert = True
             self.use_bounded_support_residuals = True
             self.use_support_prototype_expert = True
+            self.use_sequence_bridge_bank_window = True
+        if self.use_support_class_mix_slot_route_expert:
+            self.use_pair_chain_head = True
+            self.use_chain_context_residual = True
+            self.use_sequence_context_residual = True
+            self.use_pair_internal_sequence = True
+            self.use_sequence_bridge_bank = True
+            self.use_target_sequence_select = True
+            self.use_terminal_role_flow = True
+            self.use_boundary_lag_flow = True
+            self.use_support_conditioned_mixture = True
+            self.use_sequence_consistency_filter = True
+            self.use_support_class_prototype_expert = True
+            self.use_support_class_mixture_prototype_expert = True
+            self.use_bounded_support_residuals = True
             self.use_sequence_bridge_bank_window = True
         if self.use_support_class_slot_route_expert:
             self.use_support_class_route_expert = True
@@ -912,6 +931,38 @@ class HeteroGNNEdgeHead(nn.Module):
                             self.support_class_route_alpha = nn.Parameter(
                                 torch.full((1,), math.log(0.04 / 0.96))
                             )
+                        if self.use_support_class_mix_slot_route_expert:
+                            self.support_pos_class_mix_slot_fuse = MLP(
+                                dim_in * 4 + self.support_feature_dim + 19, dim_in,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_neg_class_mix_slot_fuse = MLP(
+                                dim_in * 4 + self.support_feature_dim + 19, dim_in,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_class_mix_slot_route_fuse = MLP(
+                                dim_in * 4 + self.support_feature_dim + 20, dim_in,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_class_mix_slot_route_gate = MLP(
+                                dim_in + self.support_feature_dim + 20, 1,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_class_mix_slot_route_bias = nn.Parameter(
+                                torch.tensor(math.log(0.57 / 0.43))
+                            )
+                            self.support_class_mix_slot_route_head = MLP(
+                                dim_in, dim_out,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_class_mix_slot_route_alpha = nn.Parameter(
+                                torch.full((1,), math.log(0.04 / 0.96))
+                            )
                         if self.use_support_class_slot_route_expert:
                             self.support_pos_class_slot_fuse = MLP(
                                 dim_in * 4 + self.support_feature_dim + 12, dim_in,
@@ -1349,7 +1400,10 @@ class HeteroGNNEdgeHead(nn.Module):
     def _support_class_slot_context(self, query_repr):
         zero_proto = torch.zeros_like(query_repr)
         zero_score = query_repr.new_zeros((query_repr.size(0), 1))
-        if not self.use_support_class_slot_route_expert:
+        if not (
+            self.use_support_class_mix_slot_route_expert or
+            self.use_support_class_slot_route_expert
+        ):
             return (
                 zero_proto, zero_proto, zero_score, zero_score, zero_score,
                 zero_score, zero_score, zero_score, zero_score, zero_score,
@@ -1683,6 +1737,8 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_scale_route_support = None
         pair_class_route_repr = None
         pair_class_route_support = None
+        pair_class_mix_slot_route_repr = None
+        pair_class_mix_slot_route_support = None
         pair_class_slot_route_repr = None
         pair_class_slot_route_support = None
 
@@ -2354,6 +2410,135 @@ class HeteroGNNEdgeHead(nn.Module):
                             )
                         )
                     )
+                    if self.use_support_class_mix_slot_route_expert:
+                        (
+                            pos_slot_proto,
+                            neg_slot_proto,
+                            pos_slot_sim,
+                            neg_slot_sim,
+                            slot_margin,
+                            slot_ready,
+                            pos_slot_peak,
+                            neg_slot_peak,
+                            pos_slot_gap,
+                            neg_slot_gap,
+                        ) = self._support_class_slot_context(class_proto_query)
+                        pos_mix_slot_align = self._cosine_feature(
+                            pos_proto,
+                            pos_slot_proto,
+                        )
+                        if pos_mix_slot_align is None:
+                            pos_mix_slot_align = zero_support
+                        neg_mix_slot_align = self._cosine_feature(
+                            neg_proto,
+                            neg_slot_proto,
+                        )
+                        if neg_mix_slot_align is None:
+                            neg_mix_slot_align = zero_support
+                        class_mix_slot_stats_base = torch.cat(
+                            (
+                                pos_sim,
+                                neg_sim,
+                                proto_margin,
+                                proto_ready,
+                                pos_peak,
+                                neg_peak,
+                                pos_spread,
+                                neg_spread,
+                                pos_slot_sim,
+                                neg_slot_sim,
+                                slot_margin,
+                                slot_ready,
+                                pos_slot_peak,
+                                neg_slot_peak,
+                                pos_slot_gap,
+                                neg_slot_gap,
+                                pos_mix_slot_align,
+                                neg_mix_slot_align,
+                                pair_class_proto_support,
+                            ),
+                            dim=-1,
+                        )
+                        pos_class_mix_slot_repr = self.support_pos_class_mix_slot_fuse(
+                            torch.cat(
+                                (
+                                    pair_repr,
+                                    pos_proto,
+                                    pos_slot_proto,
+                                    pair_class_proto_repr,
+                                    pair_support_features,
+                                    class_mix_slot_stats_base,
+                                ),
+                                dim=-1,
+                            )
+                        )
+                        neg_class_mix_slot_repr = self.support_neg_class_mix_slot_fuse(
+                            torch.cat(
+                                (
+                                    pair_repr,
+                                    neg_proto,
+                                    neg_slot_proto,
+                                    pair_class_proto_repr,
+                                    pair_support_features,
+                                    class_mix_slot_stats_base,
+                                ),
+                                dim=-1,
+                            )
+                        )
+                        class_mix_slot_branch_align = self._cosine_feature(
+                            pos_class_mix_slot_repr,
+                            neg_class_mix_slot_repr,
+                        )
+                        if class_mix_slot_branch_align is None:
+                            class_mix_slot_branch_align = zero_support
+                        class_mix_slot_stats = torch.cat(
+                            (
+                                class_mix_slot_stats_base,
+                                class_mix_slot_branch_align,
+                            ),
+                            dim=-1,
+                        )
+                        class_mix_slot_route = torch.sigmoid(
+                            self.support_class_mix_slot_route_bias +
+                            self.support_class_mix_slot_route_gate(
+                                torch.cat(
+                                    (
+                                        pair_class_proto_repr,
+                                        pair_support_features,
+                                        class_mix_slot_stats,
+                                    ),
+                                    dim=-1,
+                                )
+                            )
+                        )
+                        class_mix_slot_hybrid = (
+                            neg_class_mix_slot_repr +
+                            class_mix_slot_route * (
+                                pos_class_mix_slot_repr - neg_class_mix_slot_repr
+                            )
+                        )
+                        pair_class_mix_slot_route_repr = (
+                            self.support_class_mix_slot_route_fuse(
+                                torch.cat(
+                                    (
+                                        pair_repr,
+                                        pos_class_mix_slot_repr,
+                                        neg_class_mix_slot_repr,
+                                        class_mix_slot_hybrid,
+                                        pair_support_features,
+                                        class_mix_slot_stats,
+                                    ),
+                                    dim=-1,
+                                )
+                            )
+                        )
+                        pos_slot_support = 0.5 * (pos_slot_peak + pos_slot_gap)
+                        neg_slot_support = 0.5 * (neg_slot_peak + neg_slot_gap)
+                        pair_class_mix_slot_route_support = 0.5 * (
+                            pair_class_proto_support +
+                            class_mix_slot_route * pos_slot_support +
+                            (1.0 - class_mix_slot_route) * neg_slot_support
+                        )
                 if self.use_support_proto_consensus_expert:
                     proto_consensus = self._cosine_feature(
                         pair_proto_repr,
@@ -2895,6 +3080,23 @@ class HeteroGNNEdgeHead(nn.Module):
             pred = pred + (
                 torch.sigmoid(self.support_class_proto_alpha) *
                 class_proto_logits
+            )
+        if self.use_support_class_mix_slot_route_expert:
+            if pair_class_mix_slot_route_repr is None:
+                pair_class_mix_slot_route_repr = torch.zeros_like(pair_repr)
+            class_mix_slot_route_logits = self.support_class_mix_slot_route_head(
+                pair_class_mix_slot_route_repr[pair_inv][mask]
+            )
+            if pair_class_mix_slot_route_support is not None:
+                class_mix_slot_route_logits = (
+                    pair_class_mix_slot_route_support[pair_inv][mask] *
+                    class_mix_slot_route_logits
+                )
+            if self.use_bounded_support_residuals:
+                class_mix_slot_route_logits = torch.tanh(class_mix_slot_route_logits)
+            pred = pred + (
+                torch.sigmoid(self.support_class_mix_slot_route_alpha) *
+                class_mix_slot_route_logits
             )
         if self.use_support_proto_consensus_expert:
             if pair_proto_consensus_repr is None:
