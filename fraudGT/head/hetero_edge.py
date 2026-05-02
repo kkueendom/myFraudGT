@@ -302,9 +302,15 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflowboundarylagsupportmixconsisdualprotoconsensusdisagreeconfhardscaleclassrouteboundresid'
         )
-        self.use_support_class_mix_slot_route_expert = (
+        self.use_support_delta_class_mix_slot_route_expert = (
             self.edge_decoding ==
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixslotrouteboundresid'
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflowboundarylagsupportmixconsisclassmixslotrouteboundresid'
+        )
+        self.use_support_class_mix_slot_route_expert = (
+            self.edge_decoding in {
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixslotrouteboundresid',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflowboundarylagsupportmixconsisclassmixslotrouteboundresid',
+            }
         )
         self.use_support_class_slot_route_expert = (
             self.edge_decoding ==
@@ -469,6 +475,8 @@ class HeteroGNNEdgeHead(nn.Module):
             self.use_support_class_mixture_prototype_expert = True
             self.use_bounded_support_residuals = True
             self.use_sequence_bridge_bank_window = True
+            if self.use_support_delta_class_mix_slot_route_expert:
+                self.use_difference_fusion = True
         if self.use_support_class_slot_route_expert:
             self.use_support_class_route_expert = True
             self.use_support_scale_route_expert = True
