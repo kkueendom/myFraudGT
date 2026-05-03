@@ -302,6 +302,10 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflowboundarylagsupportmixconsisdualprotoconsensusdisagreeconfhardscaleclassrouteboundresid'
         )
+        self.use_support_subgraph_route_expert = (
+            self.edge_decoding ==
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotosubgraphrouteboundresid'
+        )
         self.use_dot_fallback_support_mixture = (
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot'
@@ -445,6 +449,21 @@ class HeteroGNNEdgeHead(nn.Module):
             self.use_support_class_mixture_prototype_expert = True
             self.use_bounded_support_residuals = True
             self.use_support_prototype_expert = True
+            self.use_sequence_bridge_bank_window = True
+        if self.use_support_subgraph_route_expert:
+            self.use_pair_chain_head = True
+            self.use_chain_context_residual = True
+            self.use_sequence_context_residual = True
+            self.use_pair_internal_sequence = True
+            self.use_sequence_bridge_bank = True
+            self.use_target_sequence_select = True
+            self.use_terminal_role_flow = True
+            self.use_boundary_lag_flow = True
+            self.use_support_conditioned_mixture = True
+            self.use_sequence_consistency_filter = True
+            self.use_support_class_prototype_expert = True
+            self.use_support_class_mixture_prototype_expert = True
+            self.use_bounded_support_residuals = True
             self.use_sequence_bridge_bank_window = True
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         self.train_inds = mask_to_index(dataset['train'][cfg.dataset.task_entity].split_mask).to(cfg.device)
@@ -883,6 +902,28 @@ class HeteroGNNEdgeHead(nn.Module):
                                 bias=True,
                             )
                             self.support_class_route_alpha = nn.Parameter(
+                                torch.full((1,), math.log(0.04 / 0.96))
+                            )
+                        if self.use_support_subgraph_route_expert:
+                            self.support_subgraph_route_fuse = MLP(
+                                dim_in * 4 + self.support_feature_dim + 16, dim_in,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_subgraph_route_gate = MLP(
+                                dim_in + self.support_feature_dim + 16, 1,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_subgraph_route_bias = nn.Parameter(
+                                torch.tensor(math.log(0.45 / 0.55))
+                            )
+                            self.support_subgraph_route_head = MLP(
+                                dim_in, dim_out,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_subgraph_route_alpha = nn.Parameter(
                                 torch.full((1,), math.log(0.04 / 0.96))
                             )
                     if self.use_sequence_bridge_motif_lite:
@@ -1549,6 +1590,8 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_scale_route_support = None
         pair_class_route_repr = None
         pair_class_route_support = None
+        pair_subgraph_route_repr = None
+        pair_subgraph_route_support = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -2218,6 +2261,89 @@ class HeteroGNNEdgeHead(nn.Module):
                             )
                         )
                     )
+                    if self.use_support_subgraph_route_expert:
+                        community_repr = pair_sequence_repr
+                        if community_repr is None:
+                            community_repr = pair_context_repr
+                        if community_repr is None:
+                            community_repr = pair_boundary_lag_repr
+                        if community_repr is None:
+                            community_repr = pair_terminal_role_repr
+                        if community_repr is None:
+                            community_repr = pair_repr
+                        pair_subgraph_align = self._cosine_feature(
+                            pair_repr,
+                            community_repr,
+                        )
+                        if pair_subgraph_align is None:
+                            pair_subgraph_align = zero_support
+                        class_subgraph_align = self._cosine_feature(
+                            pair_class_proto_repr,
+                            community_repr,
+                        )
+                        if class_subgraph_align is None:
+                            class_subgraph_align = zero_support
+                        subgraph_stats = torch.cat(
+                            (
+                                pos_sim,
+                                neg_sim,
+                                proto_margin,
+                                proto_ready,
+                                pos_peak,
+                                neg_peak,
+                                pos_spread,
+                                neg_spread,
+                                pair_fill,
+                                pair_log_count,
+                                forward_overlap,
+                                cycle_overlap,
+                                boundary_valid_ratio,
+                                boundary_after_ratio,
+                                pair_subgraph_align,
+                                class_subgraph_align,
+                            ),
+                            dim=-1,
+                        )
+                        subgraph_route = torch.sigmoid(
+                            self.support_subgraph_route_bias +
+                            self.support_subgraph_route_gate(
+                                torch.cat(
+                                    (
+                                        community_repr,
+                                        pair_support_features,
+                                        subgraph_stats,
+                                    ),
+                                    dim=-1,
+                                )
+                            )
+                        )
+                        abnormal_hybrid = community_repr + subgraph_route * (
+                            pair_class_proto_repr - community_repr
+                        )
+                        pair_subgraph_route_repr = self.support_subgraph_route_fuse(
+                            torch.cat(
+                                (
+                                    pair_repr,
+                                    pair_class_proto_repr,
+                                    community_repr,
+                                    abnormal_hybrid,
+                                    pair_support_features,
+                                    subgraph_stats,
+                                ),
+                                dim=-1,
+                            )
+                        )
+                        community_support = pair_sequence_support
+                        if community_support is None:
+                            community_support = pair_boundary_support
+                        if community_support is None:
+                            community_support = pair_terminal_support
+                        if community_support is None:
+                            community_support = pair_class_proto_support
+                        pair_subgraph_route_support = (
+                            subgraph_route * pair_class_proto_support +
+                            (1.0 - subgraph_route) * community_support
+                        )
                 if self.use_support_proto_consensus_expert:
                     proto_consensus = self._cosine_feature(
                         pair_proto_repr,
@@ -2767,6 +2893,23 @@ class HeteroGNNEdgeHead(nn.Module):
             pred = pred + (
                 torch.sigmoid(self.support_class_route_alpha) *
                 class_route_logits
+            )
+        if self.use_support_subgraph_route_expert:
+            if pair_subgraph_route_repr is None:
+                pair_subgraph_route_repr = torch.zeros_like(pair_repr)
+            subgraph_route_logits = self.support_subgraph_route_head(
+                pair_subgraph_route_repr[pair_inv][mask]
+            )
+            if pair_subgraph_route_support is not None:
+                subgraph_route_logits = (
+                    pair_subgraph_route_support[pair_inv][mask] *
+                    subgraph_route_logits
+                )
+            if self.use_bounded_support_residuals:
+                subgraph_route_logits = torch.tanh(subgraph_route_logits)
+            pred = pred + (
+                torch.sigmoid(self.support_subgraph_route_alpha) *
+                subgraph_route_logits
             )
         return pred, batch[task].y[mask]
 
