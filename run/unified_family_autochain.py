@@ -15,7 +15,6 @@ DEFAULT_FAMILY_CHAIN = [
     "supportmixconsisdeltafusiondualprotoconsensusdisagreeconfhardboundresid_full240",
     "supportmixconsisdeltafusiondualprotoconsensusdisagreeconfhardscaleboundresid_full240",
     "supportmixconsisdeltafusiondualprotoconsensusdisagreeconfhardscaleclassrouteboundresid_full240",
-    "supportmixconsisdeltafusiondualprotoconsensusdisagreeconfhardscaleclassslotrouteboundresid_full240",
 ]
 
 

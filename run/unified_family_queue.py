@@ -108,14 +108,6 @@ FAMILIES = {
         "configs/AML-Large-HI/AML-Large-HI-SparseNodeGT+ports+Ego+WBDirMeanMaxWinnerProjTemporalPairChainContextSeqPairSeqBridgeBankWindowSeqSelectDeltaFusionRoleFlowBoundaryLagSupportMixConsisDualProtoConsensusDisagreeConfHardScaleClassRouteBoundResid240UnifiedFullCalibMemSafe.yaml",
         "configs/AML-Large-LI/AML-Large-LI-SparseNodeGT+ports+Ego+WBDirMeanMaxWinnerProjTemporalPairChainContextSeqPairSeqBridgeBankWindowSeqSelectDeltaFusionRoleFlowBoundaryLagSupportMixConsisDualProtoConsensusDisagreeConfHardScaleClassRouteBoundResid240UnifiedFullCalibMemSafe.yaml",
     ],
-    "supportmixconsisdeltafusiondualprotoconsensusdisagreeconfhardscaleclassslotrouteboundresid_full240": [
-        "configs/AML-Small-HI/AML-Small-HI-UnifiedClassSlotRoute240.yaml",
-        "configs/AML-Small-LI/AML-Small-LI-UnifiedClassSlotRoute240.yaml",
-        "configs/AML-Medium-HI/AML-Medium-HI-UnifiedClassSlotRoute240.yaml",
-        "configs/AML-Medium-LI/AML-Medium-LI-UnifiedClassSlotRoute240.yaml",
-        "configs/AML-Large-HI/AML-Large-HI-UnifiedClassSlotRoute240.yaml",
-        "configs/AML-Large-LI/AML-Large-LI-UnifiedClassSlotRoute240.yaml",
-    ],
 }
 
 
