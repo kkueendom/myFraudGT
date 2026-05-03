@@ -7,7 +7,6 @@ from pathlib import Path
 
 
 DEFAULT_FAMILY_CHAIN = [
-    "supportmixconsisdeltafusionclassmixslotrouteboundresid_full240",
     "supportmixconsisclassmixslotrouteboundresid_full240",
     "supportmixconsisdualprotoboundresid_full240",
     "supportmixconsisdeltafusiondualprotoboundresid_full240",
