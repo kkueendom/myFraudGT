@@ -52,6 +52,14 @@ FAMILIES = {
         "configs/AML-Large-HI/AML-Large-HI-UnifiedClassMixTempOrthClip240.yaml",
         "configs/AML-Large-LI/AML-Large-LI-UnifiedClassMixTempOrthClip240.yaml",
     ],
+    "supportmixconsisclassmixprotoenvsuppressboundresid_full240": [
+        "configs/AML-Small-HI/AML-Small-HI-UnifiedClassMixEnvSuppress240.yaml",
+        "configs/AML-Small-LI/AML-Small-LI-UnifiedClassMixEnvSuppress240.yaml",
+        "configs/AML-Medium-HI/AML-Medium-HI-UnifiedClassMixEnvSuppress240.yaml",
+        "configs/AML-Medium-LI/AML-Medium-LI-UnifiedClassMixEnvSuppress240.yaml",
+        "configs/AML-Large-HI/AML-Large-HI-UnifiedClassMixEnvSuppress240.yaml",
+        "configs/AML-Large-LI/AML-Large-LI-UnifiedClassMixEnvSuppress240.yaml",
+    ],
     "supportmixconsisdualprotoboundresid_full240": [
         "configs/AML-Small-HI/AML-Small-HI-SparseNodeGT+ports+Ego+WBDirMeanMaxWinnerProjTemporalPairChainContextSeqPairSeqBridgeBankWindowSeqSelectRoleFlowBoundaryLagSupportMixConsisDualProtoBoundResid240UnifiedFullCalibMemSafe.yaml",
         "configs/AML-Small-LI/AML-Small-LI-SparseNodeGT+ports+Ego+WBDirMeanMaxWinnerProjTemporalPairChainContextSeqPairSeqBridgeBankWindowSeqSelectRoleFlowBoundaryLagSupportMixConsisDualProtoBoundResid240UnifiedFullCalibMemSafe.yaml",
