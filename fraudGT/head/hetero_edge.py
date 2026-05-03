@@ -302,10 +302,6 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflowboundarylagsupportmixconsisdualprotoconsensusdisagreeconfhardscaleclassrouteboundresid'
         )
-        self.use_support_classmix_environment_expert = (
-            self.edge_decoding ==
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoenvsuppressboundresid'
-        )
         self.use_dot_fallback_support_mixture = (
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot'
@@ -450,24 +446,6 @@ class HeteroGNNEdgeHead(nn.Module):
             self.use_bounded_support_residuals = True
             self.use_support_prototype_expert = True
             self.use_sequence_bridge_bank_window = True
-        if self.use_support_classmix_environment_expert:
-            self.use_pair_chain_head = True
-            self.use_chain_context_residual = True
-            self.use_sequence_context_residual = True
-            self.use_pair_internal_sequence = True
-            self.use_sequence_bridge_bank = True
-            self.use_target_sequence_select = True
-            self.use_terminal_role_flow = True
-            self.use_boundary_lag_flow = True
-            self.use_support_conditioned_mixture = True
-            self.use_sequence_consistency_filter = True
-            self.use_support_class_prototype_expert = True
-            self.use_support_class_mixture_prototype_expert = True
-            self.use_bounded_support_residuals = True
-            self.use_sequence_bridge_bank_window = True
-        self.use_sequence_environment_suppression = (
-            self.use_support_classmix_environment_expert
-        )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         self.train_inds = mask_to_index(dataset['train'][cfg.dataset.task_entity].split_mask).to(cfg.device)
         self.val_inds = mask_to_index(dataset['val'][cfg.dataset.task_entity].split_mask).to(cfg.device)
@@ -563,37 +541,6 @@ class HeteroGNNEdgeHead(nn.Module):
                     self.sequence_window_gate = nn.Linear(dim_in * 3, dim_in)
                     self.sequence_window_alpha = nn.Parameter(
                         torch.full((1,), math.log(0.10 / 0.90))
-                    )
-                if self.use_sequence_environment_suppression:
-                    environment_input_dim = dim_in * 3 + 4
-                    self.outgoing_environment_gate = MLP(
-                        environment_input_dim, 1,
-                        num_layers=self.head_layers,
-                        bias=True,
-                    )
-                    self.incoming_environment_gate = MLP(
-                        environment_input_dim, 1,
-                        num_layers=self.head_layers,
-                        bias=True,
-                    )
-                    self.sequence_environment_alpha = nn.Parameter(
-                        torch.tensor(math.log(0.25 / 0.75))
-                    )
-                    self.sequence_environment_proj = MLP(
-                        dim_in * 3, dim_in,
-                        num_layers=self.head_layers,
-                        bias=True,
-                    )
-                    self.sequence_environment_gate = nn.Linear(
-                        dim_in * 3, dim_in
-                    )
-                    self.sequence_environment_update = MLP(
-                        dim_in * 3, dim_in,
-                        num_layers=self.head_layers,
-                        bias=True,
-                    )
-                    self.sequence_environment_residual_alpha = nn.Parameter(
-                        torch.full((1,), math.log(0.08 / 0.92))
                     )
                 if self.use_sequence_bridge_bank:
                     self.bridge_partner_proj = MLP(dim_in * 2 + 2, dim_in,
@@ -1155,73 +1102,6 @@ class HeteroGNNEdgeHead(nn.Module):
         filtered_bank = sequence_bank * valid * scale
         mean_gate = (gate * valid).sum(dim=1) / valid.sum(dim=1).clamp(min=1.0)
         return filtered_bank, mean_gate
-
-    def _environment_filter_sequence_bank(self, sequence_bank, opposite_bank, query_repr, scorer):
-        valid = (sequence_bank.abs().sum(dim=-1, keepdim=True) > 0).float()
-        if opposite_bank is None:
-            opposite_bank = torch.zeros_like(sequence_bank)
-        opposite_valid = (opposite_bank.abs().sum(dim=-1, keepdim=True) > 0).float()
-
-        bank_norm = F.normalize(sequence_bank, dim=-1, eps=1e-6)
-        opposite_norm = F.normalize(opposite_bank, dim=-1, eps=1e-6)
-        self_sim = 0.5 * (
-            torch.matmul(bank_norm, bank_norm.transpose(1, 2)) + 1.0
-        )
-        cross_sim = 0.5 * (
-            torch.matmul(bank_norm, opposite_norm.transpose(1, 2)) + 1.0
-        )
-
-        self_mask = valid * valid.transpose(1, 2)
-        diag_mask = torch.eye(
-            sequence_bank.size(1),
-            device=sequence_bank.device,
-            dtype=torch.bool,
-        ).unsqueeze(0)
-        self_mask = self_mask.masked_fill(diag_mask, 0.0)
-        self_denom = self_mask.sum(dim=-1, keepdim=True).clamp(min=1.0)
-        self_consistency = (self_sim * self_mask).sum(dim=-1, keepdim=True) / self_denom
-
-        cross_mask = valid * opposite_valid.transpose(1, 2)
-        cross_score = cross_sim.masked_fill(cross_mask == 0, 0.0)
-        cross_consistency = cross_score.max(dim=-1, keepdim=True).values
-
-        query_bank = query_repr.unsqueeze(1).expand(-1, sequence_bank.size(1), -1)
-        query_consistency = 0.5 * (
-            F.cosine_similarity(query_bank, sequence_bank, dim=-1, eps=1e-6).unsqueeze(-1) + 1.0
-        )
-        slot_index = torch.arange(
-            sequence_bank.size(1),
-            device=sequence_bank.device,
-            dtype=sequence_bank.dtype,
-        )
-        slot_prior = (1.0 / (1.0 + slot_index)).view(1, -1, 1)
-        gate_input = torch.cat(
-            (
-                query_bank,
-                sequence_bank,
-                query_bank * sequence_bank,
-                self_consistency,
-                cross_consistency,
-                query_consistency,
-                slot_prior.expand(sequence_bank.size(0), -1, -1),
-            ),
-            dim=-1,
-        )
-        keep_gate = torch.sigmoid(
-            scorer(gate_input.reshape(-1, gate_input.size(-1)))
-        ).view(sequence_bank.size(0), sequence_bank.size(1), 1)
-        alpha = torch.sigmoid(self.sequence_environment_alpha)
-        keep_scale = 1.0 - alpha + alpha * keep_gate
-        env_scale = alpha * (1.0 - keep_gate)
-        keep_bank = sequence_bank * valid * keep_scale
-        env_bank = sequence_bank * valid * env_scale
-        mean_keep = (keep_gate * valid).sum(dim=1) / valid.sum(dim=1).clamp(min=1.0)
-        return keep_bank, env_bank, mean_keep
-
-    def _mean_sequence_bank(self, sequence_bank):
-        valid = (sequence_bank.abs().sum(dim=-1, keepdim=True) > 0).float()
-        denom = valid.sum(dim=1).clamp(min=1.0)
-        return (sequence_bank * valid).sum(dim=1) / denom
 
     def _update_support_class_prototypes(self, proto_repr, labels):
         if not self.use_support_class_prototype_expert:
@@ -1844,47 +1724,6 @@ class HeteroGNNEdgeHead(nn.Module):
                         incoming_consistency = 0.5 * (
                             incoming_consistency + slow_incoming_consistency
                         )
-                    if self.use_sequence_environment_suppression:
-                        (
-                            pair_outgoing_sequence_bank,
-                            pair_outgoing_environment_bank,
-                            outgoing_keep,
-                        ) = self._environment_filter_sequence_bank(
-                            pair_outgoing_sequence_bank,
-                            pair_incoming_sequence_bank,
-                            pair_repr,
-                            self.outgoing_environment_gate,
-                        )
-                        (
-                            pair_incoming_sequence_bank,
-                            pair_incoming_environment_bank,
-                            incoming_keep,
-                        ) = self._environment_filter_sequence_bank(
-                            pair_incoming_sequence_bank,
-                            pair_outgoing_sequence_bank,
-                            pair_repr,
-                            self.incoming_environment_gate,
-                        )
-                        (
-                            pair_slow_outgoing_sequence_bank,
-                            pair_slow_outgoing_environment_bank,
-                            slow_outgoing_keep,
-                        ) = self._environment_filter_sequence_bank(
-                            pair_slow_outgoing_sequence_bank,
-                            pair_slow_incoming_sequence_bank,
-                            pair_repr,
-                            self.outgoing_environment_gate,
-                        )
-                        (
-                            pair_slow_incoming_sequence_bank,
-                            pair_slow_incoming_environment_bank,
-                            slow_incoming_keep,
-                        ) = self._environment_filter_sequence_bank(
-                            pair_slow_incoming_sequence_bank,
-                            pair_slow_outgoing_sequence_bank,
-                            pair_repr,
-                            self.incoming_environment_gate,
-                        )
                     outgoing_state = self.outgoing_sequence_encoder(
                         pair_outgoing_sequence_bank
                     )[1].squeeze(0)
@@ -1910,27 +1749,6 @@ class HeteroGNNEdgeHead(nn.Module):
                         )
                     )
                     pair_sequence_repr = fast_sequence_repr
-                    if self.use_sequence_environment_suppression:
-                        fast_environment_repr = self.sequence_environment_proj(
-                            self._pairwise_fusion_inputs(
-                                self._mean_sequence_bank(
-                                    pair_outgoing_environment_bank
-                                ),
-                                self._mean_sequence_bank(
-                                    pair_incoming_environment_bank
-                                ),
-                            )
-                        )
-                        slow_environment_repr = self.sequence_environment_proj(
-                            self._pairwise_fusion_inputs(
-                                self._mean_sequence_bank(
-                                    pair_slow_outgoing_environment_bank
-                                ),
-                                self._mean_sequence_bank(
-                                    pair_slow_incoming_environment_bank
-                                ),
-                            )
-                        )
                 else:
                     outgoing_sequence_bank = self._build_recent_sequence_bank(
                         pair_repr, pair_src, pair_timestamps, num_nodes, outgoing_latest
@@ -1968,27 +1786,6 @@ class HeteroGNNEdgeHead(nn.Module):
                                 self.incoming_consistency_gate,
                             )
                         )
-                    if self.use_sequence_environment_suppression:
-                        (
-                            pair_outgoing_sequence_bank,
-                            pair_outgoing_environment_bank,
-                            outgoing_keep,
-                        ) = self._environment_filter_sequence_bank(
-                            pair_outgoing_sequence_bank,
-                            pair_incoming_sequence_bank,
-                            pair_repr,
-                            self.outgoing_environment_gate,
-                        )
-                        (
-                            pair_incoming_sequence_bank,
-                            pair_incoming_environment_bank,
-                            incoming_keep,
-                        ) = self._environment_filter_sequence_bank(
-                            pair_incoming_sequence_bank,
-                            pair_outgoing_sequence_bank,
-                            pair_repr,
-                            self.incoming_environment_gate,
-                        )
                     outgoing_state = self.outgoing_sequence_encoder(
                         pair_outgoing_sequence_bank
                     )[1].squeeze(0)
@@ -2001,17 +1798,6 @@ class HeteroGNNEdgeHead(nn.Module):
                             incoming_state,
                         )
                     )
-                    if self.use_sequence_environment_suppression:
-                        fast_environment_repr = self.sequence_environment_proj(
-                            self._pairwise_fusion_inputs(
-                                self._mean_sequence_bank(
-                                    pair_outgoing_environment_bank
-                                ),
-                                self._mean_sequence_bank(
-                                    pair_incoming_environment_bank
-                                ),
-                            )
-                        )
                 if self.use_sequence_bridge_bank:
                     outgoing_partner_bank = self._build_recent_partner_bank(
                         pair_src, pair_dst, pair_timestamps, num_nodes
@@ -2075,16 +1861,6 @@ class HeteroGNNEdgeHead(nn.Module):
                             window_gate *
                             (slow_sequence_repr - fast_sequence_repr)
                         )
-                        if self.use_sequence_environment_suppression:
-                            pair_environment_repr = 0.5 * (
-                                fast_environment_repr + slow_environment_repr
-                            )
-                            environment_keep = 0.25 * (
-                                outgoing_keep +
-                                incoming_keep +
-                                slow_outgoing_keep +
-                                slow_incoming_keep
-                            )
                     bridge_input = torch.cat(
                         (
                             bridge_context,
@@ -2099,24 +1875,6 @@ class HeteroGNNEdgeHead(nn.Module):
                         bridge_gate *
                         self.bridge_bank_update(bridge_input)
                     )
-                    if self.use_sequence_environment_suppression:
-                        environment_input = torch.cat(
-                            (
-                                pair_sequence_repr,
-                                pair_environment_repr,
-                                pair_sequence_repr * pair_environment_repr,
-                            ),
-                            dim=-1,
-                        )
-                        environment_gate = torch.sigmoid(
-                            self.sequence_environment_gate(environment_input)
-                        )
-                        pair_sequence_repr = pair_sequence_repr + (
-                            torch.sigmoid(self.sequence_environment_residual_alpha) *
-                            (1.0 - environment_keep) *
-                            environment_gate *
-                            self.sequence_environment_update(environment_input)
-                        )
                     if self.use_terminal_role_flow:
                         src_incoming_sequence_bank = incoming_sequence_bank[pair_src]
                         dst_outgoing_sequence_bank = outgoing_sequence_bank[pair_dst]
@@ -2147,27 +1905,6 @@ class HeteroGNNEdgeHead(nn.Module):
                                     pair_repr,
                                     self.outgoing_consistency_gate,
                                 )
-                            )
-                        if self.use_sequence_environment_suppression:
-                            (
-                                src_incoming_sequence_bank,
-                                _,
-                                _,
-                            ) = self._environment_filter_sequence_bank(
-                                src_incoming_sequence_bank,
-                                dst_outgoing_sequence_bank,
-                                pair_repr,
-                                self.incoming_environment_gate,
-                            )
-                            (
-                                dst_outgoing_sequence_bank,
-                                _,
-                                _,
-                            ) = self._environment_filter_sequence_bank(
-                                dst_outgoing_sequence_bank,
-                                src_incoming_sequence_bank,
-                                pair_repr,
-                                self.outgoing_environment_gate,
                             )
                         src_incoming_state = self.incoming_sequence_encoder(
                             src_incoming_sequence_bank
@@ -2278,26 +2015,6 @@ class HeteroGNNEdgeHead(nn.Module):
                             leg_gate *
                             self.bridge_leg_bank_update(leg_input)
                         )
-                elif self.use_sequence_environment_suppression:
-                    pair_environment_repr = fast_environment_repr
-                    environment_keep = 0.5 * (outgoing_keep + incoming_keep)
-                    environment_input = torch.cat(
-                        (
-                            pair_sequence_repr,
-                            pair_environment_repr,
-                            pair_sequence_repr * pair_environment_repr,
-                        ),
-                        dim=-1,
-                    )
-                    environment_gate = torch.sigmoid(
-                        self.sequence_environment_gate(environment_input)
-                    )
-                    pair_sequence_repr = pair_sequence_repr + (
-                        torch.sigmoid(self.sequence_environment_residual_alpha) *
-                        (1.0 - environment_keep) *
-                        environment_gate *
-                        self.sequence_environment_update(environment_input)
-                    )
             if self.use_support_conditioned_mixture:
                 pair_fill = torch.clamp(
                     pair_count / float(self.pair_sequence_len),
