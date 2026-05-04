@@ -318,6 +318,10 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotorouteboundresid'
         )
+        self.use_support_class_split_expert = (
+            self.edge_decoding ==
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitresid'
+        )
         self.use_dot_fallback_support_mixture = (
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot'
@@ -493,6 +497,21 @@ class HeteroGNNEdgeHead(nn.Module):
             self.use_support_class_mixture_prototype_expert = True
             self.use_bounded_support_residuals = True
             self.use_support_prototype_expert = True
+            self.use_sequence_bridge_bank_window = True
+        if self.use_support_class_split_expert:
+            self.use_pair_chain_head = True
+            self.use_chain_context_residual = True
+            self.use_sequence_context_residual = True
+            self.use_pair_internal_sequence = True
+            self.use_sequence_bridge_bank = True
+            self.use_target_sequence_select = True
+            self.use_terminal_role_flow = True
+            self.use_boundary_lag_flow = True
+            self.use_support_conditioned_mixture = True
+            self.use_sequence_consistency_filter = True
+            self.use_support_class_prototype_expert = True
+            self.use_support_class_mixture_prototype_expert = True
+            self.use_bounded_support_residuals = True
             self.use_sequence_bridge_bank_window = True
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         self.train_inds = mask_to_index(dataset['train'][cfg.dataset.task_entity].split_mask).to(cfg.device)
@@ -785,6 +804,33 @@ class HeteroGNNEdgeHead(nn.Module):
                             )
                             self.support_class_proto_alpha = nn.Parameter(
                                 torch.full((1,), math.log(0.08 / 0.92))
+                            )
+                        if self.use_support_class_split_expert:
+                            self.support_pos_class_split_fuse = MLP(
+                                dim_in * 4 + self.support_feature_dim + 8, dim_in,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_neg_class_split_fuse = MLP(
+                                dim_in * 4 + self.support_feature_dim + 8, dim_in,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_class_split_gate = MLP(
+                                dim_in + self.support_feature_dim + 10, 1,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_class_split_bias = nn.Parameter(
+                                torch.tensor(0.0)
+                            )
+                            self.support_class_split_head = MLP(
+                                dim_in, dim_out,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_class_split_alpha = nn.Parameter(
+                                torch.full((1,), math.log(0.04 / 0.96))
                             )
                         if self.use_support_proto_consensus_expert:
                             self.support_proto_consensus_fuse = MLP(
@@ -1629,6 +1675,8 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_proto_support = None
         pair_class_proto_repr = None
         pair_class_proto_support = None
+        pair_class_split_repr = None
+        pair_class_split_support = None
         pair_proto_consensus_repr = None
         pair_proto_consensus_support = None
         pair_proto_disagreement_repr = None
@@ -2314,6 +2362,97 @@ class HeteroGNNEdgeHead(nn.Module):
                             )
                         )
                     )
+                    if self.use_support_class_split_expert:
+                        pos_context = pair_sequence_repr
+                        if pos_context is None:
+                            pos_context = pair_boundary_lag_repr
+                        if pos_context is None:
+                            pos_context = pair_class_proto_repr
+                        if pos_context is None:
+                            pos_context = pair_repr
+                        neg_context = pair_context_repr
+                        if neg_context is None:
+                            neg_context = pair_terminal_role_repr
+                        if neg_context is None:
+                            neg_context = pair_class_proto_repr
+                        if neg_context is None:
+                            neg_context = pair_repr
+                        class_split_stats = torch.cat(
+                            (
+                                pos_sim,
+                                neg_sim,
+                                proto_margin,
+                                proto_ready,
+                                pos_peak,
+                                neg_peak,
+                                pos_spread,
+                                neg_spread,
+                            ),
+                            dim=-1,
+                        )
+                        pair_pos_class_split_repr = self.support_pos_class_split_fuse(
+                            torch.cat(
+                                (
+                                    pair_repr,
+                                    pos_proto,
+                                    pair_class_proto_repr,
+                                    pos_context,
+                                    pair_support_features,
+                                    class_split_stats,
+                                ),
+                                dim=-1,
+                            )
+                        )
+                        pair_neg_class_split_repr = self.support_neg_class_split_fuse(
+                            torch.cat(
+                                (
+                                    pair_repr,
+                                    neg_proto,
+                                    pair_class_proto_repr,
+                                    neg_context,
+                                    pair_support_features,
+                                    class_split_stats,
+                                ),
+                                dim=-1,
+                            )
+                        )
+                        class_split_align = self._cosine_feature(
+                            pair_pos_class_split_repr,
+                            pair_neg_class_split_repr,
+                        )
+                        if class_split_align is None:
+                            class_split_align = zero_support
+                        class_split_gate = torch.sigmoid(
+                            self.support_class_split_bias +
+                            self.support_class_split_gate(
+                                torch.cat(
+                                    (
+                                        pair_class_proto_repr,
+                                        pair_support_features,
+                                        class_split_stats,
+                                        pair_class_proto_support,
+                                        class_split_align,
+                                    ),
+                                    dim=-1,
+                                )
+                            )
+                        )
+                        pair_class_split_repr = pair_neg_class_split_repr + class_split_gate * (
+                            pair_pos_class_split_repr - pair_neg_class_split_repr
+                        )
+                        context_support = pair_sequence_support
+                        if context_support is None:
+                            context_support = pair_structure_mix
+                        if context_support is None:
+                            context_support = pair_boundary_support
+                        if context_support is None:
+                            context_support = pair_terminal_support
+                        if context_support is None:
+                            context_support = pair_class_proto_support
+                        pair_class_split_support = (
+                            class_split_gate * pair_class_proto_support +
+                            (1.0 - class_split_gate) * context_support
+                        )
                     if self.use_support_proto_route_expert:
                         proto_branch_align = self._cosine_feature(
                             pair_proto_repr,
@@ -2914,6 +3053,22 @@ class HeteroGNNEdgeHead(nn.Module):
             pred = pred + (
                 torch.sigmoid(self.support_class_proto_alpha) *
                 class_proto_logits
+            )
+        if self.use_support_class_split_expert:
+            if pair_class_split_repr is None:
+                pair_class_split_repr = torch.zeros_like(pair_repr)
+            class_split_logits = self.support_class_split_head(
+                pair_class_split_repr[pair_inv][mask]
+            )
+            if pair_class_split_support is not None:
+                class_split_logits = (
+                    pair_class_split_support[pair_inv][mask] * class_split_logits
+                )
+            if self.use_bounded_support_residuals:
+                class_split_logits = torch.tanh(class_split_logits)
+            pred = pred + (
+                torch.sigmoid(self.support_class_split_alpha) *
+                class_split_logits
             )
         if self.use_support_proto_consensus_expert:
             if pair_proto_consensus_repr is None:
