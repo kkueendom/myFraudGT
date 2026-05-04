@@ -318,10 +318,6 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotorouteboundresid'
         )
-        self.use_support_proto_route_scale_expert = (
-            self.edge_decoding ==
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoroutescaleboundresid'
-        )
         self.use_dot_fallback_support_mixture = (
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot'
@@ -340,7 +336,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixproto',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundresid',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotorouteboundresid',
-                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoroutescaleboundresid',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisdualprotoboundresid',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectdeltafusionroleflowboundarylagsupportmixconsisdualprotoboundresid',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisproto',
@@ -484,23 +479,6 @@ class HeteroGNNEdgeHead(nn.Module):
             self.use_bounded_support_residuals = True
             self.use_sequence_bridge_bank_window = True
         if self.use_support_proto_route_expert:
-            self.use_pair_chain_head = True
-            self.use_chain_context_residual = True
-            self.use_sequence_context_residual = True
-            self.use_pair_internal_sequence = True
-            self.use_sequence_bridge_bank = True
-            self.use_target_sequence_select = True
-            self.use_terminal_role_flow = True
-            self.use_boundary_lag_flow = True
-            self.use_support_conditioned_mixture = True
-            self.use_sequence_consistency_filter = True
-            self.use_support_class_prototype_expert = True
-            self.use_support_class_mixture_prototype_expert = True
-            self.use_bounded_support_residuals = True
-            self.use_support_prototype_expert = True
-            self.use_sequence_bridge_bank_window = True
-        if self.use_support_proto_route_scale_expert:
-            self.use_support_proto_route_expert = True
             self.use_pair_chain_head = True
             self.use_chain_context_residual = True
             self.use_sequence_context_residual = True
@@ -997,28 +975,6 @@ class HeteroGNNEdgeHead(nn.Module):
                                 bias=True,
                             )
                             self.support_proto_route_alpha = nn.Parameter(
-                                torch.full((1,), math.log(0.04 / 0.96))
-                            )
-                        if self.use_support_proto_route_scale_expert:
-                            self.support_proto_route_scale_fuse = MLP(
-                                dim_in * 4 + self.support_feature_dim + 17, dim_in,
-                                num_layers=self.head_layers,
-                                bias=True,
-                            )
-                            self.support_proto_route_scale_gate = MLP(
-                                dim_in + self.support_feature_dim + 17, 1,
-                                num_layers=self.head_layers,
-                                bias=True,
-                            )
-                            self.support_proto_route_scale_bias = nn.Parameter(
-                                torch.tensor(math.log(0.4 / 0.6))
-                            )
-                            self.support_proto_route_scale_head = MLP(
-                                dim_in, dim_out,
-                                num_layers=self.head_layers,
-                                bias=True,
-                            )
-                            self.support_proto_route_scale_alpha = nn.Parameter(
                                 torch.full((1,), math.log(0.04 / 0.96))
                             )
                     if self.use_sequence_bridge_motif_lite:
@@ -1689,8 +1645,6 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_subgraph_route_support = None
         pair_proto_route_repr = None
         pair_proto_route_support = None
-        pair_proto_route_scale_repr = None
-        pair_proto_route_scale_support = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -2427,91 +2381,6 @@ class HeteroGNNEdgeHead(nn.Module):
                             proto_route * pair_class_proto_support +
                             (1.0 - proto_route) * pair_proto_support
                         )
-                    if self.use_support_proto_route_scale_expert:
-                        scale_route_base_repr = pair_class_proto_repr
-                        if scale_route_base_repr is None:
-                            scale_route_base_repr = pair_proto_repr
-                        if scale_route_base_repr is None:
-                            scale_route_base_repr = pair_repr
-                        scale_route_branch_repr = pair_proto_route_repr
-                        if scale_route_branch_repr is None:
-                            scale_route_branch_repr = pair_class_proto_repr
-                        if scale_route_branch_repr is None:
-                            scale_route_branch_repr = pair_repr
-                        scale_route_base_support = pair_class_proto_support
-                        if scale_route_base_support is None:
-                            scale_route_base_support = pair_proto_support
-                        if scale_route_base_support is None:
-                            scale_route_base_support = zero_support
-                        scale_route_branch_support = pair_proto_route_support
-                        if scale_route_branch_support is None:
-                            scale_route_branch_support = scale_route_base_support
-                        scale_route_align = self._cosine_feature(
-                            scale_route_branch_repr,
-                            scale_route_base_repr,
-                        )
-                        if scale_route_align is None:
-                            scale_route_align = zero_support
-                        scale_route_stats = torch.cat(
-                            (
-                                pair_fill,
-                                pair_log_count,
-                                src_out_cov,
-                                dst_in_cov,
-                                src_in_cov,
-                                dst_out_cov,
-                                forward_overlap,
-                                cycle_overlap,
-                                boundary_valid_ratio,
-                                boundary_after_ratio,
-                                proto_margin,
-                                proto_ready,
-                                pos_peak,
-                                neg_peak,
-                                scale_route_base_support,
-                                scale_route_branch_support,
-                                scale_route_align,
-                            ),
-                            dim=-1,
-                        )
-                        scale_route_query = (
-                            scale_route_branch_repr - scale_route_base_repr
-                        )
-                        scale_route = torch.sigmoid(
-                            self.support_proto_route_scale_bias +
-                            self.support_proto_route_scale_gate(
-                                torch.cat(
-                                    (
-                                        scale_route_query,
-                                        pair_support_features,
-                                        scale_route_stats,
-                                    ),
-                                    dim=-1,
-                                )
-                            )
-                        )
-                        scale_route_hybrid = scale_route_base_repr + scale_route * (
-                            scale_route_branch_repr - scale_route_base_repr
-                        )
-                        pair_proto_route_scale_repr = (
-                            self.support_proto_route_scale_fuse(
-                                torch.cat(
-                                    (
-                                        pair_repr,
-                                        scale_route_base_repr,
-                                        scale_route_branch_repr,
-                                        scale_route_hybrid,
-                                        pair_support_features,
-                                        scale_route_stats,
-                                    ),
-                                    dim=-1,
-                                )
-                            )
-                        )
-                        pair_proto_route_scale_support = (
-                            scale_route * scale_route_branch_support +
-                            (1.0 - scale_route) * scale_route_base_support
-                        )
                     if self.use_support_subgraph_route_expert:
                         community_repr = pair_sequence_repr
                         if community_repr is None:
@@ -3162,10 +3031,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 torch.sigmoid(self.support_subgraph_route_alpha) *
                 subgraph_route_logits
             )
-        if (
-            self.use_support_proto_route_expert and
-            not self.use_support_proto_route_scale_expert
-        ):
+        if self.use_support_proto_route_expert:
             if pair_proto_route_repr is None:
                 pair_proto_route_repr = torch.zeros_like(pair_repr)
             proto_route_logits = self.support_proto_route_head(
@@ -3181,23 +3047,6 @@ class HeteroGNNEdgeHead(nn.Module):
             pred = pred + (
                 torch.sigmoid(self.support_proto_route_alpha) *
                 proto_route_logits
-            )
-        if self.use_support_proto_route_scale_expert:
-            if pair_proto_route_scale_repr is None:
-                pair_proto_route_scale_repr = torch.zeros_like(pair_repr)
-            proto_route_scale_logits = self.support_proto_route_scale_head(
-                pair_proto_route_scale_repr[pair_inv][mask]
-            )
-            if pair_proto_route_scale_support is not None:
-                proto_route_scale_logits = (
-                    pair_proto_route_scale_support[pair_inv][mask] *
-                    proto_route_scale_logits
-                )
-            if self.use_bounded_support_residuals:
-                proto_route_scale_logits = torch.tanh(proto_route_scale_logits)
-            pred = pred + (
-                torch.sigmoid(self.support_proto_route_scale_alpha) *
-                proto_route_scale_logits
             )
         return pred, batch[task].y[mask]
 
