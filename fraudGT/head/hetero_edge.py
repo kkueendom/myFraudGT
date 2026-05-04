@@ -318,6 +318,10 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotorouteboundresid'
         )
+        self.use_support_proto_route_calib_expert = (
+            self.edge_decoding ==
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoroutecalibboundresid'
+        )
         self.use_dot_fallback_support_mixture = (
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot'
@@ -454,6 +458,23 @@ class HeteroGNNEdgeHead(nn.Module):
             self.use_sequence_bridge_bank = True
             self.use_target_sequence_select = True
             self.use_difference_fusion = True
+            self.use_terminal_role_flow = True
+            self.use_boundary_lag_flow = True
+            self.use_support_conditioned_mixture = True
+            self.use_sequence_consistency_filter = True
+            self.use_support_class_prototype_expert = True
+            self.use_support_class_mixture_prototype_expert = True
+            self.use_bounded_support_residuals = True
+            self.use_support_prototype_expert = True
+            self.use_sequence_bridge_bank_window = True
+        if self.use_support_proto_route_calib_expert:
+            self.use_support_proto_route_expert = True
+            self.use_pair_chain_head = True
+            self.use_chain_context_residual = True
+            self.use_sequence_context_residual = True
+            self.use_pair_internal_sequence = True
+            self.use_sequence_bridge_bank = True
+            self.use_target_sequence_select = True
             self.use_terminal_role_flow = True
             self.use_boundary_lag_flow = True
             self.use_support_conditioned_mixture = True
@@ -976,6 +997,15 @@ class HeteroGNNEdgeHead(nn.Module):
                             )
                             self.support_proto_route_alpha = nn.Parameter(
                                 torch.full((1,), math.log(0.04 / 0.96))
+                            )
+                        if self.use_support_proto_route_calib_expert:
+                            self.support_proto_route_calib_gate = MLP(
+                                dim_in + self.support_feature_dim + 15, 1,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_proto_route_calib_bias = nn.Parameter(
+                                torch.tensor(math.log(0.55 / 0.45))
                             )
                     if self.use_sequence_bridge_motif_lite:
                         self.bridge_leg_pair_proj = MLP(dim_in * 3 + 1, dim_in,
@@ -2381,6 +2411,43 @@ class HeteroGNNEdgeHead(nn.Module):
                             proto_route * pair_class_proto_support +
                             (1.0 - proto_route) * pair_proto_support
                         )
+                        if self.use_support_proto_route_calib_expert:
+                            route_calib_stats = torch.cat(
+                                (
+                                    pair_fill,
+                                    pair_log_count,
+                                    src_out_cov,
+                                    dst_in_cov,
+                                    src_in_cov,
+                                    dst_out_cov,
+                                    forward_overlap,
+                                    cycle_overlap,
+                                    boundary_valid_ratio,
+                                    boundary_after_ratio,
+                                    proto_margin,
+                                    proto_ready,
+                                    pair_proto_support,
+                                    pair_class_proto_support,
+                                    proto_branch_align,
+                                ),
+                                dim=-1,
+                            )
+                            route_calib = torch.sigmoid(
+                                self.support_proto_route_calib_bias +
+                                self.support_proto_route_calib_gate(
+                                    torch.cat(
+                                        (
+                                            pair_proto_route_repr - pair_class_proto_repr,
+                                            pair_support_features,
+                                            route_calib_stats,
+                                        ),
+                                        dim=-1,
+                                    )
+                                )
+                            )
+                            pair_proto_route_support = (
+                                route_calib * pair_proto_route_support
+                            )
                     if self.use_support_subgraph_route_expert:
                         community_repr = pair_sequence_repr
                         if community_repr is None:
