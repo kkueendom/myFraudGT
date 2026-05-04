@@ -95,4 +95,3 @@ def extended_cfg(cfg):
     cfg.model.loss_fun_weight = []
     cfg.model.loss_fun_gamma = 2.0
     cfg.model.auto_tune_thresh = False
-    cfg.model.consistency_aux_weight = 0.0

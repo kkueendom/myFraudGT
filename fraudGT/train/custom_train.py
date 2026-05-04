@@ -66,32 +66,6 @@ def get_best_epoch(val_perf):
     raise ValueError(f'Unsupported tiebreak aggregation: {tiebreak_agg}')
 
 
-def _unpack_model_output(model_output):
-    if isinstance(model_output, tuple):
-        if len(model_output) == 3:
-            pred, true, extra_stats = model_output
-            return pred, true, extra_stats or {}
-        if len(model_output) == 2:
-            pred, true = model_output
-            return pred, true, {}
-    raise ValueError('Model output must be a tuple of (pred, true) or (pred, true, extra_stats)')
-
-
-def _scalarize_extra_stats(extra_stats):
-    scalar_stats = {}
-    for key, val in extra_stats.items():
-        if torch.is_tensor(val):
-            if val.numel() == 1:
-                scalar_stats[key] = float(val.detach().cpu().item())
-            else:
-                scalar_stats[key] = float(val.detach().float().mean().cpu().item())
-        elif isinstance(val, np.generic):
-            scalar_stats[key] = float(val)
-        else:
-            scalar_stats[key] = val
-    return scalar_stats
-
-
 # def train_epoch(logger, loader, model, optimizer, scheduler, batch_accumulation):
 #     model.train()
 #     optimizer.zero_grad()
@@ -145,20 +119,18 @@ def train_epoch(cur_epoch, logger, loader, model, optimizer, scheduler, batch_ac
         batch = next(iterator, None)
         batch.split = 'train'
         batch.to(torch.device(cfg.device))
-
-        pred, true, extra_stats = _unpack_model_output(model(batch))
+        
+        pred, true = model(batch)
         loss, pred_score = compute_loss(pred, true)
         _true = true.detach().to('cpu', non_blocking=True)
         _pred = pred_score.detach().to('cpu', non_blocking=True)
-        extra_stats = _scalarize_extra_stats(extra_stats)
         logger.update_stats(true=_true,
                             pred=_pred,
                             loss=loss.detach().cpu().item(),
                             lr=scheduler.get_last_lr()[0],
                             time_used=time.time() - time_start,
                             params=0,
-                            dataset_name=cfg.dataset.name,
-                            **extra_stats)
+                            dataset_name=cfg.dataset.name)
         pbar.update(1)
         return
 
@@ -194,24 +166,15 @@ def train_epoch(cur_epoch, logger, loader, model, optimizer, scheduler, batch_ac
 
             runtime_stats_cuda.start_region("train", runtime_stats_cuda.get_last_event())
             runtime_stats_cuda.start_region("forward", runtime_stats_cuda.get_last_event())
-            pred, true, extra_stats = _unpack_model_output(model(batch))
+            pred, true = model(batch)
             runtime_stats_cuda.end_region("forward")
             runtime_stats_cuda.start_region("loss", runtime_stats_cuda.get_last_event())
             if cfg.model.loss_fun == 'curriculum_learning_loss':
                 loss, pred_score = compute_loss(pred, true, cur_epoch)
             else:
                 loss, pred_score = compute_loss(pred, true)
-            aux_loss = extra_stats.pop('aux_loss', None)
-            if aux_loss is not None and cfg.model.consistency_aux_weight > 0:
-                loss = loss + cfg.model.consistency_aux_weight * aux_loss
             _true = true.detach().to('cpu', non_blocking=True)
             _pred = pred_score.detach().to('cpu', non_blocking=True)
-            extra_stats = _scalarize_extra_stats(extra_stats)
-            if aux_loss is not None:
-                extra_stats['aux_loss'] = float(aux_loss.detach().cpu().item())
-                extra_stats['weighted_aux_loss'] = float(
-                    (cfg.model.consistency_aux_weight * aux_loss).detach().cpu().item()
-                )
             runtime_stats_cuda.end_region("loss")
 
             runtime_stats_cuda.start_region("backward", runtime_stats_cuda.get_last_event())
@@ -235,8 +198,7 @@ def train_epoch(cur_epoch, logger, loader, model, optimizer, scheduler, batch_ac
                                 lr=scheduler.get_last_lr()[0],
                                 time_used=time.time() - time_start,
                                 params=cfg.params,
-                                dataset_name=cfg.dataset.name,
-                                **extra_stats)
+                                dataset_name=cfg.dataset.name)
             pbar.update(1)
             time_start = time.time()
         except RuntimeError as e:
@@ -272,12 +234,15 @@ def eval_epoch(logger, loader, model, split='val'):
                 batch.to(torch.device(cfg.device))
             else: # NAGphormer
                 batch = [x.to(torch.device(cfg.device)) for x in batch]
-            pred, true, extra_stats = _unpack_model_output(model(batch))
+            if cfg.gnn.head == 'inductive_edge':
+                pred, true, extra_stats = model(batch)
+            else:
+                pred, true = model(batch)
+                extra_stats = {}
 
             loss, pred_score = compute_loss(pred, true)
             _true = true.detach().to('cpu', non_blocking=True)
             _pred = pred_score.detach().to('cpu', non_blocking=True)
-            extra_stats = _scalarize_extra_stats(extra_stats)
             
             logger.update_stats(true=_true,
                                 pred=_pred,
@@ -484,12 +449,15 @@ def multi_stage_train(loggers, loaders, model, optimizer, scheduler):
                         batch.to(torch.device(cfg.device))
                     else: # NAGphormer
                         batch = batch = [x.to(torch.device(cfg.device)) for x in batch]
-                    pred, true, extra_stats = _unpack_model_output(model(batch))
+                    if cfg.gnn.head == 'inductive_edge':
+                        pred, true, extra_stats = model(batch)
+                    else:
+                        pred, true = model(batch)
+                        extra_stats = {}
 
                     loss, pred_score = compute_loss(pred, true)
                     _true = true.detach().to('cpu', non_blocking=True)
                     _pred = pred_score.detach().to('cpu', non_blocking=True)
-                    extra_stats = _scalarize_extra_stats(extra_stats)
 
                     all_preds.append(_pred)
                     

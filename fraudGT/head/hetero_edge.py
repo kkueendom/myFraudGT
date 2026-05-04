@@ -494,10 +494,6 @@ class HeteroGNNEdgeHead(nn.Module):
             self.use_bounded_support_residuals = True
             self.use_support_prototype_expert = True
             self.use_sequence_bridge_bank_window = True
-        self.use_support_view_consistency_aux = (
-            self.use_support_conditioned_mixture and
-            cfg.model.consistency_aux_weight > 0.0
-        )
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         self.train_inds = mask_to_index(dataset['train'][cfg.dataset.task_entity].split_mask).to(cfg.device)
         self.val_inds = mask_to_index(dataset['val'][cfg.dataset.task_entity].split_mask).to(cfg.device)
@@ -980,15 +976,6 @@ class HeteroGNNEdgeHead(nn.Module):
                             )
                             self.support_proto_route_alpha = nn.Parameter(
                                 torch.full((1,), math.log(0.04 / 0.96))
-                            )
-                        if self.use_support_view_consistency_aux:
-                            self.consistency_aux_proj = MLP(
-                                dim_in, dim_in,
-                                num_layers=self.head_layers,
-                                bias=True,
-                            )
-                            self.consistency_aux_temperature = nn.Parameter(
-                                torch.tensor(0.0)
                             )
                     if self.use_sequence_bridge_motif_lite:
                         self.bridge_leg_pair_proj = MLP(dim_in * 3 + 1, dim_in,
@@ -1545,78 +1532,6 @@ class HeteroGNNEdgeHead(nn.Module):
             dim=-1,
         )
 
-    def _support_pair_alignment_loss(self, left_repr, right_repr, weight):
-        if left_repr is None or right_repr is None or weight is None:
-            return None
-        valid = (
-            (left_repr.abs().sum(dim=-1, keepdim=True) > 0) &
-            (right_repr.abs().sum(dim=-1, keepdim=True) > 0)
-        ).float()
-        pair_weight = weight.clamp(min=0.0, max=1.0) * valid
-        if pair_weight.sum().item() == 0:
-            return None
-        left_proj = F.normalize(self.consistency_aux_proj(left_repr), dim=-1, eps=1e-6)
-        right_proj = F.normalize(self.consistency_aux_proj(right_repr), dim=-1, eps=1e-6)
-        align = 0.5 * (
-            F.cosine_similarity(left_proj, right_proj, dim=-1, eps=1e-6).unsqueeze(-1) + 1.0
-        )
-        return ((1.0 - align) * pair_weight).sum() / pair_weight.sum().clamp(min=1.0)
-
-    def _support_weighted_view_consistency(self, view_specs):
-        projected_views = []
-        total_num = None
-        total_den = None
-
-        for view_repr, view_weight in view_specs:
-            if view_repr is None or view_weight is None:
-                continue
-            valid = (view_repr.abs().sum(dim=-1, keepdim=True) > 0).float()
-            support = view_weight.clamp(min=0.0, max=1.0) * valid
-            if support.sum().item() == 0:
-                continue
-            projected = F.normalize(self.consistency_aux_proj(view_repr), dim=-1, eps=1e-6)
-            projected_views.append((projected, support))
-            weighted_proj = projected * support
-            total_num = weighted_proj if total_num is None else total_num + weighted_proj
-            total_den = support if total_den is None else total_den + support
-
-        if len(projected_views) < 2:
-            return None
-
-        loss_num = total_den.new_zeros(())
-        loss_den = total_den.new_zeros(())
-        for projected, support in projected_views:
-            other_num = total_num - projected * support
-            other_den = total_den - support
-            other_valid = (other_den > 1e-6).float()
-            if other_valid.sum().item() == 0:
-                continue
-            target = other_num / other_den.clamp(min=1e-6)
-            target = F.normalize(target, dim=-1, eps=1e-6)
-            align = 0.5 * (
-                F.cosine_similarity(projected, target, dim=-1, eps=1e-6).unsqueeze(-1) + 1.0
-            )
-            eff_support = support * other_valid
-            loss_num = loss_num + ((1.0 - align) * eff_support).sum()
-            loss_den = loss_den + eff_support.sum()
-
-        if loss_den.item() == 0:
-            return None
-        return loss_num / loss_den.clamp(min=1.0)
-
-    def _support_proto_margin_loss(self, pos_score, neg_score, labels, weight):
-        if pos_score is None or neg_score is None or labels is None or weight is None:
-            return None
-        valid = ((pos_score > 0) | (neg_score > 0)).float()
-        proto_weight = weight.clamp(min=0.0, max=1.0) * valid
-        if proto_weight.sum().item() == 0:
-            return None
-        labels = labels.view(-1, 1).float().clamp(min=0.0, max=1.0)
-        signed_margin = labels * (pos_score - neg_score) + (1.0 - labels) * (neg_score - pos_score)
-        temperature = self.consistency_aux_temperature.exp().clamp(min=0.5, max=2.0)
-        proto_loss = F.softplus(-signed_margin / temperature)
-        return (proto_loss * proto_weight).sum() / proto_weight.sum().clamp(min=1.0)
-
     def _pair_chain_head(self, batch):
         task = cfg.dataset.task_entity
         mask = self._edge_mask(batch)
@@ -1730,9 +1645,6 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_subgraph_route_support = None
         pair_proto_route_repr = None
         pair_proto_route_support = None
-        pair_fill = None
-        pair_log_count = None
-        pair_support_features = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -2903,97 +2815,6 @@ class HeteroGNNEdgeHead(nn.Module):
                                         (1.0 - class_route) * neg_branch_support
                                     )
 
-        extra_stats = {}
-        if self.use_support_view_consistency_aux and pair_fill is not None:
-            edge_pair_inv = pair_inv[mask]
-            edge_fill = pair_fill[edge_pair_inv]
-            view_specs = []
-            if pair_context_repr is not None and pair_structure_mix is not None:
-                view_specs.append((
-                    pair_context_repr[edge_pair_inv],
-                    edge_fill * pair_structure_mix[edge_pair_inv],
-                ))
-            if pair_sequence_repr is not None and pair_sequence_support is not None:
-                view_specs.append((
-                    pair_sequence_repr[edge_pair_inv],
-                    edge_fill * pair_sequence_support[edge_pair_inv],
-                ))
-            if pair_terminal_role_repr is not None and pair_terminal_support is not None:
-                view_specs.append((
-                    pair_terminal_role_repr[edge_pair_inv],
-                    edge_fill * pair_terminal_support[edge_pair_inv],
-                ))
-            if pair_boundary_lag_repr is not None and pair_boundary_support is not None:
-                boundary_weight = edge_fill * pair_boundary_support[edge_pair_inv]
-                if boundary_valid_ratio is not None:
-                    boundary_weight = boundary_weight * (
-                        0.5 + 0.5 * boundary_valid_ratio[edge_pair_inv]
-                    )
-                view_specs.append((
-                    pair_boundary_lag_repr[edge_pair_inv],
-                    boundary_weight,
-                ))
-            if pair_proto_repr is not None and pair_proto_support is not None:
-                view_specs.append((
-                    pair_proto_repr[edge_pair_inv],
-                    edge_fill * pair_proto_support[edge_pair_inv],
-                ))
-            if pair_class_proto_repr is not None and pair_class_proto_support is not None:
-                class_proto_weight = edge_fill * pair_class_proto_support[edge_pair_inv]
-                if proto_ready is not None:
-                    class_proto_weight = class_proto_weight * proto_ready[edge_pair_inv]
-                view_specs.append((
-                    pair_class_proto_repr[edge_pair_inv],
-                    class_proto_weight,
-                ))
-
-            view_aux_loss = self._support_weighted_view_consistency(view_specs)
-
-            seq_align_weight = edge_fill
-            if outgoing_consistency is not None and incoming_consistency is not None:
-                seq_align_weight = seq_align_weight * (
-                    0.5 * (
-                        outgoing_consistency[edge_pair_inv] +
-                        incoming_consistency[edge_pair_inv]
-                    )
-                )
-            fastslow_aux_loss = self._support_pair_alignment_loss(
-                fast_sequence_repr[edge_pair_inv] if fast_sequence_repr is not None else None,
-                slow_sequence_repr[edge_pair_inv] if slow_sequence_repr is not None else None,
-                seq_align_weight,
-            )
-
-            proto_aux_loss = None
-            if (
-                pos_sim is not None and
-                neg_sim is not None and
-                pair_class_proto_support is not None
-            ):
-                proto_aux_weight = edge_fill * pair_class_proto_support[edge_pair_inv]
-                if proto_ready is not None:
-                    proto_aux_weight = proto_aux_weight * proto_ready[edge_pair_inv]
-                proto_aux_loss = self._support_proto_margin_loss(
-                    pos_sim[edge_pair_inv],
-                    neg_sim[edge_pair_inv],
-                    batch[task].y[mask],
-                    proto_aux_weight,
-                )
-
-            aux_terms = [
-                loss_term for loss_term in
-                [view_aux_loss, fastslow_aux_loss, proto_aux_loss]
-                if loss_term is not None
-            ]
-            if aux_terms:
-                aux_loss = torch.stack(aux_terms).mean()
-                extra_stats['aux_loss'] = aux_loss
-                if view_aux_loss is not None:
-                    extra_stats['aux_view_loss'] = view_aux_loss.detach()
-                if fastslow_aux_loss is not None:
-                    extra_stats['aux_fastslow_loss'] = fastslow_aux_loss.detach()
-                if proto_aux_loss is not None:
-                    extra_stats['aux_proto_loss'] = proto_aux_loss.detach()
-
         pair_edge_repr = pair_repr[pair_inv]
         edge_repr = edge_repr + torch.sigmoid(self.pair_residual_alpha) * pair_edge_repr
         pred = self.layer_post_mp(torch.cat(
@@ -3227,8 +3048,6 @@ class HeteroGNNEdgeHead(nn.Module):
                 torch.sigmoid(self.support_proto_route_alpha) *
                 proto_route_logits
             )
-        if extra_stats:
-            return pred, batch[task].y[mask], extra_stats
         return pred, batch[task].y[mask]
 
     def _apply_index(self, batch):
