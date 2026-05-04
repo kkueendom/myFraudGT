@@ -318,10 +318,6 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotorouteboundresid'
         )
-        self.use_support_proto_subgraph_scale_expert = (
-            self.edge_decoding ==
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoroutescalesubgraphboundresid'
-        )
         self.use_dot_fallback_support_mixture = (
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot'
@@ -458,24 +454,6 @@ class HeteroGNNEdgeHead(nn.Module):
             self.use_sequence_bridge_bank = True
             self.use_target_sequence_select = True
             self.use_difference_fusion = True
-            self.use_terminal_role_flow = True
-            self.use_boundary_lag_flow = True
-            self.use_support_conditioned_mixture = True
-            self.use_sequence_consistency_filter = True
-            self.use_support_class_prototype_expert = True
-            self.use_support_class_mixture_prototype_expert = True
-            self.use_bounded_support_residuals = True
-            self.use_support_prototype_expert = True
-            self.use_sequence_bridge_bank_window = True
-        if self.use_support_proto_subgraph_scale_expert:
-            self.use_support_subgraph_route_expert = True
-            self.use_support_proto_route_expert = True
-            self.use_pair_chain_head = True
-            self.use_chain_context_residual = True
-            self.use_sequence_context_residual = True
-            self.use_pair_internal_sequence = True
-            self.use_sequence_bridge_bank = True
-            self.use_target_sequence_select = True
             self.use_terminal_role_flow = True
             self.use_boundary_lag_flow = True
             self.use_support_conditioned_mixture = True
@@ -998,15 +976,6 @@ class HeteroGNNEdgeHead(nn.Module):
                             )
                             self.support_proto_route_alpha = nn.Parameter(
                                 torch.full((1,), math.log(0.04 / 0.96))
-                            )
-                        if self.use_support_proto_subgraph_scale_expert:
-                            self.support_proto_subgraph_scale_gate = MLP(
-                                dim_in + self.support_feature_dim + 12, 1,
-                                num_layers=self.head_layers,
-                                bias=True,
-                            )
-                            self.support_proto_subgraph_scale_bias = nn.Parameter(
-                                torch.tensor(math.log(0.18 / 0.82))
                             )
                     if self.use_sequence_bridge_motif_lite:
                         self.bridge_leg_pair_proj = MLP(dim_in * 3 + 1, dim_in,
@@ -2495,61 +2464,6 @@ class HeteroGNNEdgeHead(nn.Module):
                             subgraph_route * pair_class_proto_support +
                             (1.0 - subgraph_route) * community_support
                         )
-                        if self.use_support_proto_subgraph_scale_expert:
-                            proto_route_branch = pair_proto_route_repr
-                            if proto_route_branch is None:
-                                proto_route_branch = pair_class_proto_repr
-                            if proto_route_branch is None:
-                                proto_route_branch = pair_repr
-                            proto_route_support = pair_proto_route_support
-                            if proto_route_support is None:
-                                proto_route_support = pair_class_proto_support
-                            if proto_route_support is None:
-                                proto_route_support = zero_support
-                            subgraph_route_support = pair_subgraph_route_support
-                            if subgraph_route_support is None:
-                                subgraph_route_support = pair_class_proto_support
-                            if subgraph_route_support is None:
-                                subgraph_route_support = zero_support
-                            route_branch_align = self._cosine_feature(
-                                proto_route_branch,
-                                pair_subgraph_route_repr,
-                            )
-                            if route_branch_align is None:
-                                route_branch_align = zero_support
-                            subgraph_scale_stats = torch.cat(
-                                (
-                                    pair_fill,
-                                    pair_log_count,
-                                    forward_overlap,
-                                    cycle_overlap,
-                                    boundary_valid_ratio,
-                                    boundary_after_ratio,
-                                    proto_margin,
-                                    proto_ready,
-                                    proto_route_support,
-                                    subgraph_route_support,
-                                    route_branch_align,
-                                    class_subgraph_align,
-                                ),
-                                dim=-1,
-                            )
-                            subgraph_scale = torch.sigmoid(
-                                self.support_proto_subgraph_scale_bias +
-                                self.support_proto_subgraph_scale_gate(
-                                    torch.cat(
-                                        (
-                                            pair_subgraph_route_repr - proto_route_branch,
-                                            pair_support_features,
-                                            subgraph_scale_stats,
-                                        ),
-                                        dim=-1,
-                                    )
-                                )
-                            )
-                            pair_subgraph_route_support = (
-                                subgraph_scale * subgraph_route_support
-                            )
                 if self.use_support_proto_consensus_expert:
                     proto_consensus = self._cosine_feature(
                         pair_proto_repr,
