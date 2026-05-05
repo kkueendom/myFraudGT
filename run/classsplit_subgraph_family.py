@@ -143,11 +143,18 @@ ps = subprocess.run(['ps', '-eo', 'pid,args='], capture_output=True, text=True, 
 active = {{}}
 active_gpus = set()
 for line in ps:
-    if 'python -m fraudGT.main --cfg ' not in line:
+    parts = line.strip().split(None, 1)
+    if len(parts) != 2:
+        continue
+    command = parts[1]
+    if not (
+        command.startswith('python -m fraudGT.main ')
+        or command.startswith('python3 -m fraudGT.main ')
+    ):
         continue
     for item in meta:
-        if item['cfg'] in line:
-            active[item['dataset']] = line.strip()
+        if item['cfg'] in command:
+            active[item['dataset']] = command
             active_gpus.add(int(item['gpu']))
             break
 res = {{'active': active, 'active_gpus': sorted(active_gpus), 'states': {{}}}}
