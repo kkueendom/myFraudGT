@@ -143,7 +143,7 @@ ps = subprocess.run(['ps', '-eo', 'pid,args='], capture_output=True, text=True, 
 active = {{}}
 active_gpus = set()
 for line in ps:
-    if 'fraudGT.main' not in line:
+    if 'python -m fraudGT.main --cfg ' not in line:
         continue
     for item in meta:
         if item['cfg'] in line:
