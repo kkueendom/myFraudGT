@@ -60,6 +60,22 @@ FAMILIES = {
         "configs/AML-Large-HI/AML-Large-HI-UnifiedClassMixProtoRoute240.yaml",
         "configs/AML-Large-LI/AML-Large-LI-UnifiedClassMixProtoRoute240.yaml",
     ],
+    "supportmixconsisclassmixprotoboundclasssplitresid_full240": [
+        "configs/AML-Small-HI/AML-Small-HI-UnifiedClassSplit240.yaml",
+        "configs/AML-Small-LI/AML-Small-LI-UnifiedClassSplit240.yaml",
+        "configs/AML-Medium-HI/AML-Medium-HI-UnifiedClassSplit240.yaml",
+        "configs/AML-Medium-LI/AML-Medium-LI-UnifiedClassSplit240.yaml",
+        "configs/AML-Large-HI/AML-Large-HI-UnifiedClassSplit240.yaml",
+        "configs/AML-Large-LI/AML-Large-LI-UnifiedClassSplit240.yaml",
+    ],
+    "supportmixconsisclassmixprotoboundclasssplitsubgraphrouteboundresid_full240": [
+        "configs/AML-Small-HI/AML-Small-HI-UnifiedClassSplitSubgraphRoute240.yaml",
+        "configs/AML-Small-LI/AML-Small-LI-UnifiedClassSplitSubgraphRoute240.yaml",
+        "configs/AML-Medium-HI/AML-Medium-HI-UnifiedClassSplitSubgraphRoute240.yaml",
+        "configs/AML-Medium-LI/AML-Medium-LI-UnifiedClassSplitSubgraphRoute240.yaml",
+        "configs/AML-Large-HI/AML-Large-HI-UnifiedClassSplitSubgraphRoute240.yaml",
+        "configs/AML-Large-LI/AML-Large-LI-UnifiedClassSplitSubgraphRoute240.yaml",
+    ],
     "supportmixconsisdualprotoboundresid_full240": [
         "configs/AML-Small-HI/AML-Small-HI-SparseNodeGT+ports+Ego+WBDirMeanMaxWinnerProjTemporalPairChainContextSeqPairSeqBridgeBankWindowSeqSelectRoleFlowBoundaryLagSupportMixConsisDualProtoBoundResid240UnifiedFullCalibMemSafe.yaml",
         "configs/AML-Small-LI/AML-Small-LI-SparseNodeGT+ports+Ego+WBDirMeanMaxWinnerProjTemporalPairChainContextSeqPairSeqBridgeBankWindowSeqSelectRoleFlowBoundaryLagSupportMixConsisDualProtoBoundResid240UnifiedFullCalibMemSafe.yaml",

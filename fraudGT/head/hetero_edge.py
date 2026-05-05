@@ -322,6 +322,10 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitresid'
         )
+        self.use_support_class_split_subgraph_route_expert = (
+            self.edge_decoding ==
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphrouteboundresid'
+        )
         self.use_dot_fallback_support_mixture = (
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot'
@@ -499,6 +503,23 @@ class HeteroGNNEdgeHead(nn.Module):
             self.use_support_prototype_expert = True
             self.use_sequence_bridge_bank_window = True
         if self.use_support_class_split_expert:
+            self.use_pair_chain_head = True
+            self.use_chain_context_residual = True
+            self.use_sequence_context_residual = True
+            self.use_pair_internal_sequence = True
+            self.use_sequence_bridge_bank = True
+            self.use_target_sequence_select = True
+            self.use_terminal_role_flow = True
+            self.use_boundary_lag_flow = True
+            self.use_support_conditioned_mixture = True
+            self.use_sequence_consistency_filter = True
+            self.use_support_class_prototype_expert = True
+            self.use_support_class_mixture_prototype_expert = True
+            self.use_bounded_support_residuals = True
+            self.use_sequence_bridge_bank_window = True
+        if self.use_support_class_split_subgraph_route_expert:
+            self.use_support_class_split_expert = True
+            self.use_support_subgraph_route_expert = True
             self.use_pair_chain_head = True
             self.use_chain_context_residual = True
             self.use_sequence_context_residual = True
@@ -830,6 +851,28 @@ class HeteroGNNEdgeHead(nn.Module):
                                 bias=True,
                             )
                             self.support_class_split_alpha = nn.Parameter(
+                                torch.full((1,), math.log(0.04 / 0.96))
+                            )
+                        if self.use_support_class_split_subgraph_route_expert:
+                            self.support_class_split_subgraph_route_fuse = MLP(
+                                dim_in * 4 + self.support_feature_dim + 19, dim_in,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_class_split_subgraph_route_gate = MLP(
+                                dim_in + self.support_feature_dim + 19, 1,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_class_split_subgraph_route_bias = nn.Parameter(
+                                torch.tensor(math.log(0.58 / 0.42))
+                            )
+                            self.support_class_split_subgraph_route_head = MLP(
+                                dim_in, dim_out,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_class_split_subgraph_route_alpha = nn.Parameter(
                                 torch.full((1,), math.log(0.04 / 0.96))
                             )
                         if self.use_support_proto_consensus_expert:
@@ -1693,6 +1736,8 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_subgraph_route_support = None
         pair_proto_route_repr = None
         pair_proto_route_support = None
+        pair_class_split_subgraph_route_repr = None
+        pair_class_split_subgraph_route_support = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -2603,6 +2648,116 @@ class HeteroGNNEdgeHead(nn.Module):
                             subgraph_route * pair_class_proto_support +
                             (1.0 - subgraph_route) * community_support
                         )
+                    if self.use_support_class_split_subgraph_route_expert:
+                        split_route_repr = pair_class_split_repr
+                        if split_route_repr is None:
+                            split_route_repr = pair_class_proto_repr
+                        if split_route_repr is None:
+                            split_route_repr = pair_repr
+                        subgraph_route_repr = pair_subgraph_route_repr
+                        if subgraph_route_repr is None:
+                            subgraph_route_repr = pair_sequence_repr
+                        if subgraph_route_repr is None:
+                            subgraph_route_repr = pair_context_repr
+                        if subgraph_route_repr is None:
+                            subgraph_route_repr = pair_boundary_lag_repr
+                        if subgraph_route_repr is None:
+                            subgraph_route_repr = pair_repr
+                        split_route_support = pair_class_split_support
+                        if split_route_support is None:
+                            split_route_support = pair_class_proto_support
+                        if split_route_support is None:
+                            split_route_support = zero_support
+                        subgraph_route_support = pair_subgraph_route_support
+                        if subgraph_route_support is None:
+                            subgraph_route_support = pair_sequence_support
+                        if subgraph_route_support is None:
+                            subgraph_route_support = pair_boundary_support
+                        if subgraph_route_support is None:
+                            subgraph_route_support = pair_terminal_support
+                        if subgraph_route_support is None:
+                            subgraph_route_support = pair_class_proto_support
+                        if subgraph_route_support is None:
+                            subgraph_route_support = zero_support
+                        split_subgraph_align = self._cosine_feature(
+                            split_route_repr,
+                            subgraph_route_repr,
+                        )
+                        if split_subgraph_align is None:
+                            split_subgraph_align = zero_support
+                        split_proto_align = self._cosine_feature(
+                            split_route_repr,
+                            pair_class_proto_repr,
+                        )
+                        if split_proto_align is None:
+                            split_proto_align = zero_support
+                        subgraph_proto_align = self._cosine_feature(
+                            subgraph_route_repr,
+                            pair_class_proto_repr,
+                        )
+                        if subgraph_proto_align is None:
+                            subgraph_proto_align = zero_support
+                        class_split_subgraph_stats = torch.cat(
+                            (
+                                pos_sim,
+                                neg_sim,
+                                proto_margin,
+                                proto_ready,
+                                pos_peak,
+                                neg_peak,
+                                pos_spread,
+                                neg_spread,
+                                pair_fill,
+                                pair_log_count,
+                                forward_overlap,
+                                cycle_overlap,
+                                boundary_valid_ratio,
+                                boundary_after_ratio,
+                                split_subgraph_align,
+                                split_proto_align,
+                                subgraph_proto_align,
+                                split_route_support,
+                                subgraph_route_support,
+                            ),
+                            dim=-1,
+                        )
+                        class_split_subgraph_route = torch.sigmoid(
+                            self.support_class_split_subgraph_route_bias +
+                            self.support_class_split_subgraph_route_gate(
+                                torch.cat(
+                                    (
+                                        split_route_repr - subgraph_route_repr,
+                                        pair_support_features,
+                                        class_split_subgraph_stats,
+                                    ),
+                                    dim=-1,
+                                )
+                            )
+                        )
+                        class_split_subgraph_hybrid = subgraph_route_repr + (
+                            class_split_subgraph_route *
+                            (split_route_repr - subgraph_route_repr)
+                        )
+                        pair_class_split_subgraph_route_repr = (
+                            self.support_class_split_subgraph_route_fuse(
+                                torch.cat(
+                                    (
+                                        pair_repr,
+                                        split_route_repr,
+                                        subgraph_route_repr,
+                                        class_split_subgraph_hybrid,
+                                        pair_support_features,
+                                        class_split_subgraph_stats,
+                                    ),
+                                    dim=-1,
+                                )
+                            )
+                        )
+                        pair_class_split_subgraph_route_support = (
+                            class_split_subgraph_route * split_route_support +
+                            (1.0 - class_split_subgraph_route) *
+                            subgraph_route_support
+                        )
                 if self.use_support_proto_consensus_expert:
                     proto_consensus = self._cosine_feature(
                         pair_proto_repr,
@@ -3169,7 +3324,10 @@ class HeteroGNNEdgeHead(nn.Module):
                 torch.sigmoid(self.support_class_route_alpha) *
                 class_route_logits
             )
-        if self.use_support_subgraph_route_expert:
+        if (
+            self.use_support_subgraph_route_expert and
+            not self.use_support_class_split_subgraph_route_expert
+        ):
             if pair_subgraph_route_repr is None:
                 pair_subgraph_route_repr = torch.zeros_like(pair_repr)
             subgraph_route_logits = self.support_subgraph_route_head(
@@ -3202,6 +3360,27 @@ class HeteroGNNEdgeHead(nn.Module):
             pred = pred + (
                 torch.sigmoid(self.support_proto_route_alpha) *
                 proto_route_logits
+            )
+        if self.use_support_class_split_subgraph_route_expert:
+            if pair_class_split_subgraph_route_repr is None:
+                pair_class_split_subgraph_route_repr = torch.zeros_like(pair_repr)
+            class_split_subgraph_route_logits = (
+                self.support_class_split_subgraph_route_head(
+                    pair_class_split_subgraph_route_repr[pair_inv][mask]
+                )
+            )
+            if pair_class_split_subgraph_route_support is not None:
+                class_split_subgraph_route_logits = (
+                    pair_class_split_subgraph_route_support[pair_inv][mask] *
+                    class_split_subgraph_route_logits
+                )
+            if self.use_bounded_support_residuals:
+                class_split_subgraph_route_logits = torch.tanh(
+                    class_split_subgraph_route_logits
+                )
+            pred = pred + (
+                torch.sigmoid(self.support_class_split_subgraph_route_alpha) *
+                class_split_subgraph_route_logits
             )
         return pred, batch[task].y[mask]
 
