@@ -147,10 +147,7 @@ for line in ps:
     if len(parts) != 2:
         continue
     command = parts[1]
-    if not (
-        command.startswith('python -m fraudGT.main ')
-        or command.startswith('python3 -m fraudGT.main ')
-    ):
+    if 'fraudGT.main' not in command:
         continue
     for item in meta:
         if item['cfg'] in command:
