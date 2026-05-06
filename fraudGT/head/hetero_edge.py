@@ -330,9 +330,15 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphrouteprotoboundresid'
         )
-        self.use_flow_sketch_expert = (
+        self.use_flow_sketch_score_calibration = (
             self.edge_decoding ==
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisflowsketchboundresid'
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisflowsketchscorecalibboundresid'
+        )
+        self.use_flow_sketch_expert = (
+            self.edge_decoding in {
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisflowsketchboundresid',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisflowsketchscorecalibboundresid',
+            }
         )
         self.use_dot_fallback_support_mixture = (
             self.edge_decoding ==
@@ -813,6 +819,28 @@ class HeteroGNNEdgeHead(nn.Module):
                             self.support_flow_sketch_alpha = nn.Parameter(
                                 torch.full((1,), math.log(0.06 / 0.94))
                             )
+                            if self.use_flow_sketch_score_calibration:
+                                self.support_flow_scorecalib_fuse = MLP(
+                                    dim_in * 4 + self.support_feature_dim + 10, dim_in,
+                                    num_layers=self.head_layers,
+                                    bias=True,
+                                )
+                                self.support_flow_scorecalib_gate = MLP(
+                                    dim_in + self.support_feature_dim + 10, 1,
+                                    num_layers=self.head_layers,
+                                    bias=True,
+                                )
+                                self.support_flow_scorecalib_bias = nn.Parameter(
+                                    torch.tensor(math.log(0.10 / 0.90))
+                                )
+                                self.support_flow_scorecalib_head = MLP(
+                                    dim_in, 2,
+                                    num_layers=self.head_layers,
+                                    bias=True,
+                                )
+                                self.support_flow_scorecalib_alpha = nn.Parameter(
+                                    torch.full((1,), math.log(0.04 / 0.96))
+                                )
                         if self.use_sequence_consistency_filter:
                             consistency_input_dim = dim_in * 3 + 4
                             self.outgoing_consistency_gate = MLP(
@@ -1306,6 +1334,18 @@ class HeteroGNNEdgeHead(nn.Module):
         valid = (sequence_bank.abs().sum(dim=-1, keepdim=True) > 0).float()
         return sequence_bank * valid * scale
 
+    def _apply_signed_margin_calibration(self, pred, scale, bias):
+        if pred.size(-1) == 1:
+            return scale * pred + bias
+        if pred.size(-1) != 2:
+            return pred
+        pred_center = pred.mean(dim=-1, keepdim=True)
+        pred_margin = pred[:, 1:2] - pred[:, 0:1]
+        pred_margin = scale * pred_margin + bias
+        return pred_center + torch.cat(
+            (-0.5 * pred_margin, 0.5 * pred_margin), dim=-1
+        )
+
     def _consistency_filter_sequence_bank(self, sequence_bank, opposite_bank, query_repr, scorer):
         valid = (sequence_bank.abs().sum(dim=-1, keepdim=True) > 0).float()
         if opposite_bank is None:
@@ -1798,6 +1838,8 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_boundary_support = None
         pair_flow_sketch_repr = None
         pair_flow_sketch_support = None
+        pair_flow_scorecalib_repr = None
+        pair_flow_scorecalib_support = None
         pair_proto_repr = None
         pair_proto_support = None
         pair_class_proto_repr = None
@@ -2471,6 +2513,110 @@ class HeteroGNNEdgeHead(nn.Module):
                             )
                         )
                     )
+                    if self.use_flow_sketch_score_calibration:
+                        flow_seq_align = self._cosine_feature(
+                            pair_flow_sketch_repr,
+                            pair_sequence_repr,
+                        )
+                        flow_terminal_align = self._cosine_feature(
+                            pair_flow_sketch_repr,
+                            pair_terminal_role_repr,
+                        )
+                        flow_boundary_align = self._cosine_feature(
+                            pair_flow_sketch_repr,
+                            pair_boundary_lag_repr,
+                        )
+                        flow_context_align = self._cosine_feature(
+                            pair_flow_sketch_repr,
+                            pair_context_repr,
+                        )
+                        flow_repr_align = self._cosine_feature(
+                            pair_flow_sketch_repr,
+                            pair_repr,
+                        )
+                        if flow_seq_align is None:
+                            flow_seq_align = zero_support
+                        if flow_terminal_align is None:
+                            flow_terminal_align = zero_support
+                        if flow_boundary_align is None:
+                            flow_boundary_align = zero_support
+                        if flow_context_align is None:
+                            flow_context_align = zero_support
+                        if flow_repr_align is None:
+                            flow_repr_align = zero_support
+                        calib_sequence_repr = (
+                            pair_sequence_repr
+                            if pair_sequence_repr is not None
+                            else torch.zeros_like(pair_repr)
+                        )
+                        calib_terminal_repr = (
+                            pair_terminal_role_repr
+                            if pair_terminal_role_repr is not None
+                            else torch.zeros_like(pair_repr)
+                        )
+                        calib_boundary_repr = (
+                            pair_boundary_lag_repr
+                            if pair_boundary_lag_repr is not None
+                            else torch.zeros_like(pair_repr)
+                        )
+                        calib_context_repr = (
+                            pair_context_repr
+                            if pair_context_repr is not None
+                            else torch.zeros_like(pair_repr)
+                        )
+                        calib_weight_sum = (
+                            pair_sequence_support +
+                            pair_terminal_support +
+                            pair_boundary_support +
+                            pair_structure_mix
+                        ).clamp(min=1e-6)
+                        calib_hybrid_context = (
+                            pair_sequence_support * calib_sequence_repr +
+                            pair_terminal_support * calib_terminal_repr +
+                            pair_boundary_support * calib_boundary_repr +
+                            pair_structure_mix * calib_context_repr
+                        ) / calib_weight_sum
+                        flow_scorecalib_stats = torch.cat(
+                            (
+                                pair_structure_mix,
+                                pair_sequence_support,
+                                pair_terminal_support,
+                                pair_boundary_support,
+                                pair_flow_sketch_support,
+                                flow_repr_align,
+                                flow_seq_align,
+                                flow_terminal_align,
+                                flow_boundary_align,
+                                flow_context_align,
+                            ),
+                            dim=-1,
+                        )
+                        pair_flow_scorecalib_repr = self.support_flow_scorecalib_fuse(
+                            torch.cat(
+                                (
+                                    pair_repr,
+                                    pair_flow_sketch_repr,
+                                    calib_hybrid_context,
+                                    pair_flow_sketch_repr * calib_hybrid_context,
+                                    pair_support_features,
+                                    flow_scorecalib_stats,
+                                ),
+                                dim=-1,
+                            )
+                        )
+                        pair_flow_scorecalib_support = torch.sigmoid(
+                            self.support_flow_scorecalib_bias +
+                            self.support_flow_scorecalib_gate(
+                                torch.cat(
+                                    (
+                                        pair_flow_scorecalib_repr,
+                                        pair_support_features,
+                                        flow_scorecalib_stats,
+                                    ),
+                                    dim=-1,
+                                )
+                            )
+                        )
                 if self.use_support_prototype_expert:
                     proto_query = pair_sequence_repr
                     if proto_query is None:
@@ -3374,6 +3520,40 @@ class HeteroGNNEdgeHead(nn.Module):
             pred = pred + (
                 torch.sigmoid(self.support_flow_sketch_alpha) *
                 flow_sketch_logits
+            )
+        if self.use_flow_sketch_score_calibration:
+            if pair_flow_scorecalib_repr is None:
+                pair_flow_scorecalib_repr = torch.zeros_like(pair_repr)
+            flow_scorecalib_params = self.support_flow_scorecalib_head(
+                pair_flow_scorecalib_repr[pair_inv][mask]
+            )
+            if pair_flow_scorecalib_support is not None:
+                flow_scorecalib_support = (
+                    pair_flow_scorecalib_support[pair_inv][mask]
+                )
+            else:
+                flow_scorecalib_support = torch.ones_like(
+                    flow_scorecalib_params[:, :1]
+                )
+            flow_scorecalib_alpha = torch.sigmoid(
+                self.support_flow_scorecalib_alpha
+            )
+            flow_margin_scale = 1.0 + (
+                0.75 *
+                flow_scorecalib_alpha *
+                flow_scorecalib_support *
+                torch.tanh(flow_scorecalib_params[:, :1])
+            )
+            flow_margin_bias = (
+                0.50 *
+                flow_scorecalib_alpha *
+                flow_scorecalib_support *
+                torch.tanh(flow_scorecalib_params[:, 1:2])
+            )
+            pred = self._apply_signed_margin_calibration(
+                pred,
+                flow_margin_scale,
+                flow_margin_bias,
             )
         if self.use_support_prototype_expert:
             if pair_proto_repr is None:
