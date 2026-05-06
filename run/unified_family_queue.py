@@ -159,6 +159,14 @@ FAMILIES = {
         "configs/AML-Medium-HI/AML-Medium-HI-FlowSketchScoreCalib40.yaml",
         "configs/AML-Large-LI/AML-Large-LI-FlowSketchScoreCalib40.yaml",
     ],
+    "supportmixconsisflowsketchscorecalibboundresid_screen40_all6": [
+        "configs/AML-Small-HI/AML-Small-HI-FlowSketchScoreCalib40.yaml",
+        "configs/AML-Small-LI/AML-Small-LI-FlowSketchScoreCalib40.yaml",
+        "configs/AML-Medium-HI/AML-Medium-HI-FlowSketchScoreCalib40.yaml",
+        "configs/AML-Medium-LI/AML-Medium-LI-FlowSketchScoreCalib40.yaml",
+        "configs/AML-Large-HI/AML-Large-HI-FlowSketchScoreCalib40.yaml",
+        "configs/AML-Large-LI/AML-Large-LI-FlowSketchScoreCalib40.yaml",
+    ],
 }
 
 
