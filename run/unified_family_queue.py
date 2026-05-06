@@ -10,6 +10,7 @@ from pathlib import Path
 TEST_LINE = re.compile(r"'epoch': (\d+).+?'f1': ([0-9.eE+-]+)")
 OUT_DIR_LINE = re.compile(r"^out_dir:\s*(.+?)\s*$")
 DATASET_LINE = re.compile(r"^\s*name:\s*(.+?)\s*$")
+MAX_EPOCH_LINE = re.compile(r"^\s*max_epoch:\s*(\d+)\s*$")
 
 TARGET_MARGIN = 0.02
 
@@ -148,6 +149,11 @@ FAMILIES = {
         "configs/AML-Large-HI/AML-Large-HI-SparseNodeGT+ports+Ego+WBDirMeanMaxWinnerProjTemporalPairChainContextSeqPairSeqBridgeBankWindowSeqSelectDeltaFusionRoleFlowBoundaryLagSupportMixConsisDualProtoConsensusDisagreeConfHardScaleClassRouteBoundResid240UnifiedFullCalibMemSafe.yaml",
         "configs/AML-Large-LI/AML-Large-LI-SparseNodeGT+ports+Ego+WBDirMeanMaxWinnerProjTemporalPairChainContextSeqPairSeqBridgeBankWindowSeqSelectDeltaFusionRoleFlowBoundaryLagSupportMixConsisDualProtoConsensusDisagreeConfHardScaleClassRouteBoundResid240UnifiedFullCalibMemSafe.yaml",
     ],
+    "supportmixconsisflowsketchboundresid_screen40": [
+        "configs/AML-Small-HI/AML-Small-HI-FlowSketch40.yaml",
+        "configs/AML-Medium-HI/AML-Medium-HI-FlowSketch40.yaml",
+        "configs/AML-Large-LI/AML-Large-LI-FlowSketch40.yaml",
+    ],
 }
 
 
@@ -162,6 +168,7 @@ def log(msg):
 def read_config_meta(cfg_path):
     out_dir = None
     dataset = None
+    max_epoch = None
     for line in Path(cfg_path).read_text(errors="ignore").splitlines():
         out_match = OUT_DIR_LINE.match(line)
         if out_match:
@@ -169,13 +176,18 @@ def read_config_meta(cfg_path):
         data_match = DATASET_LINE.match(line)
         if data_match:
             dataset = data_match.group(1).strip()
+        epoch_match = MAX_EPOCH_LINE.match(line)
+        if epoch_match:
+            max_epoch = int(epoch_match.group(1))
     if not out_dir or not dataset:
         raise ValueError(f"failed to parse config metadata from {cfg_path}")
-    return out_dir, dataset
+    if max_epoch is None:
+        max_epoch = 240
+    return out_dir, dataset, max_epoch
 
 
 def run_dir_for(cfg_path, gpu):
-    out_dir, _ = read_config_meta(cfg_path)
+    out_dir, _, _ = read_config_meta(cfg_path)
     return Path(out_dir) / f"{Path(cfg_path).stem}-gpu{gpu}"
 
 
@@ -309,7 +321,7 @@ def main():
         status = run_one(cfg_path, args.gpu, repo_root)
         log_path = run_dir / "42" / "logging.log"
         best_f1, best_epoch = parse_raw_peak(log_path)
-        _, dataset = read_config_meta(cfg_path)
+        _, dataset, _ = read_config_meta(cfg_path)
         target = THRESHOLDS[dataset]
         results.append(
             {

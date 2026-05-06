@@ -26,17 +26,11 @@ GPU_ORDER = {
 }
 
 DEFAULT_CHAIN = [
-    "supportmixconsisdualprotoboundresid_full240",
-    "supportmixconsisdeltafusiondualprotoboundresid_full240",
-    "supportmixconsisdeltafusiondualprotoconsensusboundresid_full240",
-    "supportmixconsisdeltafusiondualprotoconsensusdisagreeboundresid_full240",
-    "supportmixconsisdeltafusiondualprotoconsensusdisagreeconfboundresid_full240",
-    "supportmixconsisdeltafusiondualprotoconsensusdisagreeconfhardboundresid_full240",
-    "supportmixconsisdeltafusiondualprotoconsensusdisagreeconfhardscaleboundresid_full240",
-    "supportmixconsisdeltafusiondualprotoconsensusdisagreeconfhardscaleclassrouteboundresid_full240",
+    "supportmixconsisflowsketchboundresid_screen40",
 ]
 
-LOG_PATH = Path("/Users/kun/remote_unified_family_autochain.log")
+EXPERIMENT_HOME = Path(__file__).resolve().parents[2]
+LOG_PATH = EXPERIMENT_HOME / "remote_unified_family_autochain.log"
 SUMMARY_MD = Path("/Users/kun/Desktop/remote_unified_family_autochain_status.md")
 
 
@@ -109,7 +103,7 @@ def wait_for_pid_release(pid_file, poll_seconds):
 def family_meta(family):
     items = []
     for cfg_path in FAMILIES[family]:
-        out_dir, dataset = read_config_meta(cfg_path)
+        out_dir, dataset, max_epoch = read_config_meta(cfg_path)
         gpu = 1 if dataset in GPU_ORDER[1] else 0
         run_dir = str(Path(out_dir) / f"{Path(cfg_path).stem}-gpu{gpu}")
         items.append(
@@ -119,7 +113,7 @@ def family_meta(family):
                 "gpu": gpu,
                 "run_dir": run_dir,
                 "target": THRESHOLDS[dataset],
-                "max_epoch": 240,
+                "max_epoch": max_epoch,
             }
         )
     return items
@@ -293,7 +287,11 @@ printf "%s" "$(cat {q(pid_file)})"
 
 def run_family(cli, family, poll_seconds):
     log(f"family {family} start")
-    prepare_family(cli, family)
+    state = fetch_state(cli, family)
+    if state["active"]:
+        log(f"resume family {family}; active={sorted(state['active'])}, skip prepare")
+    else:
+        prepare_family(cli, family)
     while True:
         state = fetch_state(cli, family)
         write_summary(family, state)

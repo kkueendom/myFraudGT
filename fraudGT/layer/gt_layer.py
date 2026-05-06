@@ -163,6 +163,13 @@ class GTLayer(nn.Module):
             self.directional_meanmax_dualgate_writeback or
             self.directional_meanspike_dualgate_writeback
         )
+        self.flow_sketch_writeback_enabled = (
+            self.edge_writeback_enabled and
+            cfg.gt.flow_sketch_writeback
+        )
+        self.num_flow_sketch_writeback_slots = max(
+            int(cfg.gt.flow_sketch_slots), 1
+        )
 
         # Residual connection
         self.skip_local = torch.nn.ParameterDict()
@@ -362,6 +369,27 @@ class GTLayer(nn.Module):
                     )
                     self.writeback_softmix_alpha = nn.Parameter(
                         torch.full((2,), math.log(0.75 / 0.25))
+                    )
+                if self.flow_sketch_writeback_enabled:
+                    self.writeback_flow_sketch_feature_dim = 10
+                    self.writeback_flow_sketch_slots = nn.Parameter(
+                        torch.randn(
+                            self.num_flow_sketch_writeback_slots, dim_out
+                        ) / math.sqrt(dim_out)
+                    )
+                    self.writeback_flow_sketch_assign = Linear(
+                        dim_out * 4 + self.writeback_flow_sketch_feature_dim,
+                        self.num_flow_sketch_writeback_slots,
+                    )
+                    self.writeback_flow_sketch_fuse = Linear(
+                        dim_out * 5 + self.writeback_flow_sketch_feature_dim,
+                        dim_out * 2,
+                    )
+                    self.writeback_flow_sketch_gate = Linear(
+                        dim_out + self.writeback_flow_sketch_feature_dim, 2
+                    )
+                    self.writeback_flow_sketch_alpha = nn.Parameter(
+                        torch.full((2,), math.log(0.10 / 0.90))
                     )
                 for node_type in metadata[0]:
                     if (
@@ -582,6 +610,100 @@ class GTLayer(nn.Module):
         selected_edges = selected_edges[valid_edges]
         selected[valid_nodes] = edge_values[selected_edges]
         return selected
+
+    def _cosine_scalar_feature(self, left_repr, right_repr):
+        left_norm = left_repr.norm(dim=-1, keepdim=True)
+        right_norm = right_repr.norm(dim=-1, keepdim=True)
+        valid = (left_norm > 0) & (right_norm > 0)
+        cosine = F.cosine_similarity(
+            left_repr, right_repr, dim=-1, eps=1e-6
+        ).unsqueeze(-1)
+        cosine = 0.5 * (cosine + 1.0)
+        return torch.where(valid, cosine, torch.zeros_like(cosine))
+
+    def _augment_flow_sketch_writeback(self, edge_context, incoming_mean,
+                                       outgoing_mean, in_count, out_count):
+        if not self.flow_sketch_writeback_enabled:
+            return edge_context
+        if edge_context.size(-1) != self.dim_out * 4:
+            return edge_context
+
+        incoming_anchor, outgoing_anchor, incoming_focus, outgoing_focus = (
+            torch.chunk(edge_context, 4, dim=-1)
+        )
+        sketch_features = torch.cat(
+            (
+                torch.log1p(in_count.clamp(min=0.0)).unsqueeze(-1),
+                torch.log1p(out_count.clamp(min=0.0)).unsqueeze(-1),
+                torch.log1p(
+                    (incoming_focus - incoming_mean).norm(dim=-1, keepdim=True)
+                ),
+                torch.log1p(
+                    (outgoing_focus - outgoing_mean).norm(dim=-1, keepdim=True)
+                ),
+                self._cosine_scalar_feature(incoming_mean, outgoing_mean),
+                self._cosine_scalar_feature(incoming_focus, outgoing_focus),
+                self._cosine_scalar_feature(incoming_anchor, incoming_focus),
+                self._cosine_scalar_feature(outgoing_anchor, outgoing_focus),
+                torch.log1p(
+                    (incoming_anchor - incoming_mean).norm(
+                        dim=-1, keepdim=True
+                    )
+                ),
+                torch.log1p(
+                    (outgoing_anchor - outgoing_mean).norm(
+                        dim=-1, keepdim=True
+                    )
+                ),
+            ),
+            dim=-1,
+        )
+        slot_logits = self.writeback_flow_sketch_assign(
+            torch.cat(
+                (
+                    incoming_anchor,
+                    outgoing_anchor,
+                    incoming_focus,
+                    outgoing_focus,
+                    sketch_features,
+                ),
+                dim=-1,
+            )
+        )
+        slot_weights = F.softmax(slot_logits, dim=-1)
+        slot_context = slot_weights @ self.writeback_flow_sketch_slots
+        sketch_update = self.activation(
+            self.writeback_flow_sketch_fuse(
+                torch.cat(
+                    (
+                        incoming_anchor,
+                        outgoing_anchor,
+                        incoming_focus,
+                        outgoing_focus,
+                        slot_context,
+                        sketch_features,
+                    ),
+                    dim=-1,
+                )
+            )
+        )
+        incoming_update, outgoing_update = torch.chunk(
+            sketch_update, 2, dim=-1
+        )
+        sketch_gate = torch.sigmoid(
+            self.writeback_flow_sketch_gate(
+                torch.cat((slot_context, sketch_features), dim=-1)
+            ) + self.writeback_flow_sketch_alpha
+        )
+        return torch.cat(
+            (
+                incoming_anchor,
+                outgoing_anchor,
+                incoming_focus + sketch_gate[:, :1] * incoming_update,
+                outgoing_focus + sketch_gate[:, 1:] * outgoing_update,
+            ),
+            dim=-1,
+        )
 
     def _apply_edge_writeback(self, out, edge_state, src_nodes, dst_nodes,
                               node_type_tensor, batch, edge_weights=None,
@@ -1269,6 +1391,9 @@ class GTLayer(nn.Module):
                     )
         else:
             edge_context = torch.cat((incoming, outgoing), dim=-1)
+        edge_context = self._augment_flow_sketch_writeback(
+            edge_context, incoming, outgoing, in_count, out_count
+        )
 
         out_with_writeback = out.clone()
         for idx, node_type in enumerate(batch.node_types):

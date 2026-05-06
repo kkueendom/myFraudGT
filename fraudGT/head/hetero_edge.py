@@ -330,6 +330,10 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphrouteprotoboundresid'
         )
+        self.use_flow_sketch_expert = (
+            self.edge_decoding ==
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisflowsketchboundresid'
+        )
         self.use_dot_fallback_support_mixture = (
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixdot'
@@ -557,6 +561,19 @@ class HeteroGNNEdgeHead(nn.Module):
             self.use_bounded_support_residuals = True
             self.use_support_prototype_expert = True
             self.use_sequence_bridge_bank_window = True
+        if self.use_flow_sketch_expert:
+            self.use_pair_chain_head = True
+            self.use_chain_context_residual = True
+            self.use_sequence_context_residual = True
+            self.use_pair_internal_sequence = True
+            self.use_sequence_bridge_bank = True
+            self.use_target_sequence_select = True
+            self.use_terminal_role_flow = True
+            self.use_boundary_lag_flow = True
+            self.use_support_conditioned_mixture = True
+            self.use_sequence_consistency_filter = True
+            self.use_bounded_support_residuals = True
+            self.use_sequence_bridge_bank_window = True
         self.head_layers = max(cfg.gnn.layers_post_mp, cfg.gt.layers_post_gt)
         self.train_inds = mask_to_index(dataset['train'][cfg.dataset.task_entity].split_mask).to(cfg.device)
         self.val_inds = mask_to_index(dataset['val'][cfg.dataset.task_entity].split_mask).to(cfg.device)
@@ -754,6 +771,48 @@ class HeteroGNNEdgeHead(nn.Module):
                         self.boundary_support_bias = nn.Parameter(
                             torch.tensor(math.log(0.10 / 0.90))
                         )
+                        if self.use_flow_sketch_expert:
+                            self.num_flow_sketch_slots = max(
+                                int(cfg.gt.flow_sketch_slots), 1
+                            )
+                            self.support_flow_sketch_slots = nn.Parameter(
+                                torch.randn(
+                                    self.num_flow_sketch_slots, dim_in
+                                ) / math.sqrt(dim_in)
+                            )
+                            self.support_flow_sketch_assign = MLP(
+                                dim_in + self.support_feature_dim,
+                                self.num_flow_sketch_slots,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_flow_sketch_candidate_gate = MLP(
+                                dim_in + self.support_feature_dim,
+                                4,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_flow_sketch_fuse = MLP(
+                                dim_in * 4 + self.support_feature_dim, dim_in,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_flow_sketch_gate = MLP(
+                                dim_in + self.support_feature_dim + 5, 1,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_flow_sketch_bias = nn.Parameter(
+                                torch.tensor(math.log(0.08 / 0.92))
+                            )
+                            self.support_flow_sketch_head = MLP(
+                                dim_in, dim_out,
+                                num_layers=self.head_layers,
+                                bias=True,
+                            )
+                            self.support_flow_sketch_alpha = nn.Parameter(
+                                torch.full((1,), math.log(0.06 / 0.94))
+                            )
                         if self.use_sequence_consistency_filter:
                             consistency_input_dim = dim_in * 3 + 4
                             self.outgoing_consistency_gate = MLP(
@@ -1737,6 +1796,8 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_sequence_support = None
         pair_terminal_support = None
         pair_boundary_support = None
+        pair_flow_sketch_repr = None
+        pair_flow_sketch_support = None
         pair_proto_repr = None
         pair_proto_support = None
         pair_class_proto_repr = None
@@ -2322,6 +2383,94 @@ class HeteroGNNEdgeHead(nn.Module):
                         )
                     )
                 )
+                if self.use_flow_sketch_expert:
+                    flow_sketch_query = torch.cat(
+                        (pair_repr, pair_support_features), dim=-1
+                    )
+                    flow_slot_weights = F.softmax(
+                        self.support_flow_sketch_assign(flow_sketch_query),
+                        dim=-1,
+                    )
+                    flow_slot_context = (
+                        flow_slot_weights @ self.support_flow_sketch_slots
+                    )
+                    flow_candidate_blocks = torch.stack(
+                        (
+                            pair_sequence_repr
+                            if pair_sequence_repr is not None
+                            else torch.zeros_like(pair_repr),
+                            pair_boundary_lag_repr
+                            if pair_boundary_lag_repr is not None
+                            else torch.zeros_like(pair_repr),
+                            pair_terminal_role_repr
+                            if pair_terminal_role_repr is not None
+                            else torch.zeros_like(pair_repr),
+                            pair_context_repr
+                            if pair_context_repr is not None
+                            else torch.zeros_like(pair_repr),
+                        ),
+                        dim=1,
+                    )
+                    flow_candidate_weights = F.softmax(
+                        self.support_flow_sketch_candidate_gate(
+                            flow_sketch_query
+                        ),
+                        dim=-1,
+                    )
+                    flow_candidate_context = (
+                        flow_candidate_weights.unsqueeze(-1) *
+                        flow_candidate_blocks
+                    ).sum(dim=1)
+                    pair_flow_sketch_repr = self.support_flow_sketch_fuse(
+                        torch.cat(
+                            (
+                                pair_repr,
+                                flow_slot_context,
+                                flow_candidate_context,
+                                flow_slot_context * flow_candidate_context,
+                                pair_support_features,
+                            ),
+                            dim=-1,
+                        )
+                    )
+                    flow_slot_confidence = flow_slot_weights.max(
+                        dim=-1, keepdim=True
+                    ).values
+                    flow_candidate_confidence = flow_candidate_weights.max(
+                        dim=-1, keepdim=True
+                    ).values
+                    flow_slot_match = self._cosine_feature(
+                        pair_repr, flow_slot_context
+                    )
+                    flow_candidate_match = self._cosine_feature(
+                        pair_repr, flow_candidate_context
+                    )
+                    flow_cross_match = self._cosine_feature(
+                        flow_slot_context, flow_candidate_context
+                    )
+                    if flow_slot_match is None:
+                        flow_slot_match = zero_support
+                    if flow_candidate_match is None:
+                        flow_candidate_match = zero_support
+                    if flow_cross_match is None:
+                        flow_cross_match = zero_support
+                    pair_flow_sketch_support = torch.sigmoid(
+                        self.support_flow_sketch_bias +
+                        self.support_flow_sketch_gate(
+                            torch.cat(
+                                (
+                                    pair_flow_sketch_repr,
+                                    pair_support_features,
+                                    flow_slot_confidence,
+                                    flow_candidate_confidence,
+                                    flow_slot_match,
+                                    flow_candidate_match,
+                                    flow_cross_match,
+                                ),
+                                dim=-1,
+                            )
+                        )
+                    )
                 if self.use_support_prototype_expert:
                     proto_query = pair_sequence_repr
                     if proto_query is None:
@@ -3208,6 +3357,23 @@ class HeteroGNNEdgeHead(nn.Module):
                 fallback_pred = self.edge_fallback_head(edge_local_repr[mask])
             pred = fallback_pred + pair_structure_mix[pair_inv][mask] * (
                 pred - fallback_pred
+            )
+        if self.use_flow_sketch_expert:
+            if pair_flow_sketch_repr is None:
+                pair_flow_sketch_repr = torch.zeros_like(pair_repr)
+            flow_sketch_logits = self.support_flow_sketch_head(
+                pair_flow_sketch_repr[pair_inv][mask]
+            )
+            if pair_flow_sketch_support is not None:
+                flow_sketch_logits = (
+                    pair_flow_sketch_support[pair_inv][mask] *
+                    flow_sketch_logits
+                )
+            if self.use_bounded_support_residuals:
+                flow_sketch_logits = torch.tanh(flow_sketch_logits)
+            pred = pred + (
+                torch.sigmoid(self.support_flow_sketch_alpha) *
+                flow_sketch_logits
             )
         if self.use_support_prototype_expert:
             if pair_proto_repr is None:
