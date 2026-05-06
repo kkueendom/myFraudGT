@@ -19,7 +19,7 @@ dataset:
   edge_encoder_name: Hetero_Raw
   edge_encoder_bn: False
 num_threads: 24
-num_workers: 8
+num_workers: 0
 train:
   mode: custom
   sampler: link_neighbor
@@ -30,8 +30,8 @@ train:
   eval_period: 2
   ckpt_period: 50
   tqdm: True
-  persistent_workers: True
-  pin_memory: True
+  persistent_workers: False
+  pin_memory: False
 val:
   sampler: link_neighbor
   iter_per_epoch: 256
