@@ -248,11 +248,14 @@ def launch(cli, item):
     q = shlex.quote
     cmd = f"""
 bash -lc 'set -e
-if [ -d {q(run_dir)} ] && [ ! -f {q(run_dir + "/42/logging.log.done")} ]; then mv {q(run_dir)} {q(backup)}; fi
-source ~/.bashrc >/dev/null 2>&1 || true
-conda activate {CONDA_ENV}
-cd {q(REMOTE_REPO)}
-nohup python -m fraudGT.main --cfg {q(cfg)} --repeat 1 --gpu {gpu} > {q(stdout_log)} 2>&1 < /dev/null &
+resume_args=""
+ckpt_glob={q(run_dir + "/42/ckpt/*.ckpt")}
+if ls $ckpt_glob >/dev/null 2>&1; then
+  resume_args=" train.auto_resume True train.epoch_resume -1"
+elif [ -d {q(run_dir)} ] && [ ! -f {q(run_dir + "/42/logging.log.done")} ]; then
+  mv {q(run_dir)} {q(backup)}
+fi
+nohup bash -lc "source ~/.bashrc >/dev/null 2>&1 || true && conda activate {CONDA_ENV} && cd {q(REMOTE_REPO)} && exec python -m fraudGT.main --cfg {q(cfg)} --repeat 1 --gpu {gpu}$resume_args" > {q(stdout_log)} 2>&1 < /dev/null &
 echo $! > {q(pid_file)}
 printf "%s" "$(cat {q(pid_file)})"
 '
