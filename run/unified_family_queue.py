@@ -185,6 +185,11 @@ FAMILIES = {
         "configs/AML-Medium-HI/AML-Medium-HI-FlowSketchDelta40.yaml",
         "configs/AML-Large-LI/AML-Large-LI-FlowSketchDelta40.yaml",
     ],
+    "classsplit_subgraph_flowsketch_screen40": [
+        "configs/AML-Small-HI/AML-Small-HI-ClassSplitSubgraphFlowSketch40.yaml",
+        "configs/AML-Large-HI/AML-Large-HI-ClassSplitSubgraphFlowSketch40.yaml",
+        "configs/AML-Large-LI/AML-Large-LI-ClassSplitSubgraphFlowSketch40.yaml",
+    ],
 }
 
 
