@@ -92,6 +92,15 @@ def main():
         choices=[""] + sorted(FAMILIES),
         help="Optional family that is already running under another supervisor.",
     )
+    parser.add_argument(
+        "--pass-family",
+        default="",
+        choices=[""] + sorted(FAMILIES),
+        help=(
+            "Optional family to run if the resume family completes and passes. "
+            "Useful for expanding a successful screen to a broader rerun."
+        ),
+    )
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parent.parent
@@ -112,6 +121,16 @@ def main():
                 f"resume family {args.resume_family} complete all_pass={ok}"
             )
             if ok:
+                if args.pass_family:
+                    ok = run_family(
+                        repo_root, args.pass_family, args.poll_seconds
+                    )
+                    if ok:
+                        log(
+                            f"pass family {args.pass_family} satisfied all targets"
+                        )
+                        return
+                    raise SystemExit(1)
                 return
         else:
             log(
@@ -120,16 +139,25 @@ def main():
             )
             ok = run_family(repo_root, args.resume_family, args.poll_seconds)
             if ok:
+                if args.pass_family:
+                    ok = run_family(
+                        repo_root, args.pass_family, args.poll_seconds
+                    )
+                    if ok:
+                        log(
+                            f"pass family {args.pass_family} satisfied all targets"
+                        )
+                        return
+                    raise SystemExit(1)
                 return
         chain = [family for family in chain if family != args.resume_family]
 
     for family in chain:
         ok = run_family(repo_root, family, args.poll_seconds)
-        if ok:
-            log(f"chain satisfied by family {family}")
-            return
-
-    raise SystemExit(1)
+        if not ok:
+            log(f"chain halted after failed family {family}")
+            raise SystemExit(1)
+        log(f"chain stage passed {family}")
 
 
 if __name__ == "__main__":
