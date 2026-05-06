@@ -31,7 +31,12 @@ DEFAULT_CHAIN = [
 
 EXPERIMENT_HOME = Path(__file__).resolve().parents[2]
 LOG_PATH = EXPERIMENT_HOME / "remote_unified_family_autochain.log"
-SUMMARY_MD = Path("/Users/kun/Desktop/remote_unified_family_autochain_status.md")
+SUMMARY_MD = Path(
+    os.environ.get(
+        "FRAUDGT_REMOTE_SUMMARY_MD",
+        str(EXPERIMENT_HOME / "remote_unified_family_autochain_status.md"),
+    )
+)
 
 
 def ts():
