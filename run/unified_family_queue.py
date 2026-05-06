@@ -175,6 +175,11 @@ FAMILIES = {
         "configs/AML-Large-HI/AML-Large-HI-FlowSketchScoreCalib40.yaml",
         "configs/AML-Large-LI/AML-Large-LI-FlowSketchScoreCalib40.yaml",
     ],
+    "supportmixconsisflowsketchdeltawritebackscorecalib_screen40": [
+        "configs/AML-Small-HI/AML-Small-HI-FlowSketchDeltaScoreCalib40.yaml",
+        "configs/AML-Medium-HI/AML-Medium-HI-FlowSketchDeltaScoreCalib40.yaml",
+        "configs/AML-Large-LI/AML-Large-LI-FlowSketchDeltaScoreCalib40.yaml",
+    ],
 }
 
 

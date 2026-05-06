@@ -170,6 +170,14 @@ class GTLayer(nn.Module):
         self.num_flow_sketch_writeback_slots = max(
             int(cfg.gt.flow_sketch_slots), 1
         )
+        self.flow_sketch_delta_writeback_enabled = (
+            self.flow_sketch_writeback_enabled and
+            getattr(cfg.gt, 'flow_sketch_delta_writeback', False)
+        )
+        self.num_flow_sketch_delta_slots = max(
+            int(getattr(cfg.gt, 'flow_sketch_delta_slots', cfg.gt.flow_sketch_slots)),
+            1,
+        )
 
         # Residual connection
         self.skip_local = torch.nn.ParameterDict()
@@ -391,6 +399,27 @@ class GTLayer(nn.Module):
                     self.writeback_flow_sketch_alpha = nn.Parameter(
                         torch.full((2,), math.log(0.10 / 0.90))
                     )
+                    if self.flow_sketch_delta_writeback_enabled:
+                        self.writeback_flow_delta_feature_dim = 8
+                        self.writeback_flow_delta_slots = nn.Parameter(
+                            torch.randn(
+                                self.num_flow_sketch_delta_slots, dim_out
+                            ) / math.sqrt(dim_out)
+                        )
+                        self.writeback_flow_delta_assign = Linear(
+                            dim_out * 3 + self.writeback_flow_delta_feature_dim,
+                            self.num_flow_sketch_delta_slots,
+                        )
+                        self.writeback_flow_delta_fuse = Linear(
+                            dim_out * 5 + self.writeback_flow_delta_feature_dim,
+                            dim_out,
+                        )
+                        self.writeback_flow_delta_gate = Linear(
+                            dim_out + self.writeback_flow_delta_feature_dim, 1
+                        )
+                        self.writeback_flow_delta_alpha = nn.Parameter(
+                            torch.full((1,), math.log(0.08 / 0.92))
+                        )
                 for node_type in metadata[0]:
                     if (
                         self.directional_meanmaxadd_writeback or
@@ -695,12 +724,72 @@ class GTLayer(nn.Module):
                 torch.cat((slot_context, sketch_features), dim=-1)
             ) + self.writeback_flow_sketch_alpha
         )
+        incoming_focus = incoming_focus + sketch_gate[:, :1] * incoming_update
+        outgoing_focus = outgoing_focus + sketch_gate[:, 1:] * outgoing_update
+        if self.flow_sketch_delta_writeback_enabled:
+            count_balance = (
+                torch.log1p(out_count.clamp(min=0.0)) -
+                torch.log1p(in_count.clamp(min=0.0))
+            ).unsqueeze(-1)
+            delta_anchor = incoming_anchor - outgoing_anchor
+            delta_focus = incoming_focus - outgoing_focus
+            delta_mean = incoming_mean - outgoing_mean
+            delta_features = torch.cat(
+                (
+                    count_balance,
+                    count_balance.abs(),
+                    torch.log1p(delta_anchor.norm(dim=-1, keepdim=True)),
+                    torch.log1p(delta_focus.norm(dim=-1, keepdim=True)),
+                    torch.log1p(delta_mean.norm(dim=-1, keepdim=True)),
+                    self._cosine_scalar_feature(delta_anchor, delta_focus),
+                    self._cosine_scalar_feature(delta_mean, delta_focus),
+                    slot_weights.max(dim=-1, keepdim=True).values,
+                ),
+                dim=-1,
+            )
+            delta_slot_logits = self.writeback_flow_delta_assign(
+                torch.cat(
+                    (
+                        delta_anchor,
+                        delta_focus,
+                        slot_context,
+                        delta_features,
+                    ),
+                    dim=-1,
+                )
+            )
+            delta_slot_weights = F.softmax(delta_slot_logits, dim=-1)
+            delta_slot_context = (
+                delta_slot_weights @ self.writeback_flow_delta_slots
+            )
+            delta_update = self.activation(
+                self.writeback_flow_delta_fuse(
+                    torch.cat(
+                        (
+                            delta_anchor,
+                            delta_focus,
+                            delta_mean,
+                            slot_context,
+                            delta_slot_context,
+                            delta_features,
+                        ),
+                        dim=-1,
+                    )
+                )
+            )
+            delta_gate = torch.sigmoid(
+                self.writeback_flow_delta_gate(
+                    torch.cat((delta_slot_context, delta_features), dim=-1)
+                ) + self.writeback_flow_delta_alpha
+            )
+            incoming_focus = incoming_focus + delta_gate * delta_update
+            outgoing_focus = outgoing_focus - delta_gate * delta_update
         return torch.cat(
             (
                 incoming_anchor,
                 outgoing_anchor,
-                incoming_focus + sketch_gate[:, :1] * incoming_update,
-                outgoing_focus + sketch_gate[:, 1:] * outgoing_update,
+                incoming_focus,
+                outgoing_focus,
             ),
             dim=-1,
         )

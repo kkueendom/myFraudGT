@@ -106,6 +106,8 @@ def set_cfg_gt(cfg):
     cfg.gt.edge_writeback_topk = 3
     cfg.gt.flow_sketch_writeback = False
     cfg.gt.flow_sketch_slots = 4
+    cfg.gt.flow_sketch_delta_writeback = False
+    cfg.gt.flow_sketch_delta_slots = 4
 
     cfg.gt.virtual_nodes = 0
 
