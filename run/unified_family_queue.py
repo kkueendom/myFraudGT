@@ -180,6 +180,11 @@ FAMILIES = {
         "configs/AML-Medium-HI/AML-Medium-HI-FlowSketchDeltaScoreCalib40.yaml",
         "configs/AML-Large-LI/AML-Large-LI-FlowSketchDeltaScoreCalib40.yaml",
     ],
+    "supportmixconsisflowsketchdeltawritebackboundresid_screen40": [
+        "configs/AML-Small-HI/AML-Small-HI-FlowSketchDelta40.yaml",
+        "configs/AML-Medium-HI/AML-Medium-HI-FlowSketchDelta40.yaml",
+        "configs/AML-Large-LI/AML-Large-LI-FlowSketchDelta40.yaml",
+    ],
 }
 
 
