@@ -314,6 +314,10 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotosubgraphrouteboundresid'
         )
+        self.use_support_class_split_subgraph_dual_mix_route_expert = (
+            self.edge_decoding ==
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphroutedualmixrouteboundresid'
+        )
         self.use_support_proto_route_expert = (
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotorouteboundresid'
@@ -330,6 +334,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphrouteasymcalibboundresid',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphrouteprotocalibboundresid',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphrouteflowsketchboundresid',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphroutedualmixrouteboundresid',
             }
         )
         self.use_support_class_split_subgraph_margin_calibration = (
@@ -1198,8 +1203,19 @@ class HeteroGNNEdgeHead(nn.Module):
                                 num_layers=self.head_layers,
                                 bias=True,
                             )
+                            subgraph_route_alpha = (
+                                0.02
+                                if self.use_support_class_split_subgraph_dual_mix_route_expert
+                                else 0.04
+                            )
                             self.support_subgraph_route_alpha = nn.Parameter(
-                                torch.full((1,), math.log(0.04 / 0.96))
+                                torch.full(
+                                    (1,),
+                                    math.log(
+                                        subgraph_route_alpha /
+                                        (1.0 - subgraph_route_alpha)
+                                    ),
+                                )
                             )
                         if self.use_support_proto_route_expert:
                             self.support_proto_route_fuse = MLP(
@@ -3743,7 +3759,10 @@ class HeteroGNNEdgeHead(nn.Module):
             )
         if (
             self.use_support_subgraph_route_expert and
-            not self.use_support_class_split_subgraph_route_expert
+            (
+                not self.use_support_class_split_subgraph_route_expert or
+                self.use_support_class_split_subgraph_dual_mix_route_expert
+            )
         ):
             if pair_subgraph_route_repr is None:
                 pair_subgraph_route_repr = torch.zeros_like(pair_repr)
