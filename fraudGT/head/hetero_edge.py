@@ -325,8 +325,13 @@ class HeteroGNNEdgeHead(nn.Module):
         self.use_support_class_split_subgraph_route_expert = (
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphrouteboundresid',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphroutecalibboundresid',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphrouteflowsketchboundresid',
             }
+        )
+        self.use_support_class_split_subgraph_margin_calibration = (
+            self.edge_decoding ==
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphroutecalibboundresid'
         )
         self.use_support_class_split_subgraph_proto_expert = (
             self.edge_decoding ==
@@ -988,6 +993,15 @@ class HeteroGNNEdgeHead(nn.Module):
                             self.support_class_split_subgraph_route_alpha = nn.Parameter(
                                 torch.full((1,), math.log(0.04 / 0.96))
                             )
+                            if self.use_support_class_split_subgraph_margin_calibration:
+                                self.support_class_split_subgraph_margin_calib = MLP(
+                                    dim_in + self.support_feature_dim + 6, 2,
+                                    num_layers=self.head_layers,
+                                    bias=True,
+                                )
+                                self.support_class_split_subgraph_margin_alpha = nn.Parameter(
+                                    torch.full((1,), math.log(0.05 / 0.95))
+                                )
                         if self.use_support_proto_consensus_expert:
                             self.support_proto_consensus_fuse = MLP(
                                 dim_in * 4 + self.support_feature_dim + 14, dim_in,
@@ -1867,6 +1881,7 @@ class HeteroGNNEdgeHead(nn.Module):
         pair_proto_route_support = None
         pair_class_split_subgraph_route_repr = None
         pair_class_split_subgraph_route_support = None
+        pair_support_features = None
 
         if task[0] == task[2]:
             num_nodes = batch[task[0]].x.size(0)
@@ -3753,6 +3768,56 @@ class HeteroGNNEdgeHead(nn.Module):
             pred = pred + (
                 torch.sigmoid(self.support_class_split_subgraph_route_alpha) *
                 class_split_subgraph_route_logits
+            )
+        if (
+            self.use_support_class_split_subgraph_margin_calibration and
+            pair_support_features is not None
+        ):
+            if pair_class_split_subgraph_route_repr is None:
+                pair_class_split_subgraph_route_repr = torch.zeros_like(pair_repr)
+            support_terms = []
+            for support in (
+                pair_class_split_subgraph_route_support,
+                pair_class_split_support,
+                pair_subgraph_route_support,
+                pair_boundary_support,
+                pair_sequence_support,
+                pair_terminal_support,
+            ):
+                if support is None:
+                    support_terms.append(pair_repr.new_zeros((num_pairs, 1)))
+                else:
+                    support_terms.append(support)
+            margin_context = torch.cat(
+                (
+                    pair_class_split_subgraph_route_repr,
+                    pair_support_features,
+                    torch.cat(support_terms, dim=-1),
+                ),
+                dim=-1,
+            )
+            margin_params = self.support_class_split_subgraph_margin_calib(
+                margin_context[pair_inv][mask]
+            )
+            if pair_class_split_subgraph_route_support is None:
+                margin_support = torch.ones_like(margin_params[:, :1])
+            else:
+                margin_support = pair_class_split_subgraph_route_support[pair_inv][mask]
+            margin_alpha = torch.sigmoid(
+                self.support_class_split_subgraph_margin_alpha
+            )
+            margin_scale = 1.0 + (
+                0.50 * margin_alpha * margin_support *
+                torch.tanh(margin_params[:, :1])
+            )
+            margin_bias = (
+                0.75 * margin_alpha * margin_support *
+                torch.tanh(margin_params[:, 1:2])
+            )
+            pred = self._apply_signed_margin_calibration(
+                pred,
+                margin_scale,
+                margin_bias,
             )
         return pred, batch[task].y[mask]
 

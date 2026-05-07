@@ -195,6 +195,11 @@ FAMILIES = {
         "configs/AML-Large-HI/AML-Large-HI-ClassSplitSubgraphSketchWB40.yaml",
         "configs/AML-Large-LI/AML-Large-LI-ClassSplitSubgraphSketchWB40.yaml",
     ],
+    "classsplit_subgraph_margincalib_screen180": [
+        "configs/AML-Small-HI/AML-Small-HI-UnifiedClassSplitSubgraphMarginCalib180.yaml",
+        "configs/AML-Large-HI/AML-Large-HI-UnifiedClassSplitSubgraphMarginCalib180.yaml",
+        "configs/AML-Large-LI/AML-Large-LI-UnifiedClassSplitSubgraphMarginCalib180.yaml",
+    ],
 }
 
 
