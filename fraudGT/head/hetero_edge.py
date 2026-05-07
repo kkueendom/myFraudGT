@@ -330,6 +330,10 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphdualdisagreegateboundresid'
         )
+        self.use_support_class_split_subgraph_dual_resmix_expert = (
+            self.edge_decoding ==
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphdualresmixboundresid'
+        )
         self.use_support_proto_route_expert = (
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotorouteboundresid'
@@ -350,6 +354,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphroutedualmixroutew4boundresid',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphdualpredgateboundresid',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphdualdisagreegateboundresid',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphdualresmixboundresid',
             }
         )
         self.use_support_class_split_subgraph_margin_calibration = (
@@ -1225,6 +1230,7 @@ class HeteroGNNEdgeHead(nn.Module):
                                     0.06
                                     if self.use_support_class_split_subgraph_dual_mix_pred_gate_expert
                                     or self.use_support_class_split_subgraph_dual_mix_disagree_gate_expert
+                                    or self.use_support_class_split_subgraph_dual_resmix_expert
                                     else 0.04
                                 )
                             )
@@ -1250,6 +1256,15 @@ class HeteroGNNEdgeHead(nn.Module):
                                 )
                                 self.support_subgraph_dual_disagree_gate_scale = (
                                     nn.Parameter(torch.tensor(8.0))
+                                )
+                            if self.use_support_class_split_subgraph_dual_resmix_expert:
+                                self.support_class_split_subgraph_dual_resmix_gate = (
+                                    MLP(
+                                        dim_in * 2 + self.support_feature_dim + 10,
+                                        dim_in,
+                                        num_layers=self.head_layers,
+                                        bias=True,
+                                    )
                                 )
                         if self.use_support_proto_route_expert:
                             self.support_proto_route_fuse = MLP(
@@ -3832,7 +3847,10 @@ class HeteroGNNEdgeHead(nn.Module):
                 torch.sigmoid(self.support_proto_route_alpha) *
                 proto_route_logits
             )
-        if self.use_support_class_split_subgraph_route_expert:
+        if (
+            self.use_support_class_split_subgraph_route_expert and
+            not self.use_support_class_split_subgraph_dual_resmix_expert
+        ):
             if pair_class_split_subgraph_route_repr is None:
                 pair_class_split_subgraph_route_repr = torch.zeros_like(pair_repr)
             class_split_subgraph_route_logits = (
@@ -3923,6 +3941,88 @@ class HeteroGNNEdgeHead(nn.Module):
                 torch.sigmoid(self.support_subgraph_route_alpha) *
                 disagree_gate *
                 subgraph_route_logits
+            )
+        if self.use_support_class_split_subgraph_dual_resmix_expert:
+            if pair_class_split_subgraph_route_repr is None:
+                pair_class_split_subgraph_route_repr = torch.zeros_like(pair_repr)
+            if pair_subgraph_route_repr is None:
+                pair_subgraph_route_repr = torch.zeros_like(pair_repr)
+            split_route_repr = pair_class_split_subgraph_route_repr[pair_inv][mask]
+            subgraph_route_repr = pair_subgraph_route_repr[pair_inv][mask]
+            split_route_logits = self.support_class_split_subgraph_route_head(
+                split_route_repr
+            )
+            subgraph_route_logits = self.support_subgraph_route_head(
+                subgraph_route_repr
+            )
+            if pair_class_split_subgraph_route_support is not None:
+                split_route_logits = (
+                    pair_class_split_subgraph_route_support[pair_inv][mask] *
+                    split_route_logits
+                )
+            if pair_subgraph_route_support is not None:
+                subgraph_route_logits = (
+                    pair_subgraph_route_support[pair_inv][mask] *
+                    subgraph_route_logits
+                )
+            if self.use_bounded_support_residuals:
+                split_route_logits = torch.tanh(split_route_logits)
+                subgraph_route_logits = torch.tanh(subgraph_route_logits)
+            support_terms = []
+            for support in (
+                pair_class_split_subgraph_route_support,
+                pair_subgraph_route_support,
+                pair_class_split_support,
+                pair_sequence_support,
+                pair_boundary_support,
+                pair_terminal_support,
+            ):
+                if support is None:
+                    support_terms.append(pair_repr.new_zeros((num_pairs, 1)))
+                else:
+                    support_terms.append(support)
+            if pair_support_features is None:
+                pair_support_features = pair_repr.new_zeros(
+                    (num_pairs, self.support_feature_dim)
+                )
+            if pred.size(-1) == 2:
+                pred_margin = pred[:, 1:2] - pred[:, 0:1]
+                pred_prob = torch.softmax(pred, dim=-1)[:, 1:2]
+                pred_conf = torch.softmax(pred, dim=-1).max(
+                    dim=-1,
+                    keepdim=True,
+                ).values
+            elif pred.size(-1) == 1:
+                pred_margin = pred
+                pred_prob = torch.sigmoid(pred)
+                pred_conf = (pred_prob - 0.5).abs() * 2.0
+            else:
+                pred_margin = pred.new_zeros((pred.size(0), 1))
+                pred_prob = pred_margin
+                pred_conf = pred_margin
+            resmix_context = torch.cat(
+                (
+                    split_route_repr,
+                    subgraph_route_repr,
+                    pair_support_features,
+                    torch.cat(support_terms, dim=-1),
+                    pred_margin,
+                    pred_margin.abs(),
+                    pred_prob,
+                    pred_conf,
+                ),
+                dim=-1,
+            )
+            mix_gate = torch.sigmoid(
+                self.support_class_split_subgraph_dual_resmix_gate(resmix_context)
+            )
+            mix_logits = (
+                mix_gate * split_route_logits +
+                (1.0 - mix_gate) * subgraph_route_logits
+            )
+            pred = pred + (
+                torch.sigmoid(self.support_subgraph_route_alpha) *
+                mix_logits
             )
         if (
             self.use_support_class_split_subgraph_margin_calibration and
