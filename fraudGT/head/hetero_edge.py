@@ -330,6 +330,10 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphdualuncertgateboundresid'
         )
+        self.use_support_class_split_subgraph_dual_mix_uncert_weak_expert = (
+            self.edge_decoding ==
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphdualuncertweakboundresid'
+        )
         self.use_support_class_split_subgraph_dual_mix_disagree_gate_expert = (
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphdualdisagreegateboundresid'
@@ -358,6 +362,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphroutedualmixroutew4boundresid',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphdualpredgateboundresid',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphdualuncertgateboundresid',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphdualuncertweakboundresid',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphdualdisagreegateboundresid',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphdualresmixboundresid',
             }
@@ -1231,6 +1236,7 @@ class HeteroGNNEdgeHead(nn.Module):
                             subgraph_route_alpha = (
                                 0.02
                                 if self.use_support_class_split_subgraph_dual_mix_route_expert
+                                or self.use_support_class_split_subgraph_dual_mix_uncert_weak_expert
                                 else (
                                     0.06
                                     if self.use_support_class_split_subgraph_dual_mix_pred_gate_expert
@@ -1256,7 +1262,10 @@ class HeteroGNNEdgeHead(nn.Module):
                                 self.support_subgraph_dual_pred_gate_scale = (
                                     nn.Parameter(torch.tensor(6.0))
                                 )
-                            if self.use_support_class_split_subgraph_dual_mix_uncert_gate_expert:
+                            if (
+                                self.use_support_class_split_subgraph_dual_mix_uncert_gate_expert
+                                or self.use_support_class_split_subgraph_dual_mix_uncert_weak_expert
+                            ):
                                 self.support_subgraph_dual_uncert_gate_center = (
                                     nn.Parameter(torch.tensor(0.55))
                                 )
@@ -3913,7 +3922,10 @@ class HeteroGNNEdgeHead(nn.Module):
                 pred_gate *
                 subgraph_route_logits
             )
-        if self.use_support_class_split_subgraph_dual_mix_uncert_gate_expert:
+        if (
+            self.use_support_class_split_subgraph_dual_mix_uncert_gate_expert
+            or self.use_support_class_split_subgraph_dual_mix_uncert_weak_expert
+        ):
             if pair_subgraph_route_repr is None:
                 pair_subgraph_route_repr = torch.zeros_like(pair_repr)
             subgraph_route_logits = self.support_subgraph_route_head(
