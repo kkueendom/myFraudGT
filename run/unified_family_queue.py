@@ -138,6 +138,9 @@ FAMILIES = {
     "classsplit_subgraph_dualuncerttight_screen180": [
         "configs/AML-Small-HI/AML-Small-HI-UnifiedClassSplitSubgraphDualUncertTight180.yaml",
     ],
+    "classsplit_subgraph_dualuncertmid_screen180": [
+        "configs/AML-Small-HI/AML-Small-HI-UnifiedClassSplitSubgraphDualUncertMid180.yaml",
+    ],
     "supportmixconsisdualprotoboundresid_full240": [
         "configs/AML-Small-HI/AML-Small-HI-SparseNodeGT+ports+Ego+WBDirMeanMaxWinnerProjTemporalPairChainContextSeqPairSeqBridgeBankWindowSeqSelectRoleFlowBoundaryLagSupportMixConsisDualProtoBoundResid240UnifiedFullCalibMemSafe.yaml",
         "configs/AML-Small-LI/AML-Small-LI-SparseNodeGT+ports+Ego+WBDirMeanMaxWinnerProjTemporalPairChainContextSeqPairSeqBridgeBankWindowSeqSelectRoleFlowBoundaryLagSupportMixConsisDualProtoBoundResid240UnifiedFullCalibMemSafe.yaml",
