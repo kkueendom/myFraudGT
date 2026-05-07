@@ -132,6 +132,21 @@ FAMILIES = {
     "classsplit_subgraph_dualuncertgate_seed43_screen180": [
         "configs/AML-Small-HI/AML-Small-HI-UnifiedClassSplitSubgraphDualUncertGate180Seed43.yaml",
     ],
+    "classsplit_subgraph_dualuncertgate_remaining180": [
+        "configs/AML-Small-LI/AML-Small-LI-UnifiedClassSplitSubgraphDualUncertGate180.yaml",
+        "configs/AML-Medium-HI/AML-Medium-HI-UnifiedClassSplitSubgraphDualUncertGate180.yaml",
+        "configs/AML-Medium-LI/AML-Medium-LI-UnifiedClassSplitSubgraphDualUncertGate180.yaml",
+        "configs/AML-Large-HI/AML-Large-HI-UnifiedClassSplitSubgraphDualUncertGate180.yaml",
+        "configs/AML-Large-LI/AML-Large-LI-UnifiedClassSplitSubgraphDualUncertGate180.yaml",
+    ],
+    "classsplit_subgraph_dualuncertgate_full180": [
+        "configs/AML-Small-HI/AML-Small-HI-UnifiedClassSplitSubgraphDualUncertGate180.yaml",
+        "configs/AML-Small-LI/AML-Small-LI-UnifiedClassSplitSubgraphDualUncertGate180.yaml",
+        "configs/AML-Medium-HI/AML-Medium-HI-UnifiedClassSplitSubgraphDualUncertGate180.yaml",
+        "configs/AML-Medium-LI/AML-Medium-LI-UnifiedClassSplitSubgraphDualUncertGate180.yaml",
+        "configs/AML-Large-HI/AML-Large-HI-UnifiedClassSplitSubgraphDualUncertGate180.yaml",
+        "configs/AML-Large-LI/AML-Large-LI-UnifiedClassSplitSubgraphDualUncertGate180.yaml",
+    ],
     "classsplit_subgraph_dualuncertweak_screen180": [
         "configs/AML-Small-HI/AML-Small-HI-UnifiedClassSplitSubgraphDualUncertWeak180.yaml",
     ],
