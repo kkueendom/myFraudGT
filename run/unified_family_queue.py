@@ -108,6 +108,12 @@ FAMILIES = {
         "configs/AML-Large-HI/AML-Large-HI-UnifiedClassSplitSubgraphDualMixRoute180.yaml",
         "configs/AML-Large-LI/AML-Large-LI-UnifiedClassSplitSubgraphDualMixRoute180.yaml",
     ],
+    "classsplit_subgraph_dualmixroutew4_screen180": [
+        "configs/AML-Small-HI/AML-Small-HI-UnifiedClassSplitSubgraphDualMixRouteW4-180.yaml",
+        "configs/AML-Small-LI/AML-Small-LI-UnifiedClassSplitSubgraphDualMixRouteW4-180.yaml",
+        "configs/AML-Large-HI/AML-Large-HI-UnifiedClassSplitSubgraphDualMixRouteW4-180.yaml",
+        "configs/AML-Large-LI/AML-Large-LI-UnifiedClassSplitSubgraphDualMixRouteW4-180.yaml",
+    ],
     "supportmixconsisdualprotoboundresid_full240": [
         "configs/AML-Small-HI/AML-Small-HI-SparseNodeGT+ports+Ego+WBDirMeanMaxWinnerProjTemporalPairChainContextSeqPairSeqBridgeBankWindowSeqSelectRoleFlowBoundaryLagSupportMixConsisDualProtoBoundResid240UnifiedFullCalibMemSafe.yaml",
         "configs/AML-Small-LI/AML-Small-LI-SparseNodeGT+ports+Ego+WBDirMeanMaxWinnerProjTemporalPairChainContextSeqPairSeqBridgeBankWindowSeqSelectRoleFlowBoundaryLagSupportMixConsisDualProtoBoundResid240UnifiedFullCalibMemSafe.yaml",

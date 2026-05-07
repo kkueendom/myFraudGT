@@ -318,6 +318,10 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphroutedualmixrouteboundresid'
         )
+        self.use_support_class_split_subgraph_dual_mix_route_w4_expert = (
+            self.edge_decoding ==
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphroutedualmixroutew4boundresid'
+        )
         self.use_support_proto_route_expert = (
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotorouteboundresid'
@@ -335,6 +339,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphrouteprotocalibboundresid',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphrouteflowsketchboundresid',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphroutedualmixrouteboundresid',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphroutedualmixroutew4boundresid',
             }
         )
         self.use_support_class_split_subgraph_margin_calibration = (
@@ -3761,7 +3766,8 @@ class HeteroGNNEdgeHead(nn.Module):
             self.use_support_subgraph_route_expert and
             (
                 not self.use_support_class_split_subgraph_route_expert or
-                self.use_support_class_split_subgraph_dual_mix_route_expert
+                self.use_support_class_split_subgraph_dual_mix_route_expert or
+                self.use_support_class_split_subgraph_dual_mix_route_w4_expert
             )
         ):
             if pair_subgraph_route_repr is None:
