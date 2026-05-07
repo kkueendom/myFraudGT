@@ -334,6 +334,10 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphdualuncertweakboundresid'
         )
+        self.use_support_class_split_subgraph_dual_mix_uncert_late_expert = (
+            self.edge_decoding ==
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphdualuncertlateboundresid'
+        )
         self.use_support_class_split_subgraph_dual_mix_disagree_gate_expert = (
             self.edge_decoding ==
             'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphdualdisagreegateboundresid'
@@ -363,6 +367,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphdualpredgateboundresid',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphdualuncertgateboundresid',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphdualuncertweakboundresid',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphdualuncertlateboundresid',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphdualdisagreegateboundresid',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphdualresmixboundresid',
             }
@@ -1237,6 +1242,7 @@ class HeteroGNNEdgeHead(nn.Module):
                                 0.02
                                 if self.use_support_class_split_subgraph_dual_mix_route_expert
                                 or self.use_support_class_split_subgraph_dual_mix_uncert_weak_expert
+                                or self.use_support_class_split_subgraph_dual_mix_uncert_late_expert
                                 else (
                                     0.06
                                     if self.use_support_class_split_subgraph_dual_mix_pred_gate_expert
@@ -1265,9 +1271,16 @@ class HeteroGNNEdgeHead(nn.Module):
                             if (
                                 self.use_support_class_split_subgraph_dual_mix_uncert_gate_expert
                                 or self.use_support_class_split_subgraph_dual_mix_uncert_weak_expert
+                                or self.use_support_class_split_subgraph_dual_mix_uncert_late_expert
                             ):
                                 self.support_subgraph_dual_uncert_gate_center = (
-                                    nn.Parameter(torch.tensor(0.55))
+                                    nn.Parameter(
+                                        torch.tensor(
+                                            0.65
+                                            if self.use_support_class_split_subgraph_dual_mix_uncert_late_expert
+                                            else 0.55
+                                        )
+                                    )
                                 )
                                 self.support_subgraph_dual_uncert_gate_scale = (
                                     nn.Parameter(torch.tensor(8.0))
@@ -3925,6 +3938,7 @@ class HeteroGNNEdgeHead(nn.Module):
         if (
             self.use_support_class_split_subgraph_dual_mix_uncert_gate_expert
             or self.use_support_class_split_subgraph_dual_mix_uncert_weak_expert
+            or self.use_support_class_split_subgraph_dual_mix_uncert_late_expert
         ):
             if pair_subgraph_route_repr is None:
                 pair_subgraph_route_repr = torch.zeros_like(pair_repr)
