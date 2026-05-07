@@ -1261,7 +1261,7 @@ class HeteroGNNEdgeHead(nn.Module):
                                 self.support_class_split_subgraph_dual_resmix_gate = (
                                     MLP(
                                         dim_in * 2 + self.support_feature_dim + 10,
-                                        dim_in,
+                                        1,
                                         num_layers=self.head_layers,
                                         bias=True,
                                     )
