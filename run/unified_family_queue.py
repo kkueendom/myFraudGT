@@ -85,6 +85,11 @@ FAMILIES = {
         "configs/AML-Large-HI/AML-Large-HI-UnifiedClassSplitSubgraphProto240.yaml",
         "configs/AML-Large-LI/AML-Large-LI-UnifiedClassSplitSubgraphProto240.yaml",
     ],
+    "classsplit_subgraph_proto_remaining240": [
+        "configs/AML-Small-HI/AML-Small-HI-UnifiedClassSplitSubgraphProto240.yaml",
+        "configs/AML-Large-HI/AML-Large-HI-UnifiedClassSplitSubgraphProto240.yaml",
+        "configs/AML-Large-LI/AML-Large-LI-UnifiedClassSplitSubgraphProto240.yaml",
+    ],
     "supportmixconsisdualprotoboundresid_full240": [
         "configs/AML-Small-HI/AML-Small-HI-SparseNodeGT+ports+Ego+WBDirMeanMaxWinnerProjTemporalPairChainContextSeqPairSeqBridgeBankWindowSeqSelectRoleFlowBoundaryLagSupportMixConsisDualProtoBoundResid240UnifiedFullCalibMemSafe.yaml",
         "configs/AML-Small-LI/AML-Small-LI-SparseNodeGT+ports+Ego+WBDirMeanMaxWinnerProjTemporalPairChainContextSeqPairSeqBridgeBankWindowSeqSelectRoleFlowBoundaryLagSupportMixConsisDualProtoBoundResid240UnifiedFullCalibMemSafe.yaml",
