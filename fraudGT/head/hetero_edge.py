@@ -3985,6 +3985,8 @@ class HeteroGNNEdgeHead(nn.Module):
                 pair_support_features = pair_repr.new_zeros(
                     (num_pairs, self.support_feature_dim)
                 )
+            support_context = torch.cat(support_terms, dim=-1)[pair_inv][mask]
+            pair_support_context = pair_support_features[pair_inv][mask]
             if pred.size(-1) == 2:
                 pred_margin = pred[:, 1:2] - pred[:, 0:1]
                 pred_prob = torch.softmax(pred, dim=-1)[:, 1:2]
@@ -4004,8 +4006,8 @@ class HeteroGNNEdgeHead(nn.Module):
                 (
                     split_route_repr,
                     subgraph_route_repr,
-                    pair_support_features,
-                    torch.cat(support_terms, dim=-1),
+                    pair_support_context,
+                    support_context,
                     pred_margin,
                     pred_margin.abs(),
                     pred_prob,
