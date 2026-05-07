@@ -205,6 +205,11 @@ FAMILIES = {
         "configs/AML-Large-HI/AML-Large-HI-UnifiedClassSplitSubgraphMarginPredCalib180.yaml",
         "configs/AML-Large-LI/AML-Large-LI-UnifiedClassSplitSubgraphMarginPredCalib180.yaml",
     ],
+    "classsplit_subgraph_asymcalib_screen180": [
+        "configs/AML-Small-HI/AML-Small-HI-UnifiedClassSplitSubgraphAsymCalib180.yaml",
+        "configs/AML-Large-HI/AML-Large-HI-UnifiedClassSplitSubgraphAsymCalib180.yaml",
+        "configs/AML-Large-LI/AML-Large-LI-UnifiedClassSplitSubgraphAsymCalib180.yaml",
+    ],
     "classsplit_subgraph_margincalib_full180": [
         "configs/AML-Small-HI/AML-Small-HI-UnifiedClassSplitSubgraphMarginCalib180.yaml",
         "configs/AML-Small-LI/AML-Small-LI-UnifiedClassSplitSubgraphMarginCalib180.yaml",
