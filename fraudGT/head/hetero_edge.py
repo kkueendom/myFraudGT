@@ -326,12 +326,19 @@ class HeteroGNNEdgeHead(nn.Module):
             self.edge_decoding in {
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphrouteboundresid',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphroutecalibboundresid',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphroutepredcalibboundresid',
                 'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphrouteflowsketchboundresid',
             }
         )
         self.use_support_class_split_subgraph_margin_calibration = (
+            self.edge_decoding in {
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphroutecalibboundresid',
+                'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphroutepredcalibboundresid',
+            }
+        )
+        self.use_support_class_split_subgraph_margin_pred_calibration = (
             self.edge_decoding ==
-            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphroutecalibboundresid'
+            'pair_chain_contextseqpairseqbridgebankwindowseqselectroleflowboundarylagsupportmixconsisclassmixprotoboundclasssplitsubgraphroutepredcalibboundresid'
         )
         self.use_support_class_split_subgraph_proto_expert = (
             self.edge_decoding ==
@@ -995,12 +1002,17 @@ class HeteroGNNEdgeHead(nn.Module):
                             )
                             if self.use_support_class_split_subgraph_margin_calibration:
                                 self.support_class_split_subgraph_margin_calib = MLP(
-                                    dim_in + self.support_feature_dim + 6, 2,
+                                    dim_in + self.support_feature_dim + 6 + (
+                                        4 if self.use_support_class_split_subgraph_margin_pred_calibration else 0
+                                    ), 2,
                                     num_layers=self.head_layers,
                                     bias=True,
                                 )
                                 self.support_class_split_subgraph_margin_alpha = nn.Parameter(
-                                    torch.full((1,), math.log(0.05 / 0.95))
+                                    torch.full((1,), math.log(
+                                        (0.08 if self.use_support_class_split_subgraph_margin_pred_calibration else 0.05) /
+                                        (0.92 if self.use_support_class_split_subgraph_margin_pred_calibration else 0.95)
+                                    ))
                                 )
                         if self.use_support_proto_consensus_expert:
                             self.support_proto_consensus_fuse = MLP(
@@ -3796,8 +3808,36 @@ class HeteroGNNEdgeHead(nn.Module):
                 ),
                 dim=-1,
             )
+            margin_context = margin_context[pair_inv][mask]
+            if self.use_support_class_split_subgraph_margin_pred_calibration:
+                pred_for_calib = pred.detach()
+                if pred_for_calib.size(-1) == 2:
+                    pred_margin = pred_for_calib[:, 1:2] - pred_for_calib[:, 0:1]
+                    pred_prob = torch.softmax(pred_for_calib, dim=-1)[:, 1:2]
+                    pred_conf = torch.softmax(pred_for_calib, dim=-1).max(
+                        dim=-1,
+                        keepdim=True,
+                    ).values
+                elif pred_for_calib.size(-1) == 1:
+                    pred_margin = pred_for_calib
+                    pred_prob = torch.sigmoid(pred_for_calib)
+                    pred_conf = (pred_prob - 0.5).abs() * 2.0
+                else:
+                    pred_margin = pred_for_calib.new_zeros((pred_for_calib.size(0), 1))
+                    pred_prob = pred_margin
+                    pred_conf = pred_margin
+                margin_context = torch.cat(
+                    (
+                        margin_context,
+                        pred_margin,
+                        pred_margin.abs(),
+                        pred_prob,
+                        pred_conf,
+                    ),
+                    dim=-1,
+                )
             margin_params = self.support_class_split_subgraph_margin_calib(
-                margin_context[pair_inv][mask]
+                margin_context
             )
             if pair_class_split_subgraph_route_support is None:
                 margin_support = torch.ones_like(margin_params[:, :1])
@@ -3807,11 +3847,13 @@ class HeteroGNNEdgeHead(nn.Module):
                 self.support_class_split_subgraph_margin_alpha
             )
             margin_scale = 1.0 + (
-                0.50 * margin_alpha * margin_support *
+                (0.65 if self.use_support_class_split_subgraph_margin_pred_calibration else 0.50) *
+                margin_alpha * margin_support *
                 torch.tanh(margin_params[:, :1])
             )
             margin_bias = (
-                0.75 * margin_alpha * margin_support *
+                (1.00 if self.use_support_class_split_subgraph_margin_pred_calibration else 0.75) *
+                margin_alpha * margin_support *
                 torch.tanh(margin_params[:, 1:2])
             )
             pred = self._apply_signed_margin_calibration(
