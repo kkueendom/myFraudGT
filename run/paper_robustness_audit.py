@@ -94,6 +94,27 @@ QUEUED_RUNS = [
     },
 ]
 
+SUPPLEMENTAL_RUNS = [
+    {
+        "dataset": "Small-HI",
+        "seed": "44-halfbatch",
+        "done_epoch": 179,
+        "structure": "full_gate_resource_adapted_halfbatch",
+        "root": "unified_supportmixconsisclassmixprotoboundclasssplitsubgraphdualuncertgateboundresid_seed44_halfbatch_screen180_main",
+        "run": "AML-Small-HI-UnifiedClassSplitSubgraphDualUncertGate180Seed44-gpu0",
+        "seed_dir": "44",
+    },
+    {
+        "dataset": "Small-HI",
+        "seed": "45-halfbatch",
+        "done_epoch": 179,
+        "structure": "full_gate_resource_adapted_halfbatch",
+        "root": "unified_supportmixconsisclassmixprotoboundclasssplitsubgraphdualuncertgateboundresid_seed45_halfbatch_screen180_main",
+        "run": "AML-Small-HI-UnifiedClassSplitSubgraphDualUncertGate180Seed45-gpu1",
+        "seed_dir": "45",
+    },
+]
+
 
 def iter_rows(stats_path):
     if not stats_path.exists():
@@ -133,7 +154,7 @@ def print_row(base, spec):
         Path(base)
         / spec["root"]
         / spec["run"]
-        / spec["seed"]
+        / spec.get("seed_dir", spec["seed"])
         / "test"
         / "stats.json"
     )
@@ -231,6 +252,10 @@ def main():
     print(f"seed_pass_summary\t{pass_count}/{len(QUEUED_RUNS)}")
     print(f"dataset_complete_summary\t{dataset_complete}/{len(TARGETS)}")
     print(f"dataset_all_pass_summary\t{dataset_all_pass}/{len(TARGETS)}")
+
+    print("supplemental_resource_adapted_runs")
+    for spec in SUPPLEMENTAL_RUNS:
+        print_row(args.base, spec)
 
     if args.strict_complete and dataset_complete < len(TARGETS):
         return 1
