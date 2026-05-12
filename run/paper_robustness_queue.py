@@ -25,6 +25,7 @@ STAGES = [
             "stats": "/e/yyk/FraudGT_multi6/unified_supportmixconsisclassmixprotoboundclasssplitsubgraphdualuncertgateboundresid_seed44_screen180_main/AML-Small-HI-UnifiedClassSplitSubgraphDualUncertGate180Seed44-gpu0/44/test/stats.json",
             "gpu": 0,
             "done_epoch": 179,
+            "min_free_mib": 12000,
         },
         {
             "name": "smallhi_gate_seed45",
@@ -32,6 +33,7 @@ STAGES = [
             "stats": "/e/yyk/FraudGT_multi6/unified_supportmixconsisclassmixprotoboundclasssplitsubgraphdualuncertgateboundresid_seed45_screen180_main/AML-Small-HI-UnifiedClassSplitSubgraphDualUncertGate180Seed45-gpu1/45/test/stats.json",
             "gpu": 1,
             "done_epoch": 179,
+            "min_free_mib": 12000,
         },
     ],
     [
@@ -41,13 +43,33 @@ STAGES = [
             "stats": "/e/yyk/FraudGT_multi6/classmixprotobound_largehi_seed44_full240_main/AML-Large-HI-ClassMixProtoBoundResid240Seed44-gpu0/44/test/stats.json",
             "gpu": 0,
             "done_epoch": 239,
+            "min_free_mib": 12000,
         },
+        {
+            "name": "largehi_fallback_seed45",
+            "cfg": "configs/AML-Large-HI/AML-Large-HI-ClassMixProtoBoundResid240Seed45.yaml",
+            "stats": "/e/yyk/FraudGT_multi6/classmixprotobound_largehi_seed45_full240_main/AML-Large-HI-ClassMixProtoBoundResid240Seed45-gpu1/45/test/stats.json",
+            "gpu": 1,
+            "done_epoch": 239,
+            "min_free_mib": 12000,
+        },
+    ],
+    [
         {
             "name": "largeli_fallback_seed44",
             "cfg": "configs/AML-Large-LI/AML-Large-LI-ClassMixProtoBoundResid240Seed44.yaml",
-            "stats": "/e/yyk/FraudGT_multi6/classmixprotobound_largeli_seed44_full240_main/AML-Large-LI-ClassMixProtoBoundResid240Seed44-gpu1/44/test/stats.json",
+            "stats": "/e/yyk/FraudGT_multi6/classmixprotobound_largeli_seed44_full240_main/AML-Large-LI-ClassMixProtoBoundResid240Seed44-gpu0/44/test/stats.json",
+            "gpu": 0,
+            "done_epoch": 239,
+            "min_free_mib": 12000,
+        },
+        {
+            "name": "largeli_fallback_seed45",
+            "cfg": "configs/AML-Large-LI/AML-Large-LI-ClassMixProtoBoundResid240Seed45.yaml",
+            "stats": "/e/yyk/FraudGT_multi6/classmixprotobound_largeli_seed45_full240_main/AML-Large-LI-ClassMixProtoBoundResid240Seed45-gpu1/45/test/stats.json",
             "gpu": 1,
             "done_epoch": 239,
+            "min_free_mib": 12000,
         },
     ],
 ]
@@ -134,7 +156,12 @@ def launch(job, gpu):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--poll", type=int, default=300)
-    parser.add_argument("--min-free-mib", type=int, default=12000)
+    parser.add_argument(
+        "--min-free-mib",
+        type=int,
+        default=None,
+        help="Override per-job free-memory thresholds.",
+    )
     args = parser.parse_args()
 
     log("starting paper robustness queue")
@@ -153,7 +180,8 @@ def main():
             free = gpu_free_mib()
             for job in list(pending):
                 gpu = job["gpu"]
-                if free.get(gpu, 0) < args.min_free_mib or gpu_has_fraudgt(gpu):
+                min_free = args.min_free_mib or job["min_free_mib"]
+                if free.get(gpu, 0) < min_free or gpu_has_fraudgt(gpu):
                     continue
                 launch(job, gpu)
                 free[gpu] = 0
