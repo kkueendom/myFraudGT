@@ -125,10 +125,12 @@ def gpu_has_fraudgt(gpu):
 def stats_complete(job):
     stats_path = job["stats"]
     path = Path(stats_path)
-    if not path.exists():
+    seed_dir = path.parents[1]
+    train_stats = seed_dir / "train" / "stats.json"
+    if not train_stats.exists():
         return False
     last_epoch = None
-    for line in path.read_text(errors="ignore").splitlines():
+    for line in train_stats.read_text(errors="ignore").splitlines():
         if '"epoch"' not in line:
             continue
         try:
