@@ -123,6 +123,28 @@ def replace_line(text, prefix, replacement):
     return pattern.sub(replacement, text, count=1)
 
 
+def disable_wandb(text):
+    lines = text.splitlines()
+    in_wandb = False
+    found = False
+    for index, line in enumerate(lines):
+        if line == "wandb:":
+            in_wandb = True
+            continue
+        if not in_wandb:
+            continue
+        if line and not line.startswith(" "):
+            break
+        if line.startswith("  use:"):
+            lines[index] = "  use: False"
+            found = True
+            break
+    if not found:
+        raise ValueError("missing wandb.use config line")
+    suffix = "\n" if text.endswith("\n") else ""
+    return "\n".join(lines) + suffix
+
+
 def train_last_epoch(stats_path):
     if not stats_path.exists():
         return None
@@ -170,6 +192,7 @@ def cfg_path_for(dataset, variant, seed):
     text = replace_line(text, "  dir:", f"  dir: {DATA_ROOT}")
     text = replace_line(text, "seed:", f"seed: {seed}")
     text = replace_line(text, "  max_epoch:", f"  max_epoch: {variant['max_epoch']}")
+    text = disable_wandb(text)
     cfg_path.write_text(text)
     return cfg_path
 
@@ -235,6 +258,7 @@ def launch(dataset, variant, seed, gpu, cfg_path):
         "source ~/.bashrc >/dev/null 2>&1 || true; "
         f"conda activate {CONDA_ENV} && "
         f"cd {q(str(REPO))} && "
+        "WANDB_MODE=disabled "
         f"python -m fraudGT.main --cfg {q(str(cfg_path))} --repeat 1 --gpu {gpu}; "
         "status=$?; "
         f"printf '%s\\n' \"$status\" > {q(str(exit_path))}; "
