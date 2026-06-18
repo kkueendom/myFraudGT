@@ -78,11 +78,13 @@ def run_state(base, dataset, variant, seed):
     train_rows = read_rows(seed_dir / "train" / "stats.json")
     max_epoch = VARIANT_MAX_EPOCH[variant]
 
+    train_last = int(train_rows[-1]["epoch"]) if train_rows else None
     if not val_rows or not test_rows:
         return {
-            "status": "MISS",
+            "status": "RUNNING" if train_last is not None else "MISS",
             "run_dir": str(run_dir),
             "complete": False,
+            "train_last": train_last,
         }
 
     test_by_epoch = {int(row["epoch"]): row for row in test_rows}
@@ -90,7 +92,6 @@ def run_state(base, dataset, variant, seed):
     best_test = max(test_rows, key=lambda row: float(row["f1"]))
     val_epoch = int(best_val["epoch"])
     selected_test = test_by_epoch.get(val_epoch)
-    train_last = int(train_rows[-1]["epoch"]) if train_rows else None
     complete = train_last is not None and train_last >= max_epoch - 1
     selected_test_f1 = (
         float(selected_test["f1"]) if selected_test is not None else None
