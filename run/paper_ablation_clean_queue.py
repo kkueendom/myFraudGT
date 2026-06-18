@@ -221,10 +221,11 @@ def job_complete(dataset, variant, seed):
 
 
 def active_lines():
+    config_root = str(CONFIG_DIR)
     return [
         line
         for line in shell_stdout("ps -eo pid=,args=").splitlines()
-        if "python -m fraudGT.main" in line
+        if "python -m fraudGT.main" in line and config_root in line
     ]
 
 
