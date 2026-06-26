@@ -18,6 +18,9 @@ class HeteroGNNEdgeHead(nn.Module):
         super().__init__()
         self.is_hetero = isinstance(dataset[0], HeteroData)
         self.edge_decoding = cfg.model.edge_decoding
+        # Scale-agnostic, uncertainty-gated evidence decoder (see
+        # `_evidence_gate_head`). A single, dataset-size-independent route.
+        self.use_evidence_gate = (self.edge_decoding == 'evidence_gate')
         self.use_pair_chain_head = self.edge_decoding in {
             'pair_chain',
             'pair_chain_contextresid',
@@ -1356,6 +1359,60 @@ class HeteroGNNEdgeHead(nn.Module):
             self.layer_post_mp = MLP(dim_in * 3, dim_out,
                                      num_layers=self.head_layers,
                                      bias=True)
+            if self.use_evidence_gate:
+                self._build_evidence_gate(dim_in, dim_out)
+
+    def _build_evidence_gate(self, dim_in, dim_out):
+        '''Modules for the scale-agnostic, uncertainty-gated evidence decoder.
+
+        A single forward path is used for every dataset (no dataset-size route
+        switching). The decoder fuses three sources of evidence:
+          (1) z_base  : the original FraudGT MLP edge decoder (`layer_post_mp`);
+          (2) z_proto : a bounded class-prototype residual -- the stable
+                        "core evidence" identified by the ablation study;
+          (3) z_struct: higher-order 1-hop structural evidence whose
+                        contribution is gated by the *per-sample uncertainty*
+                        of the core decision, NOT by dataset size. On confident
+                        samples the gate closes, which reproduces the
+                        "fall back on large graphs" behaviour automatically and
+                        per-example instead of via a hard size rule.
+        '''
+        # Shared edge representation used for prototypes / structure / gate.
+        self.eg_repr = MLP(dim_in * 3, dim_in,
+                           num_layers=self.head_layers, bias=True)
+
+        # --- class-prototype core (reuses the proven prototype machinery) ---
+        self.use_support_class_prototype_expert = True
+        self.num_class_prototypes = max(dim_out, 2)
+        self.num_class_proto_slots = 4
+        self.register_buffer(
+            'support_class_proto_bank',
+            torch.zeros(self.num_class_prototypes,
+                        self.num_class_proto_slots, dim_in))
+        self.register_buffer(
+            'support_class_proto_ready',
+            torch.zeros(self.num_class_prototypes,
+                        self.num_class_proto_slots))
+        self.support_class_proto_momentum = nn.Parameter(
+            torch.tensor(math.log(0.95 / 0.05)))
+        self.support_class_proto_temperature = nn.Parameter(torch.tensor(0.0))
+        # 8 scalar prototype-evidence features -> class-logit correction.
+        self.eg_proto_head = MLP(8, dim_out,
+                                 num_layers=self.head_layers, bias=True)
+        self.eg_proto_alpha = nn.Parameter(
+            torch.full((1,), math.log(0.10 / 0.90)))
+
+        # --- higher-order 1-hop structural evidence branch ---
+        self.eg_struct_head = MLP(dim_in * 3, dim_out,
+                                  num_layers=self.head_layers, bias=True)
+        self.eg_struct_alpha = nn.Parameter(
+            torch.full((1,), math.log(0.05 / 0.95)))
+
+        # --- uncertainty gate that routes structural evidence per sample ---
+        # Inputs: edge repr + [core uncertainty, |proto margin|, proto ready,
+        # tanh(base margin)]. No dataset-size signal is used anywhere.
+        self.eg_gate = MLP(dim_in + 4, 1,
+                           num_layers=self.head_layers, bias=True)
 
     def _edge_mask(self, batch):
         task = cfg.dataset.task_entity
@@ -4282,9 +4339,77 @@ class HeteroGNNEdgeHead(nn.Module):
                           batch[task].edge_attr[mask]), dim=-1), \
                batch[task].y[mask]
 
+    def _evidence_gate_head(self, batch):
+        '''Scale-agnostic evidence decoder: z_base (+) bounded prototype core
+        (+) uncertainty-gated higher-order structural evidence.'''
+        task = cfg.dataset.task_entity
+        feat_all, edge_index = self._edge_inputs(batch)
+        mask = self._edge_mask(batch)
+        labels = batch[task].y[mask]
+
+        # Shared representation over all sampled edges; targets are a subset.
+        h_all = self.eg_repr(feat_all)
+        h = h_all[mask]
+
+        # (1) Base FraudGT decoder.
+        z_base = self.layer_post_mp(feat_all[mask])
+
+        # (2) Bounded class-prototype residual (stable core evidence). The
+        # prototype context is computed from banks built on *past* train
+        # batches; banks are updated only afterwards and only in training,
+        # so no label leaks into the current prediction or into eval.
+        (pos_proto, neg_proto, pos_sim, neg_sim, proto_margin, ready,
+         pos_peak, neg_peak, pos_spread, neg_spread) = \
+            self._support_class_proto_context(h)
+        proto_feat = torch.cat(
+            [pos_sim, neg_sim, proto_margin, ready,
+             pos_peak, neg_peak, pos_spread, neg_spread], dim=-1)
+        z_proto = self.eg_proto_head(proto_feat)
+        z_core = z_base + torch.sigmoid(self.eg_proto_alpha) * ready * z_proto
+
+        # (3) Higher-order 1-hop structural evidence (local transaction
+        # neighbourhood), valid when source and target share a node type.
+        if task[0] == task[2]:
+            num_nodes = batch[task[0]].x.size(0)
+            src_all, dst_all = edge_index[0], edge_index[1]
+            ctx_in = scatter(h_all, dst_all, dim=0,
+                             dim_size=num_nodes, reduce='mean')
+            ctx_out = scatter(h_all, src_all, dim=0,
+                              dim_size=num_nodes, reduce='mean')
+            tgt_src, tgt_dst = src_all[mask], dst_all[mask]
+            struct_feat = torch.cat(
+                [ctx_out[tgt_src], ctx_in[tgt_dst], h], dim=-1)
+            z_struct = self.eg_struct_head(struct_feat)
+        else:
+            z_struct = torch.zeros_like(z_core)
+
+        # Per-sample uncertainty of the core decision (normalized entropy).
+        num_classes = z_core.size(-1)
+        p = F.softmax(z_core, dim=-1)
+        uncertainty = -(p * p.clamp(min=1e-6).log()).sum(
+            dim=-1, keepdim=True) / math.log(num_classes)
+        if num_classes == 2:
+            base_margin = z_base[:, 1:2] - z_base[:, 0:1]
+        else:
+            base_margin = z_base.max(dim=-1, keepdim=True).values
+        gate_feat = torch.cat(
+            [h, uncertainty, proto_margin.abs(), ready,
+             torch.tanh(base_margin)], dim=-1)
+        g = torch.sigmoid(self.eg_gate(gate_feat))
+        z_final = z_core + g * torch.sigmoid(self.eg_struct_alpha) * z_struct
+
+        # Update prototype banks from the current (train) batch, after
+        # prediction. Frozen at eval because self.training is False.
+        if self.training:
+            self._update_support_class_prototypes(h, labels)
+
+        return z_final, labels
+
     def forward(self, batch):
         if self.use_pair_chain_head:
             return self._pair_chain_head(batch)
+        if self.use_evidence_gate:
+            return self._evidence_gate_head(batch)
         pred, label = self._apply_index(batch)
         pred = self.layer_post_mp(pred)
 
