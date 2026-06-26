@@ -1,0 +1,27 @@
+dataset	seed	status	complete	train_last	raw_best_test	raw_best_test_epoch	test_at_best_val	val_best	val_epoch	run_dir
+Small-HI	42	DONE	yes	499	0.78599	219	0.76683	0.68201	387	/e/yyk/FraudGT_multi6/original_raw_baseline/AML-Small-HI-OriginalSparseNodeGTPortsEgoRawSeed42-gpu0
+Small-HI	43	DONE	yes	499	0.78372	303	0.77496	0.69749	387	/e/yyk/FraudGT_multi6/original_raw_baseline/AML-Small-HI-OriginalSparseNodeGTPortsEgoRawSeed43-gpu1
+Small-HI	44	DONE	yes	499	0.78744	391	0.77658	0.69880	371	/e/yyk/FraudGT_multi6/original_raw_baseline/AML-Small-HI-OriginalSparseNodeGTPortsEgoRawSeed44-gpu0
+Small-LI	42	DONE	yes	499	0.50474	275	0.50355	0.39024	279	/e/yyk/FraudGT_multi6/original_raw_baseline/AML-Small-LI-OriginalSparseNodeGTPortsEgoRawSeed42-gpu1
+Small-LI	43	DONE	yes	499	0.49042	279	0.46365	0.38500	295	/e/yyk/FraudGT_multi6/original_raw_baseline/AML-Small-LI-OriginalSparseNodeGTPortsEgoRawSeed43-gpu0
+Small-LI	44	DONE	yes	499	0.49722	495	0.47103	0.40196	347	/e/yyk/FraudGT_multi6/original_raw_baseline/AML-Small-LI-OriginalSparseNodeGTPortsEgoRawSeed44-gpu1
+Medium-HI	42	DONE	yes	499	0.76768	411	0.74601	0.69951	399	/e/yyk/FraudGT_multi6/original_raw_baseline/AML-Medium-HI-OriginalSparseNodeGTPortsEgoRawSeed42-gpu0
+Medium-HI	43	DONE	yes	499	0.76580	423	0.73158	0.69347	367	/e/yyk/FraudGT_multi6/original_raw_baseline/AML-Medium-HI-OriginalSparseNodeGTPortsEgoRawSeed43-gpu1
+Medium-HI	44	DONE	yes	499	0.75809	383	0.70889	0.69767	347	/e/yyk/FraudGT_multi6/original_raw_baseline/AML-Medium-HI-OriginalSparseNodeGTPortsEgoRawSeed44-gpu0
+Medium-LI	42	DONE	yes	499	0.51016	443	0.43478	0.34511	363	/e/yyk/FraudGT_multi6/original_raw_baseline/AML-Medium-LI-OriginalSparseNodeGTPortsEgoRawSeed42-gpu1
+Medium-LI	43	DONE	yes	499	0.54005	367	0.45540	0.34356	451	/e/yyk/FraudGT_multi6/original_raw_baseline/AML-Medium-LI-OriginalSparseNodeGTPortsEgoRawSeed43-gpu0
+Medium-LI	44	DONE	yes	499	0.51852	487	0.43231	0.34034	391	/e/yyk/FraudGT_multi6/original_raw_baseline/AML-Medium-LI-OriginalSparseNodeGTPortsEgoRawSeed44-gpu1
+Large-HI	42	DONE	yes	499	0.70978	383	0.70485	0.64160	375	/e/yyk/FraudGT_multi6/original_raw_baseline/AML-Large-HI-OriginalSparseNodeGTPortsEgoRawSeed42-gpu0
+Large-HI	43	DONE	yes	499	0.72120	383	0.68048	0.64303	431	/e/yyk/FraudGT_multi6/original_raw_baseline/AML-Large-HI-OriginalSparseNodeGTPortsEgoRawSeed43-gpu0
+Large-HI	44	DONE	yes	499	0.73279	343	0.69641	0.63250	359	/e/yyk/FraudGT_multi6/original_raw_baseline/AML-Large-HI-OriginalSparseNodeGTPortsEgoRawSeed44-gpu1
+Large-LI	42	DONE	yes	499	0.43137	467	0.34591	0.33333	463	/e/yyk/FraudGT_multi6/original_raw_baseline/AML-Large-LI-OriginalSparseNodeGTPortsEgoRawSeed42-gpu0
+Large-LI	43	DONE	yes	499	0.42493	431	0.32500	0.29658	403	/e/yyk/FraudGT_multi6/original_raw_baseline/AML-Large-LI-OriginalSparseNodeGTPortsEgoRawSeed43-gpu0
+Large-LI	44	DONE	yes	499	0.41379	451	0.35000	0.28966	467	/e/yyk/FraudGT_multi6/original_raw_baseline/AML-Large-LI-OriginalSparseNodeGTPortsEgoRawSeed44-gpu0
+original_raw_baseline_dataset_summary
+Small-HI	n=3/3	complete=3/3	raw_best_mean=0.78572	raw_best_std=0.00188
+Small-LI	n=3/3	complete=3/3	raw_best_mean=0.49746	raw_best_std=0.00716
+Medium-HI	n=3/3	complete=3/3	raw_best_mean=0.76386	raw_best_std=0.00508
+Medium-LI	n=3/3	complete=3/3	raw_best_mean=0.52291	raw_best_std=0.01542
+Large-HI	n=3/3	complete=3/3	raw_best_mean=0.72126	raw_best_std=0.01151
+Large-LI	n=3/3	complete=3/3	raw_best_mean=0.42336	raw_best_std=0.00889
+original_raw_baseline_complete_summary	18/18

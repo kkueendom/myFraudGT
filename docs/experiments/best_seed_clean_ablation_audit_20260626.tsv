@@ -1,0 +1,63 @@
+variant	dataset	seed	status	complete	val_best	val_epoch	test_at_val	target	margin	test_raw_best	raw_epoch	run_dir
+base_dot	Small-HI	42	COMPLETE	yes	0.67034	171	0.77465	0.8013	-0.02665	0.77465	171	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Small-HI-PaperAblation-base_dot-Seed42-gpu0
+base_dot	Small-LI	42	COMPLETE	yes	0.36754	191	0.42300	0.5101	-0.08710	0.48519	171	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Small-LI-PaperAblation-base_dot-Seed42-gpu0
+base_dot	Medium-HI	42	COMPLETE	yes	0.67117	195	0.73077	0.7993	-0.06853	0.74028	239	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Medium-HI-PaperAblation-base_dot-Seed42-gpu0
+base_dot	Medium-LI	44	COMPLETE	yes	0.30238	163	0.39294	0.4806	-0.08766	0.48458	211	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Medium-LI-PaperAblation-base_dot-Seed44-gpu0
+base_dot	Large-HI	43	COMPLETE	yes	0.60424	207	0.71264	0.7734	-0.06076	0.71264	207	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Large-HI-PaperAblation-base_dot-Seed43-gpu0
+base_dot	Large-LI	44	COMPLETE	yes	0.24506	215	0.29444	0.4143	-0.11986	0.35644	159	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Large-LI-PaperAblation-base_dot-Seed44-gpu0
+supportmix_consis_proto	Small-HI	42	COMPLETE	yes	0.72327	93	0.77049	0.8013	-0.03081	0.79360	195	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Small-HI-PaperAblation-supportmix_consis_proto-Seed42-gpu0
+supportmix_consis_proto	Small-LI	42	COMPLETE	yes	0.43192	203	0.42754	0.5101	-0.08256	0.46154	193	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Small-LI-PaperAblation-supportmix_consis_proto-Seed42-gpu0
+supportmix_consis_proto	Medium-HI	42	COMPLETE	yes	0.74233	223	0.75749	0.7993	-0.04181	0.79617	139	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Medium-HI-PaperAblation-supportmix_consis_proto-Seed42-gpu0
+supportmix_consis_proto	Medium-LI	44	COMPLETE	yes	0.36120	171	0.39648	0.4806	-0.08412	0.48387	149	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Medium-LI-PaperAblation-supportmix_consis_proto-Seed44-gpu0
+supportmix_consis_proto	Large-HI	43	COMPLETE	yes	0.68317	189	0.69627	0.7734	-0.07713	0.76875	187	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Large-HI-PaperAblation-supportmix_consis_proto-Seed43-gpu0
+supportmix_consis_proto	Large-LI	44	RUNNING	no	0.07903	15	0.08083	0.4143	-0.33347	0.08083	15	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Large-LI-PaperAblation-supportmix_consis_proto-Seed44-gpu0
+classmix_proto_bound	Small-HI	42	COMPLETE	yes	0.72473	119	0.78266	0.8013	-0.01864	0.80331	107	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Small-HI-PaperAblation-classmix_proto_bound-Seed42-gpu0
+classmix_proto_bound	Small-LI	42	COMPLETE	yes	0.44444	195	0.45076	0.5101	-0.05934	0.48454	159	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Small-LI-PaperAblation-classmix_proto_bound-Seed42-gpu0
+classmix_proto_bound	Medium-HI	42	COMPLETE	yes	0.75477	129	0.74747	0.7993	-0.05183	0.79306	235	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Medium-HI-PaperAblation-classmix_proto_bound-Seed42-gpu0
+classmix_proto_bound	Medium-LI	44	COMPLETE	yes	0.38174	235	0.43519	0.4806	-0.04541	0.55510	219	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Medium-LI-PaperAblation-classmix_proto_bound-Seed44-gpu0
+classmix_proto_bound	Large-HI	43	COMPLETE	yes	0.66116	213	0.72659	0.7734	-0.04681	0.74128	237	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Large-HI-PaperAblation-classmix_proto_bound-Seed43-gpu0
+classmix_proto_bound	Large-LI	44	MISS	no	-	-	-	0.4143	-	-	-	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Large-LI-PaperAblation-classmix_proto_bound-Seed44-gpu?
+class_split	Small-HI	42	COMPLETE	yes	0.72169	155	0.77195	0.8013	-0.02935	0.80535	207	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Small-HI-PaperAblation-class_split-Seed42-gpu0
+class_split	Small-LI	42	COMPLETE	yes	0.41039	229	0.46721	0.5101	-0.04289	0.49474	169	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Small-LI-PaperAblation-class_split-Seed42-gpu0
+class_split	Medium-HI	42	COMPLETE	yes	0.74245	231	0.77273	0.7993	-0.02657	0.79124	205	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Medium-HI-PaperAblation-class_split-Seed42-gpu0
+class_split	Medium-LI	44	COMPLETE	yes	0.38314	211	0.35514	0.4806	-0.12546	0.53140	223	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Medium-LI-PaperAblation-class_split-Seed44-gpu0
+class_split	Large-HI	43	COMPLETE	yes	0.68396	149	0.65789	0.7734	-0.11551	0.75949	229	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Large-HI-PaperAblation-class_split-Seed43-gpu0
+class_split	Large-LI	44	MISS	no	-	-	-	0.4143	-	-	-	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Large-LI-PaperAblation-class_split-Seed44-gpu?
+full_dual_uncert_gate	Small-HI	42	COMPLETE	yes	0.71723	85	0.78648	0.8013	-0.01482	0.79289	147	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Small-HI-PaperAblation-full_dual_uncert_gate-Seed42-gpu0
+full_dual_uncert_gate	Small-LI	42	COMPLETE	yes	0.42893	119	0.34218	0.5101	-0.16792	0.49821	133	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Small-LI-PaperAblation-full_dual_uncert_gate-Seed42-gpu0
+full_dual_uncert_gate	Medium-HI	42	COMPLETE	yes	0.74745	177	0.78744	0.7993	-0.01186	0.80053	161	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Medium-HI-PaperAblation-full_dual_uncert_gate-Seed42-gpu0
+full_dual_uncert_gate	Medium-LI	44	COMPLETE	yes	0.34583	135	0.41204	0.4806	-0.06856	0.52675	159	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Medium-LI-PaperAblation-full_dual_uncert_gate-Seed44-gpu0
+full_dual_uncert_gate	Large-HI	43	COMPLETE	yes	0.65816	169	0.69010	0.7734	-0.08330	0.74054	131	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Large-HI-PaperAblation-full_dual_uncert_gate-Seed43-gpu0
+full_dual_uncert_gate	Large-LI	44	MISS	no	-	-	-	0.4143	-	-	-	/e/yyk/FraudGT_multi6/paper_ablation_clean_v1/AML-Large-LI-PaperAblation-full_dual_uncert_gate-Seed44-gpu?
+ablation_dataset_summary
+base_dot	Small-HI	n=1/1	complete=1/1	mean=0.77465	std=0.00000	target=0.8013
+base_dot	Small-LI	n=1/1	complete=1/1	mean=0.42300	std=0.00000	target=0.5101
+base_dot	Medium-HI	n=1/1	complete=1/1	mean=0.73077	std=0.00000	target=0.7993
+base_dot	Medium-LI	n=1/1	complete=1/1	mean=0.39294	std=0.00000	target=0.4806
+base_dot	Large-HI	n=1/1	complete=1/1	mean=0.71264	std=0.00000	target=0.7734
+base_dot	Large-LI	n=1/1	complete=1/1	mean=0.29444	std=0.00000	target=0.4143
+supportmix_consis_proto	Small-HI	n=1/1	complete=1/1	mean=0.77049	std=0.00000	target=0.8013
+supportmix_consis_proto	Small-LI	n=1/1	complete=1/1	mean=0.42754	std=0.00000	target=0.5101
+supportmix_consis_proto	Medium-HI	n=1/1	complete=1/1	mean=0.75749	std=0.00000	target=0.7993
+supportmix_consis_proto	Medium-LI	n=1/1	complete=1/1	mean=0.39648	std=0.00000	target=0.4806
+supportmix_consis_proto	Large-HI	n=1/1	complete=1/1	mean=0.69627	std=0.00000	target=0.7734
+supportmix_consis_proto	Large-LI	n=0/1	complete=0/1	mean=-	std=-	target=0.4143
+classmix_proto_bound	Small-HI	n=1/1	complete=1/1	mean=0.78266	std=0.00000	target=0.8013
+classmix_proto_bound	Small-LI	n=1/1	complete=1/1	mean=0.45076	std=0.00000	target=0.5101
+classmix_proto_bound	Medium-HI	n=1/1	complete=1/1	mean=0.74747	std=0.00000	target=0.7993
+classmix_proto_bound	Medium-LI	n=1/1	complete=1/1	mean=0.43519	std=0.00000	target=0.4806
+classmix_proto_bound	Large-HI	n=1/1	complete=1/1	mean=0.72659	std=0.00000	target=0.7734
+classmix_proto_bound	Large-LI	n=0/1	complete=0/1	mean=-	std=-	target=0.4143
+class_split	Small-HI	n=1/1	complete=1/1	mean=0.77195	std=0.00000	target=0.8013
+class_split	Small-LI	n=1/1	complete=1/1	mean=0.46721	std=0.00000	target=0.5101
+class_split	Medium-HI	n=1/1	complete=1/1	mean=0.77273	std=0.00000	target=0.7993
+class_split	Medium-LI	n=1/1	complete=1/1	mean=0.35514	std=0.00000	target=0.4806
+class_split	Large-HI	n=1/1	complete=1/1	mean=0.65789	std=0.00000	target=0.7734
+class_split	Large-LI	n=0/1	complete=0/1	mean=-	std=-	target=0.4143
+full_dual_uncert_gate	Small-HI	n=1/1	complete=1/1	mean=0.78648	std=0.00000	target=0.8013
+full_dual_uncert_gate	Small-LI	n=1/1	complete=1/1	mean=0.34218	std=0.00000	target=0.5101
+full_dual_uncert_gate	Medium-HI	n=1/1	complete=1/1	mean=0.78744	std=0.00000	target=0.7993
+full_dual_uncert_gate	Medium-LI	n=1/1	complete=1/1	mean=0.41204	std=0.00000	target=0.4806
+full_dual_uncert_gate	Large-HI	n=1/1	complete=1/1	mean=0.69010	std=0.00000	target=0.7734
+full_dual_uncert_gate	Large-LI	n=0/1	complete=0/1	mean=-	std=-	target=0.4143
+ablation_seed_complete_summary	26/30
