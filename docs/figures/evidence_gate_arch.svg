@@ -1,0 +1,132 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 620" font-family="'Linux Libertine O','Libertine','Times New Roman',serif">
+  <defs>
+    <marker id="arr" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L7,3 L0,6 z" fill="#333"/>
+    </marker>
+    <marker id="arrR" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L7,3 L0,6 z" fill="#d62728"/>
+    </marker>
+    <marker id="arrP" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L7,3 L0,6 z" fill="#7e57c2"/>
+    </marker>
+  </defs>
+
+  <style>
+    .lbl   { font-size:15px; fill:#111; }
+    .sub   { font-size:11px; }
+    .title { font-size:15px; font-weight:bold; fill:#111; }
+    .tag   { font-size:13px; font-weight:bold; }
+    .small { font-size:12.5px; fill:#222; }
+    .eq    { font-size:14.5px; fill:#111; }
+    .cap   { font-size:13px; fill:#333; font-style:italic; }
+  </style>
+
+  <!-- ===================== INPUT: target transaction ===================== -->
+  <text x="88" y="232" text-anchor="middle" class="small">target transaction</text>
+  <circle cx="55" cy="300" r="16" fill="#cfe3f7" stroke="#1f3b57"/>
+  <text x="55" y="305" text-anchor="middle" class="lbl">u</text>
+  <circle cx="125" cy="300" r="16" fill="#f7d0d0" stroke="#5a1f1f"/>
+  <text x="125" y="305" text-anchor="middle" class="lbl">v</text>
+  <line x1="72" y1="300" x2="107" y2="300" stroke="#333" stroke-width="1.6" marker-end="url(#arr)"/>
+  <text x="90" y="290" text-anchor="middle" class="sub">e<tspan baseline-shift="sub" class="sub">uv</tspan></text>
+  <text x="88" y="345" text-anchor="middle" class="small">(directed multigraph)</text>
+
+  <!-- ===================== ENCODER (unchanged) ===================== -->
+  <rect x="178" y="248" width="150" height="104" rx="10" fill="#e9e9e9" stroke="#555" stroke-width="1.6"/>
+  <text x="253" y="288" text-anchor="middle" class="title">FraudGT</text>
+  <text x="253" y="308" text-anchor="middle" class="title">Encoder</text>
+  <text x="253" y="330" text-anchor="middle" class="cap">(unchanged)</text>
+  <line x1="141" y1="300" x2="176" y2="300" stroke="#333" stroke-width="1.6" marker-end="url(#arr)"/>
+
+  <!-- edge representation bus out of encoder -->
+  <line x1="330" y1="300" x2="358" y2="300" stroke="#333" stroke-width="1.6"/>
+  <text x="345" y="290" text-anchor="middle" class="sub">h<tspan baseline-shift="sub" class="sub">u</tspan>, h<tspan baseline-shift="sub" class="sub">v</tspan>, e<tspan baseline-shift="sub" class="sub">uv</tspan></text>
+  <line x1="358" y1="110" x2="358" y2="500" stroke="#333" stroke-width="1.4"/>
+  <line x1="358" y1="110" x2="383" y2="110" stroke="#333" stroke-width="1.6" marker-end="url(#arr)"/>
+  <line x1="358" y1="278" x2="383" y2="278" stroke="#333" stroke-width="1.6" marker-end="url(#arr)"/>
+  <line x1="358" y1="445" x2="383" y2="445" stroke="#333" stroke-width="1.6" marker-end="url(#arr)"/>
+
+  <!-- ===================== DECODER CONTAINER ===================== -->
+  <rect x="372" y="46" width="486" height="528" rx="14" fill="none" stroke="#333" stroke-width="1.6" stroke-dasharray="2 4"/>
+  <text x="615" y="72" text-anchor="middle" class="title">Evidence-Gated Edge Decoder  (proposed)</text>
+
+  <!-- (A) Base decoder -->
+  <rect x="386" y="84" width="252" height="78" rx="9" fill="#eaf2fb" stroke="#1f77b4" stroke-width="1.8" stroke-dasharray="6 4"/>
+  <text x="398" y="104" class="tag" fill="#1f77b4">(A) Base decoder</text>
+  <text x="398" y="126" class="small">MLP( [ h<tspan baseline-shift="sub" class="sub">u</tspan> ‖ h<tspan baseline-shift="sub" class="sub">v</tspan> ‖ e<tspan baseline-shift="sub" class="sub">uv</tspan> ] )</text>
+  <text x="398" y="148" class="small">→ z<tspan baseline-shift="sub" class="sub">base</tspan>   (original FraudGT)</text>
+
+  <!-- (B) Class-prototype core -->
+  <rect x="386" y="180" width="252" height="158" rx="9" fill="#ecf7ec" stroke="#2ca02c" stroke-width="1.8" stroke-dasharray="6 4"/>
+  <text x="398" y="200" class="tag" fill="#2ca02c">(B) Class-prototype core</text>
+  <rect x="400" y="212" width="104" height="44" rx="6" fill="#ffffff" stroke="#2ca02c"/>
+  <text x="452" y="231" text-anchor="middle" class="small">fraud bank</text>
+  <text x="452" y="248" text-anchor="middle" class="sub">μ⁺ (4 slots)</text>
+  <rect x="520" y="212" width="104" height="44" rx="6" fill="#ffffff" stroke="#2ca02c"/>
+  <text x="572" y="231" text-anchor="middle" class="small">normal bank</text>
+  <text x="572" y="248" text-anchor="middle" class="sub">μ⁻ (4 slots)</text>
+  <text x="398" y="278" class="small">cosine sim → proto evidence (8 feats)</text>
+  <text x="398" y="298" class="small">bounded residual, momentum update</text>
+  <text x="398" y="320" class="small">→ z<tspan baseline-shift="sub" class="sub">proto</tspan> , ready ∈ [0,1]</text>
+
+  <!-- (C) Higher-order structural evidence -->
+  <rect x="386" y="356" width="252" height="118" rx="9" fill="#fff3e6" stroke="#ff7f0e" stroke-width="1.8" stroke-dasharray="6 4"/>
+  <text x="398" y="376" class="tag" fill="#d2691e">(C) Higher-order structural evidence</text>
+  <text x="398" y="400" class="small">1-hop scatter over sampled subgraph:</text>
+  <text x="398" y="421" class="small">ctx<tspan baseline-shift="sub" class="sub">out</tspan>(u), ctx<tspan baseline-shift="sub" class="sub">in</tspan>(v)  ‖  h<tspan baseline-shift="sub" class="sub">uv</tspan></text>
+  <text x="398" y="443" class="small">MLP(·) → z<tspan baseline-shift="sub" class="sub">struct</tspan></text>
+  <text x="398" y="463" class="cap">(gated — never added unconditionally)</text>
+
+  <!-- Uncertainty gate -->
+  <rect x="660" y="356" width="184" height="118" rx="9" fill="#f3eefa" stroke="#7e57c2" stroke-width="1.8" stroke-dasharray="6 4"/>
+  <text x="672" y="376" class="tag" fill="#7e57c2">Uncertainty gate</text>
+  <text x="672" y="399" class="small">g = σ( MLP[ H(z<tspan baseline-shift="sub" class="sub">core</tspan>),</text>
+  <text x="672" y="420" class="small">      |Δ<tspan baseline-shift="sub" class="sub">proto</tspan>|, ready,</text>
+  <text x="672" y="441" class="small">      base margin ] )</text>
+  <text x="672" y="463" class="small">g ∈ (0,1)  · per-sample, no scale rule</text>
+
+  <!-- ===================== FUSION COLUMN ===================== -->
+  <!-- z_core adder -->
+  <circle cx="912" cy="123" r="15" fill="#fff" stroke="#d62728" stroke-width="1.8"/>
+  <text x="912" y="129" text-anchor="middle" class="lbl" fill="#d62728">+</text>
+  <text x="912" y="100" text-anchor="middle" class="sub" fill="#d62728">z<tspan baseline-shift="sub" class="sub">core</tspan></text>
+
+  <!-- base -> + -->
+  <path d="M638,123 L897,123" fill="none" stroke="#333" stroke-width="1.6" marker-end="url(#arr)"/>
+  <!-- proto -> + (bounded, ready-gated) -->
+  <path d="M638,259 L880,259 L880,138 L900,131" fill="none" stroke="#333" stroke-width="1.6" marker-end="url(#arr)"/>
+  <text x="792" y="251" text-anchor="middle" class="sub">σ(α<tspan baseline-shift="sub" class="sub">p</tspan>) · ready ·</text>
+
+  <!-- z_core -> gate (uncertainty) -->
+  <path d="M906,137 C870,180 830,260 800,356" fill="none" stroke="#7e57c2" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arrP)"/>
+
+  <!-- struct -> multiply -->
+  <circle cx="912" cy="415" r="15" fill="#fff" stroke="#d62728" stroke-width="1.8"/>
+  <text x="912" y="421" text-anchor="middle" class="lbl" fill="#d62728">×</text>
+  <path d="M638,430 L897,420" fill="none" stroke="#333" stroke-width="1.6" marker-end="url(#arr)"/>
+  <text x="780" y="447" text-anchor="middle" class="sub">σ(α<tspan baseline-shift="sub" class="sub">s</tspan>) · z<tspan baseline-shift="sub" class="sub">struct</tspan></text>
+  <!-- gate g -> multiply -->
+  <path d="M844,430 L888,422" fill="none" stroke="#7e57c2" stroke-width="1.6" marker-end="url(#arrP)"/>
+  <text x="866" y="408" text-anchor="middle" class="sub" fill="#7e57c2">g</text>
+
+  <!-- z_final adder -->
+  <circle cx="1010" cy="270" r="16" fill="#fff" stroke="#d62728" stroke-width="2"/>
+  <text x="1010" y="276" text-anchor="middle" class="lbl" fill="#d62728">+</text>
+  <text x="1010" y="246" text-anchor="middle" class="sub" fill="#d62728">z<tspan baseline-shift="sub" class="sub">final</tspan></text>
+  <path d="M927,123 L1010,123 L1010,254" fill="none" stroke="#333" stroke-width="1.6" marker-end="url(#arr)"/>
+  <path d="M927,415 L1010,415 L1010,286" fill="none" stroke="#333" stroke-width="1.6" marker-end="url(#arr)"/>
+
+  <!-- sigmoid + prediction -->
+  <rect x="1058" y="248" width="60" height="44" rx="8" fill="#fff" stroke="#333" stroke-width="1.6"/>
+  <text x="1088" y="276" text-anchor="middle" class="title">σ</text>
+  <path d="M1026,270 L1056,270" fill="none" stroke="#333" stroke-width="1.6" marker-end="url(#arr)"/>
+  <path d="M1118,270 L1158,270" fill="none" stroke="#333" stroke-width="1.6" marker-end="url(#arr)"/>
+  <text x="1180" y="258" text-anchor="middle" class="lbl">ŷ</text>
+  <text x="1180" y="282" text-anchor="middle" class="sub">fraud /</text>
+  <text x="1180" y="298" text-anchor="middle" class="sub">normal</text>
+
+  <!-- ===================== EQUATION LEGEND ===================== -->
+  <line x1="372" y1="540" x2="858" y2="540" stroke="#bbb" stroke-width="1"/>
+  <text x="386" y="560" class="eq">z<tspan baseline-shift="sub" class="sub">core</tspan> = z<tspan baseline-shift="sub" class="sub">base</tspan> + σ(α<tspan baseline-shift="sub" class="sub">p</tspan>)·ready·z<tspan baseline-shift="sub" class="sub">proto</tspan></text>
+  <text x="386" y="582" class="eq">z<tspan baseline-shift="sub" class="sub">final</tspan> = z<tspan baseline-shift="sub" class="sub">core</tspan> + g·σ(α<tspan baseline-shift="sub" class="sub">s</tspan>)·z<tspan baseline-shift="sub" class="sub">struct</tspan> ,   ŷ = σ(z<tspan baseline-shift="sub" class="sub">final</tspan>)</text>
+</svg>
