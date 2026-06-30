@@ -4348,11 +4348,11 @@ class HeteroGNNEdgeHead(nn.Module):
         labels = batch[task].y[mask]
 
         # Shared representation over all sampled edges; targets are a subset.
-        h_all = self.eg_repr(feat_all)
+        h_all = torch.nan_to_num(self.eg_repr(feat_all))
         h = h_all[mask]
 
         # (1) Base FraudGT decoder.
-        z_base = self.layer_post_mp(feat_all[mask])
+        z_base = torch.nan_to_num(self.layer_post_mp(feat_all[mask]))
 
         # (2) Bounded class-prototype residual (stable core evidence). The
         # prototype context is computed from banks built on *past* train
@@ -4364,8 +4364,9 @@ class HeteroGNNEdgeHead(nn.Module):
         proto_feat = torch.cat(
             [pos_sim, neg_sim, proto_margin, ready,
              pos_peak, neg_peak, pos_spread, neg_spread], dim=-1)
-        z_proto = self.eg_proto_head(proto_feat)
+        z_proto = torch.nan_to_num(self.eg_proto_head(proto_feat))
         z_core = z_base + torch.sigmoid(self.eg_proto_alpha) * ready * z_proto
+        z_core = torch.nan_to_num(z_core)
 
         # (3) Higher-order 1-hop structural evidence (local transaction
         # neighbourhood), valid when source and target share a node type.
@@ -4379,15 +4380,17 @@ class HeteroGNNEdgeHead(nn.Module):
             tgt_src, tgt_dst = src_all[mask], dst_all[mask]
             struct_feat = torch.cat(
                 [ctx_out[tgt_src], ctx_in[tgt_dst], h], dim=-1)
-            z_struct = self.eg_struct_head(struct_feat)
+            z_struct = torch.nan_to_num(self.eg_struct_head(struct_feat))
         else:
             z_struct = torch.zeros_like(z_core)
 
         # Per-sample uncertainty of the core decision (normalized entropy).
         num_classes = z_core.size(-1)
         p = F.softmax(z_core, dim=-1)
+        p = torch.nan_to_num(p, nan=1.0 / float(num_classes))
         uncertainty = -(p * p.clamp(min=1e-6).log()).sum(
             dim=-1, keepdim=True) / math.log(num_classes)
+        uncertainty = torch.nan_to_num(uncertainty)
         if num_classes == 2:
             base_margin = z_base[:, 1:2] - z_base[:, 0:1]
         else:
@@ -4395,8 +4398,11 @@ class HeteroGNNEdgeHead(nn.Module):
         gate_feat = torch.cat(
             [h, uncertainty, proto_margin.abs(), ready,
              torch.tanh(base_margin)], dim=-1)
+        gate_feat = torch.nan_to_num(gate_feat)
         g = torch.sigmoid(self.eg_gate(gate_feat))
+        g = torch.nan_to_num(g)
         z_final = z_core + g * torch.sigmoid(self.eg_struct_alpha) * z_struct
+        z_final = torch.nan_to_num(z_final)
 
         # Update prototype banks from the current (train) batch, after
         # prediction. Frozen at eval because self.training is False.
