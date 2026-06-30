@@ -128,8 +128,32 @@ def free_gpus():
             continue
         if proc_result.stdout.strip():
             continue
+        if not torch_cuda_ok(idx):
+            log(f"skip gpu={idx}; torch cuda probe failed")
+            continue
         free.append(idx)
     return free
+
+
+def torch_cuda_ok(gpu):
+    cmd = (
+        "source ~/.bashrc >/dev/null 2>&1 || true; "
+        "conda activate fraudgt_dual_gate; "
+        f"CUDA_VISIBLE_DEVICES={gpu} python - <<'PY'\n"
+        "import torch\n"
+        "assert torch.cuda.is_available()\n"
+        "x = torch.tensor([1.0], device='cuda:0')\n"
+        "assert float(x.cpu()[0]) == 1.0\n"
+        "PY"
+    )
+    result = subprocess.run(
+        ["bash", "-lc", cmd],
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=60,
+    )
+    return result.returncode == 0
 
 
 def rows(path):
