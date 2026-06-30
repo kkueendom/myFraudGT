@@ -15,7 +15,7 @@ from pathlib import Path
 
 REPO = Path("/e/yyk/FraudGT_evidence_gate_decoder")
 EVENTS = REPO / ".evidence_gate_queue.events"
-POLL_SECONDS = 900
+POLL_SECONDS = 1800
 
 TASKS = [
     {
@@ -93,6 +93,9 @@ def log(message):
 
 
 def free_gpus():
+    if not driver_inventory_ok():
+        log(f"nvidia driver inventory unhealthy; wait {POLL_SECONDS}s")
+        return []
     free = []
     for idx in (0, 1):
         gpu_result = subprocess.run(
@@ -133,6 +136,17 @@ def free_gpus():
             continue
         free.append(idx)
     return free
+
+
+def driver_inventory_ok():
+    result = subprocess.run(
+        ["nvidia-smi", "-L"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    text = result.stdout + result.stderr
+    return result.returncode == 0 and "Unable to determine" not in text
 
 
 def torch_cuda_ok(gpu):
