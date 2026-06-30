@@ -175,7 +175,8 @@ def launch(task, gpu):
     cmd = (
         "source ~/.bashrc >/dev/null 2>&1 || true; "
         "conda activate fraudgt_dual_gate; "
-        f"python -m fraudGT.main --cfg {cfg_path} --repeat 1 --gpu {gpu} "
+        f"CUDA_VISIBLE_DEVICES={gpu} "
+        f"python -m fraudGT.main --cfg {cfg_path} --repeat 1 --gpu 0 "
         f"out_dir {task['out_dir']} "
         f"{task['overrides']} "
         "train.tqdm False val.tqdm False"
