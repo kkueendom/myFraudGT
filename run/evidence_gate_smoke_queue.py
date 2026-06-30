@@ -93,38 +93,43 @@ def log(message):
 
 
 def free_gpus():
-    gpu_result = subprocess.run(
-        [
-            "nvidia-smi",
-            "--query-gpu=index,pci.bus_id",
-            "--format=csv,noheader,nounits",
-        ],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    bus_to_idx = {}
-    for line in gpu_result.stdout.splitlines():
-        parts = [part.strip() for part in line.split(",")]
-        if len(parts) >= 2:
-            bus_to_idx[parts[1]] = int(parts[0])
+    free = []
+    for idx in (0, 1):
+        gpu_result = subprocess.run(
+            [
+                "nvidia-smi",
+                "-i",
+                str(idx),
+                "--query-gpu=memory.used",
+                "--format=csv,noheader,nounits",
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if gpu_result.returncode != 0:
+            log(f"skip gpu={idx}; nvidia-smi query failed")
+            continue
 
-    proc_result = subprocess.run(
-        [
-            "nvidia-smi",
-            "--query-compute-apps=gpu_bus_id,pid,process_name,used_memory",
-            "--format=csv,noheader,nounits",
-        ],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    busy = set()
-    for line in proc_result.stdout.splitlines():
-        parts = [part.strip() for part in line.split(",")]
-        if parts and parts[0] in bus_to_idx:
-            busy.add(bus_to_idx[parts[0]])
-    return [idx for idx in sorted(bus_to_idx.values()) if idx not in busy]
+        proc_result = subprocess.run(
+            [
+                "nvidia-smi",
+                "-i",
+                str(idx),
+                "--query-compute-apps=pid,process_name,used_memory",
+                "--format=csv,noheader,nounits",
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if proc_result.returncode != 0:
+            log(f"skip gpu={idx}; compute-app query failed")
+            continue
+        if proc_result.stdout.strip():
+            continue
+        free.append(idx)
+    return free
 
 
 def rows(path):
