@@ -76,6 +76,11 @@ class RuntimeStatisticsCUDA:
             (self.cuda_timer_start[region_name], self.cuda_timer_end[region_name]))
 
     def end_epoch(self):
+        if not torch.cuda.is_available() or not self.cuda_timer_lists:
+            self.cuda_timer_lists = dict()
+            self.cuda_timer_start = dict()
+            self.cuda_timer_end = dict()
+            return
         torch.cuda.synchronize()
         for x in self.cuda_timer_lists.keys():
             total = self.cuda_timer_lists[x][0][0].elapsed_time(
