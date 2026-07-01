@@ -7,6 +7,7 @@ seed42 screen if the smoke stage succeeds.
 """
 
 import json
+import os
 import subprocess
 import time
 from datetime import datetime
@@ -16,6 +17,7 @@ from pathlib import Path
 REPO = Path("/e/yyk/FraudGT_evidence_gate_decoder")
 EVENTS = REPO / ".evidence_gate_queue.events"
 POLL_SECONDS = 1800
+MIN_FREE_MIB = int(os.environ.get("EVIDENCE_GATE_MIN_FREE_MIB", "14000"))
 
 TASKS = [
     {
@@ -96,14 +98,14 @@ def free_gpus():
     if not driver_inventory_ok():
         log(f"nvidia driver inventory unhealthy; wait {POLL_SECONDS}s")
         return []
-    free = []
+    candidates = []
     for idx in (0, 1):
         gpu_result = subprocess.run(
             [
                 "nvidia-smi",
                 "-i",
                 str(idx),
-                "--query-gpu=memory.used",
+                "--query-gpu=memory.free,utilization.gpu",
                 "--format=csv,noheader,nounits",
             ],
             text=True,
@@ -113,29 +115,58 @@ def free_gpus():
         if gpu_result.returncode != 0:
             log(f"skip gpu={idx}; nvidia-smi query failed")
             continue
-
-        proc_result = subprocess.run(
-            [
-                "nvidia-smi",
-                "-i",
-                str(idx),
-                "--query-compute-apps=pid,process_name,used_memory",
-                "--format=csv,noheader,nounits",
-            ],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if proc_result.returncode != 0:
-            log(f"skip gpu={idx}; compute-app query failed")
+        try:
+            free_mib, util = [int(value.strip()) for value in gpu_result.stdout.split(",")[:2]]
+        except Exception:
+            log(f"skip gpu={idx}; cannot parse memory query: {gpu_result.stdout.strip()}")
             continue
-        if proc_result.stdout.strip():
+
+        if free_mib < MIN_FREE_MIB:
+            log(f"skip gpu={idx}; free={free_mib}MiB < min_free={MIN_FREE_MIB}MiB")
+            continue
+        if has_own_fraudgt_process(idx):
+            log(f"skip gpu={idx}; existing yyk FraudGT process detected")
             continue
         if not torch_cuda_ok(idx):
             log(f"skip gpu={idx}; torch cuda probe failed")
             continue
-        free.append(idx)
-    return free
+        candidates.append((idx, free_mib, util))
+    candidates.sort(key=lambda item: (-item[1], item[2], item[0]))
+    return [idx for idx, _, _ in candidates]
+
+
+def has_own_fraudgt_process(gpu):
+    proc_result = subprocess.run(
+        [
+            "nvidia-smi",
+            "-i",
+            str(gpu),
+            "--query-compute-apps=pid",
+            "--format=csv,noheader,nounits",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if proc_result.returncode != 0:
+        log(f"gpu={gpu}; compute-app query failed, treating as busy")
+        return True
+    for raw_pid in proc_result.stdout.splitlines():
+        pid = raw_pid.strip()
+        if not pid:
+            continue
+        ps_result = subprocess.run(
+            ["ps", "-o", "user=", "-o", "args=", "-p", pid],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if ps_result.returncode != 0:
+            continue
+        line = ps_result.stdout.strip()
+        if line.startswith("yyk ") and ("fraudGT.main" in line or str(REPO) in line):
+            return True
+    return False
 
 
 def driver_inventory_ok():
