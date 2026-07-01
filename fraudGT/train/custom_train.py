@@ -1,5 +1,7 @@
 import copy
+import json
 import logging
+import os
 import time
 from tqdm import tqdm
 
@@ -64,6 +66,67 @@ def get_best_epoch(val_perf):
     if tiebreak_agg == 'argmin':
         return int(candidate_idx[int(secondary_values.argmin())])
     raise ValueError(f'Unsupported tiebreak aggregation: {tiebreak_agg}')
+
+
+def get_early_stop_metric():
+    metric = getattr(cfg.train, 'early_stop_metric', "")
+    if metric:
+        return metric
+    if cfg.metric_best != 'auto':
+        return cfg.metric_best
+    return 'loss'
+
+
+def is_early_stop_better(value, best_value, delta):
+    if best_value is None:
+        return True
+    if get_early_stop_metric() == 'loss':
+        return value < best_value - delta
+    if cfg.metric_agg == 'argmin':
+        return value < best_value - delta
+    return value > best_value + delta
+
+
+def update_early_stop_state(val_perf, cur_epoch, state):
+    if not getattr(cfg.train, 'early_stop', False):
+        return False
+    metric = get_early_stop_metric()
+    if not val_perf or metric not in val_perf[-1]:
+        return False
+
+    value = float(val_perf[-1][metric])
+    delta = float(getattr(cfg.train, 'early_stop_delta', 0.0))
+    if is_early_stop_better(value, state['best_value'], delta):
+        state['best_value'] = value
+        state['best_epoch'] = cur_epoch
+
+    min_epoch = int(getattr(cfg.train, 'early_stop_min_epoch', 0))
+    patience = int(getattr(cfg.train, 'early_stop_patience', 0))
+    if patience <= 0 or (cur_epoch + 1) < min_epoch:
+        return False
+
+    stale_epochs = cur_epoch - state['best_epoch']
+    if stale_epochs < patience:
+        return False
+
+    payload = {
+        'stopped_epoch': cur_epoch,
+        'best_epoch': state['best_epoch'],
+        'metric': metric,
+        'best_value': state['best_value'],
+        'patience': patience,
+        'min_epoch': min_epoch,
+        'max_epoch': int(cfg.optim.max_epoch),
+    }
+    path = os.path.join(cfg.run_dir, 'early_stop.json')
+    with open(path, 'w') as handle:
+        json.dump(payload, handle, indent=2, sort_keys=True)
+    logging.info(
+        'Early stop at epoch %s: best %s=%.5f at epoch %s; '
+        'patience=%s, min_epoch=%s, max_epoch=%s',
+        cur_epoch, metric, state['best_value'], state['best_epoch'],
+        patience, min_epoch, cfg.optim.max_epoch)
+    return True
 
 
 # def train_epoch(logger, loader, model, optimizer, scheduler, batch_accumulation):
@@ -301,6 +364,7 @@ def custom_train(loggers, loaders, model, optimizer, scheduler):
     split_names = ['val', 'test']
     full_epoch_times = []
     perf = [[] for _ in range(num_splits)]
+    early_stop_state = {'best_value': None, 'best_epoch': start_epoch}
     for cur_epoch in range(start_epoch, cfg.optim.max_epoch):
         start_time = time.perf_counter()
         # enable_runtime_stats()
@@ -385,6 +449,8 @@ def custom_train(loggers, loaders, model, optimizer, scheduler):
                             gtl.attention.gamma.requires_grad:
                         logging.info(f"    {gtl.__class__.__name__} {li}: "
                                      f"gamma={gtl.attention.gamma.item()}")
+            if update_early_stop_state(val_perf, cur_epoch, early_stop_state):
+                break
     logging.info(f"Avg time per epoch: {np.mean(full_epoch_times):.2f}s")
     logging.info(f"Total train loop time: {np.sum(full_epoch_times) / 3600:.2f}h")
     for logger in loggers:

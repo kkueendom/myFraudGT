@@ -38,6 +38,11 @@ def extended_cfg(cfg):
     cfg.train.selection_topk_by_metric = 1
     cfg.train.selection_tiebreak_metric = ""
     cfg.train.selection_tiebreak_agg = "argmax"
+    cfg.train.early_stop = False
+    cfg.train.early_stop_metric = ""
+    cfg.train.early_stop_min_epoch = 0
+    cfg.train.early_stop_patience = 0
+    cfg.train.early_stop_delta = 0.0
 
     # Enable tqdm progress bar during training/validation/testing
     cfg.train.tqdm = False

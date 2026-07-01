@@ -15,7 +15,7 @@ DATASETS = [
     "Large-LI",
 ]
 SEEDS = [42, 43, 44, 45, 46]
-DONE_EPOCH = 239
+DONE_EPOCH = 499
 
 
 def rows(path):
@@ -48,10 +48,20 @@ def summarize_run(seed_dir):
     val_epoch = int(best_val["epoch"])
     test_at_val = test_by_epoch.get(val_epoch)
     raw_best_test = max(test_rows, key=lambda row: float(row.get("f1", 0.0)))
+    early_stop_path = seed_dir / "early_stop.json"
+    early_stop = early_stop_path.exists()
+    early_stop_payload = {}
+    if early_stop:
+        try:
+            early_stop_payload = json.loads(early_stop_path.read_text())
+        except Exception:
+            early_stop_payload = {}
 
     return {
         "train_last": int(train_rows[-1]["epoch"]),
-        "done": int(train_rows[-1]["epoch"]) >= DONE_EPOCH,
+        "done": int(train_rows[-1]["epoch"]) >= DONE_EPOCH or early_stop,
+        "early_stop": early_stop,
+        "stop_epoch": early_stop_payload.get("stopped_epoch"),
         "val_epoch": val_epoch,
         "val_f1": float(best_val.get("f1", 0.0)),
         "test_at_val_f1": float(test_at_val.get("f1", 0.0)) if test_at_val else None,
@@ -83,25 +93,30 @@ def main():
     args = parser.parse_args()
     roots = [Path(root) for root in args.roots]
 
-    print("| Dataset | Seed | Done | Train last | Val epoch | Val F1 | Test@Val F1 | Raw-best test F1 | Run dir |")
-    print("|---|---:|---:|---:|---:|---:|---:|---:|---|")
+    print("| Dataset | Seed | Done | Train last | Stop | Val epoch | Val F1 | Test@Val F1 | Raw-best test F1 | Run dir |")
+    print("|---|---:|---:|---:|---|---:|---:|---:|---:|---|")
     done_count = 0
     total = len(DATASETS) * len(SEEDS)
     for dataset in DATASETS:
         for seed in SEEDS:
             summary = find_summary(roots, dataset, seed)
             if not summary:
-                print(f"| {dataset} | {seed} | 0 | - | - | - | - | - | - |")
+                print(f"| {dataset} | {seed} | 0 | - | - | - | - | - | - | - |")
                 continue
             done_count += int(summary["done"])
             test_at_val = summary["test_at_val_f1"]
+            stop = (
+                f"early@{summary['stop_epoch']}"
+                if summary["early_stop"] else "max"
+            )
             print(
-                "| {dataset} | {seed} | {done} | {train_last} | {val_epoch} | "
+                "| {dataset} | {seed} | {done} | {train_last} | {stop} | {val_epoch} | "
                 "{val_f1:.5f} | {test_at_val} | {raw_best:.5f} | `{run_dir}` |".format(
                     dataset=dataset,
                     seed=seed,
                     done=int(summary["done"]),
                     train_last=summary["train_last"],
+                    stop=stop,
                     val_epoch=summary["val_epoch"],
                     val_f1=summary["val_f1"],
                     test_at_val=f"{test_at_val:.5f}" if test_at_val is not None else "-",

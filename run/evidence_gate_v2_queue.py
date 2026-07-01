@@ -31,7 +31,7 @@ PRIMARY_OUT_DIR = Path(
         str(REPO / "results" / "evidence_gate_v2_fixed"),
     )
 )
-DONE_EPOCH = 239
+DONE_EPOCH = 499
 
 DATASETS = [
     "Small-HI",
@@ -83,9 +83,12 @@ def seed_done_in(out_dir, dataset, seed):
         test_rows = rows(seed_dir / "test" / "stats.json")
         if (
             train_rows
-            and int(train_rows[-1]["epoch"]) >= DONE_EPOCH
             and val_rows
             and test_rows
+            and (
+                int(train_rows[-1]["epoch"]) >= DONE_EPOCH
+                or (seed_dir / "early_stop.json").exists()
+            )
         ):
             return True
     return False
@@ -380,7 +383,8 @@ def launch_detached(dataset, seed, gpu):
         f"export CUDA_VISIBLE_DEVICES={gpu}; "
         f"exec python -m fraudGT.main --cfg {cfg_path} --repeat 1 --gpu 0 "
         f"out_dir {PRIMARY_OUT_DIR} seed {seed} "
-        "train.tqdm False val.tqdm False"
+        "train.tqdm False val.tqdm False "
+        "train.auto_resume True train.epoch_resume -1"
     )
     log(f"launch dataset={dataset} seed={seed} gpu={gpu} cfg={cfg_path}")
     with log_path.open("ab") as output:
