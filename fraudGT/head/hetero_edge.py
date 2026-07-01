@@ -4347,12 +4347,18 @@ class HeteroGNNEdgeHead(nn.Module):
         mask = self._edge_mask(batch)
         labels = batch[task].y[mask]
 
+        feat_all = torch.nan_to_num(feat_all)
+
         # Shared representation over all sampled edges; targets are a subset.
-        h_all = torch.nan_to_num(self.eg_repr(feat_all))
+        h_all = self.eg_repr(feat_all)
+        if not torch.isfinite(h_all).all():
+            raise FloatingPointError("evidence_gate produced non-finite edge representations")
         h = h_all[mask]
 
         # (1) Base FraudGT decoder.
-        z_base = torch.nan_to_num(self.layer_post_mp(feat_all[mask]))
+        z_base = self.layer_post_mp(feat_all[mask])
+        if not torch.isfinite(z_base).all():
+            raise FloatingPointError("evidence_gate produced non-finite base logits")
 
         # (2) Bounded class-prototype residual (stable core evidence). The
         # prototype context is computed from banks built on *past* train
@@ -4364,9 +4370,12 @@ class HeteroGNNEdgeHead(nn.Module):
         proto_feat = torch.cat(
             [pos_sim, neg_sim, proto_margin, ready,
              pos_peak, neg_peak, pos_spread, neg_spread], dim=-1)
-        z_proto = torch.nan_to_num(self.eg_proto_head(proto_feat))
+        z_proto = self.eg_proto_head(torch.nan_to_num(proto_feat))
+        if not torch.isfinite(z_proto).all():
+            raise FloatingPointError("evidence_gate produced non-finite prototype logits")
         z_core = z_base + torch.sigmoid(self.eg_proto_alpha) * ready * z_proto
-        z_core = torch.nan_to_num(z_core)
+        if not torch.isfinite(z_core).all():
+            raise FloatingPointError("evidence_gate produced non-finite core logits")
 
         # (3) Higher-order 1-hop structural evidence (local transaction
         # neighbourhood), valid when source and target share a node type.
@@ -4380,29 +4389,42 @@ class HeteroGNNEdgeHead(nn.Module):
             tgt_src, tgt_dst = src_all[mask], dst_all[mask]
             struct_feat = torch.cat(
                 [ctx_out[tgt_src], ctx_in[tgt_dst], h], dim=-1)
-            z_struct = torch.nan_to_num(self.eg_struct_head(struct_feat))
+            z_struct = self.eg_struct_head(torch.nan_to_num(struct_feat))
+            if not torch.isfinite(z_struct).all():
+                raise FloatingPointError("evidence_gate produced non-finite structural logits")
         else:
             z_struct = torch.zeros_like(z_core)
 
-        # Per-sample uncertainty of the core decision (normalized entropy).
-        num_classes = z_core.size(-1)
-        p = F.softmax(z_core, dim=-1)
-        p = torch.nan_to_num(p, nan=1.0 / float(num_classes))
-        uncertainty = -(p * p.clamp(min=1e-6).log()).sum(
-            dim=-1, keepdim=True) / math.log(num_classes)
-        uncertainty = torch.nan_to_num(uncertainty)
-        if num_classes == 2:
-            base_margin = z_base[:, 1:2] - z_base[:, 0:1]
+        # Per-sample uncertainty of the core decision. Binary classification in
+        # this codebase is represented by a single logit, so use sigmoid entropy
+        # there; the multiclass path keeps the usual normalized softmax entropy.
+        num_outputs = z_core.size(-1)
+        if num_outputs == 1:
+            p_pos = torch.sigmoid(z_core).clamp(min=1e-6, max=1.0 - 1e-6)
+            uncertainty = -(
+                p_pos * p_pos.log() +
+                (1.0 - p_pos) * (1.0 - p_pos).log()
+            ) / math.log(2.0)
+            base_margin = z_base
         else:
-            base_margin = z_base.max(dim=-1, keepdim=True).values
+            p = F.softmax(z_core, dim=-1).clamp(min=1e-6)
+            uncertainty = -(p * p.log()).sum(
+                dim=-1, keepdim=True) / math.log(float(num_outputs))
+            if num_outputs == 2:
+                base_margin = z_base[:, 1:2] - z_base[:, 0:1]
+            else:
+                base_margin = z_base.max(dim=-1, keepdim=True).values
+        uncertainty = torch.nan_to_num(uncertainty)
         gate_feat = torch.cat(
             [h, uncertainty, proto_margin.abs(), ready,
              torch.tanh(base_margin)], dim=-1)
         gate_feat = torch.nan_to_num(gate_feat)
         g = torch.sigmoid(self.eg_gate(gate_feat))
-        g = torch.nan_to_num(g)
+        if not torch.isfinite(g).all():
+            raise FloatingPointError("evidence_gate produced non-finite gates")
         z_final = z_core + g * torch.sigmoid(self.eg_struct_alpha) * z_struct
-        z_final = torch.nan_to_num(z_final)
+        if not torch.isfinite(z_final).all():
+            raise FloatingPointError("evidence_gate produced non-finite final logits")
 
         # Update prototype banks from the current (train) batch, after
         # prediction. Frozen at eval because self.training is False.
