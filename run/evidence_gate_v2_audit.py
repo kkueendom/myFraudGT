@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Audit evidence-gate v2 formal runs.
-
-Reports completion plus validation-selected test F1 for the 5 x 6 plan. Seed 42
-may live in the legacy seed42 output directory, so this audit reads both roots.
-"""
+"""Audit evidence-gate v2 formal runs."""
 
 import argparse
 import json
@@ -81,8 +77,7 @@ def main():
         "--roots",
         nargs="+",
         default=[
-            "/e/yyk/FraudGT_evidence_gate_decoder/results/evidence_gate_v2",
-            "/e/yyk/FraudGT_evidence_gate_decoder/results/evidence_gate_seed42",
+            "/e/yyk/FraudGT_evidence_gate_decoder/results/evidence_gate_v2_fixed",
         ],
     )
     args = parser.parse_args()

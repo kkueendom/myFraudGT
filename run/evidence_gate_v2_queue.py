@@ -22,8 +22,12 @@ EVENTS = REPO / ".evidence_gate_v2_queue.events"
 LEGACY_QUEUE_PID = REPO / ".evidence_gate_queue.pid"
 POLL_SECONDS = int(os.environ.get("EVIDENCE_GATE_V2_POLL_SECONDS", "1800"))
 MIN_FREE_MIB = int(os.environ.get("EVIDENCE_GATE_MIN_FREE_MIB", "14000"))
-PRIMARY_OUT_DIR = REPO / "results" / "evidence_gate_v2"
-SEED42_OUT_DIR = REPO / "results" / "evidence_gate_seed42"
+PRIMARY_OUT_DIR = Path(
+    os.environ.get(
+        "EVIDENCE_GATE_V2_OUT_DIR",
+        str(REPO / "results" / "evidence_gate_v2_fixed"),
+    )
+)
 DONE_EPOCH = 239
 
 DATASETS = [
@@ -84,9 +88,7 @@ def seed_done_in(out_dir, dataset, seed):
 
 
 def task_done(dataset, seed):
-    if seed_done_in(PRIMARY_OUT_DIR, dataset, seed):
-        return True
-    return seed == 42 and seed_done_in(SEED42_OUT_DIR, dataset, seed)
+    return seed_done_in(PRIMARY_OUT_DIR, dataset, seed)
 
 
 def pending_tasks():
