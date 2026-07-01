@@ -105,12 +105,26 @@ def pending_tasks():
 
 
 def process_alive(pid):
-    return subprocess.run(
-        ["ps", "-p", str(pid)],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+    result = subprocess.run(
+        ["ps", "-p", str(pid), "-o", "stat="],
+        text=True,
+        capture_output=True,
         check=False,
-    ).returncode == 0
+    )
+    if result.returncode != 0:
+        return False
+    return not result.stdout.strip().startswith("Z")
+
+
+def reap_children():
+    while True:
+        try:
+            pid, status = os.waitpid(-1, os.WNOHANG)
+        except ChildProcessError:
+            return
+        if pid == 0:
+            return
+        log(f"reaped child pid={pid} status={status}")
 
 
 def marker_path(dataset, seed, gpu):
@@ -393,6 +407,8 @@ def runnable_tasks():
 def main():
     log("evidence_gate v2 5-seed dual-gpu queue started")
     while True:
+        reap_children()
+
         pending = pending_tasks()
         if not pending:
             log("evidence_gate v2 5-seed queue finished")
