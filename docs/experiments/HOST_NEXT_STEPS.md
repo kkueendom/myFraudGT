@@ -11,7 +11,57 @@ finish and honestly recompute results. Do the steps in order.
 
 ---
 
-## P0 — Gate diagnostic (cheap, decides if v2 is worth saving)
+## ✅ P0 RESULT (done) — the gate collapsed to always-open
+
+The diagnostic on Large-HI and Medium-LI showed, for both val and test:
+`g mean=1.0000 std=0.0000 frac>.95=1.000` (uncertainty itself was fine:
+`uncert std ≈ 0.22–0.28`). So the per-sample gate **learned to be a constant 1
+(fully open everywhere)**. The uncertainty routing is inactive; **v2 is really
+"prototype core + an always-on structural branch"**, and that does not beat v1.
+
+## 🔜 NEXT ACTION — run M1 vs v2 (decides the paper's main line)
+
+This is now the top priority. It answers: is that always-on structural branch
+helping, or is the **prototype core alone** the real contribution?
+
+New code adds an M1 route `evidence_gate_proto` = base decoder + bounded
+prototype residual ONLY (no structural evidence, no gate). Its configs are
+`configs/evidence_gate_proto/AML-*.yaml` — **identical to the v2 configs except
+that one branch** (same 500-epoch + early-stop budget), so M1 vs v2 is a clean,
+budget-matched comparison.
+
+**Steps:**
+```bash
+git pull                 # get the evidence_gate_proto route + M1 queue/configs
+# NOTE: the queue hardcodes REPO=/e/yyk/FraudGT_evidence_gate_decoder.
+# If your worktree differs, edit REPO in run/evidence_gate_m1_queue.py first
+# (or export EVIDENCE_GATE_M1_OUT_DIR to an absolute path).
+
+python run/evidence_gate_m1_queue.py          # runs M1: 6 datasets x seeds 42,43,44
+                                              # results -> results/evidence_gate_m1_proto
+
+# audit M1 under val-F1 (test_at_val):
+python run/evidence_gate_v2_audit.py --roots <REPO>/results/evidence_gate_m1_proto
+# v2 for comparison:
+python run/evidence_gate_v2_audit.py --roots <REPO>/results/evidence_gate_v2_fixed
+```
+
+**Compare M1 vs v2 per dataset on `Test@Val F1` (3-seed mean), and decide:**
+- **M1 ≥ v2 on most datasets** → the always-on structural branch is dead weight
+  (or harmful). Main line = **prototype core (M1)**; drop the structural branch
+  and gate. Write the gate collapse + this result as the paper's "extra evidence
+  doesn't help / simplicity wins" finding. **Stop trying to save the gate.**
+- **M1 < v2 on most datasets** → structural evidence helps even when always-on;
+  only then is it worth fixing the gate (a `gate_v3` attempt). Report back first.
+
+If time-constrained, prioritize the datasets that decide it: **Medium-LI,
+Large-HI, Large-LI, Small-LI** (the ones where v2 diverged from expectation).
+
+Report back the M1-vs-v2 val-F1 table before doing P2/P3.
+
+---
+
+## P0 — Gate diagnostic (reference; already DONE, result above)
 
 Commit `c0c2886` adds an **eval-only, throttled** log line in
 `fraudGT/head/hetero_edge.py::_evidence_gate_head`. It prints, during

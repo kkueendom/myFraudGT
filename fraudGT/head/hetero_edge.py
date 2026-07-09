@@ -21,7 +21,13 @@ class HeteroGNNEdgeHead(nn.Module):
         self.edge_decoding = cfg.model.edge_decoding
         # Scale-agnostic, uncertainty-gated evidence decoder (see
         # `_evidence_gate_head`). A single, dataset-size-independent route.
-        self.use_evidence_gate = (self.edge_decoding == 'evidence_gate')
+        # `evidence_gate_proto` is the M1 ablation: base decoder + bounded
+        # prototype residual ONLY (no structural branch, no gate) -- it isolates
+        # the prototype core so we can tell whether the (currently always-open)
+        # structural branch helps at all.
+        self.use_evidence_gate = self.edge_decoding in {
+            'evidence_gate', 'evidence_gate_proto'}
+        self.eg_proto_only = (self.edge_decoding == 'evidence_gate_proto')
         self.use_pair_chain_head = self.edge_decoding in {
             'pair_chain',
             'pair_chain_contextresid',
@@ -4377,6 +4383,14 @@ class HeteroGNNEdgeHead(nn.Module):
         z_core = z_base + torch.sigmoid(self.eg_proto_alpha) * ready * z_proto
         if not torch.isfinite(z_core).all():
             raise FloatingPointError("evidence_gate produced non-finite core logits")
+
+        # M1 ablation (`evidence_gate_proto`): base decoder + bounded prototype
+        # residual only. No structural evidence, no gate. Everything else in the
+        # forward is identical to v2, so M1 vs v2 differs by exactly this branch.
+        if self.eg_proto_only:
+            if self.training:
+                self._update_support_class_prototypes(h, labels)
+            return z_core, labels
 
         # (3) Higher-order 1-hop structural evidence (local transaction
         # neighbourhood), valid when source and target share a node type.
