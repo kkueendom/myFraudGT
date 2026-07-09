@@ -25,9 +25,14 @@ class HeteroGNNEdgeHead(nn.Module):
         # prototype residual ONLY (no structural branch, no gate) -- it isolates
         # the prototype core so we can tell whether the (currently always-open)
         # structural branch helps at all.
+        # `evidence_gate_v3` is the fixed gate: identifiable (no redundant global
+        # scale), convex fusion with an opportunity cost, gate fed only routing
+        # signals (not h), started shut, with an L1 penalty + warm-up. See
+        # `_evidence_gate_head`.
         self.use_evidence_gate = self.edge_decoding in {
-            'evidence_gate', 'evidence_gate_proto'}
+            'evidence_gate', 'evidence_gate_proto', 'evidence_gate_v3'}
         self.eg_proto_only = (self.edge_decoding == 'evidence_gate_proto')
+        self.eg_gate_v3 = (self.edge_decoding == 'evidence_gate_v3')
         self.use_pair_chain_head = self.edge_decoding in {
             'pair_chain',
             'pair_chain_contextresid',
@@ -1420,6 +1425,25 @@ class HeteroGNNEdgeHead(nn.Module):
         # tanh(base margin)]. No dataset-size signal is used anywhere.
         self.eg_gate = MLP(dim_in + 4, 1,
                            num_layers=self.head_layers, bias=True)
+
+        if self.eg_gate_v3:
+            # v3 fixed gate. Small MLP fed ONLY routing scalars (no `h`) so it
+            # cannot memorise a constant; a dedicated bias starts it shut; the
+            # structural branch is fused convexly (no redundant global scale).
+            # Routing signals: [uncertainty, |proto_margin|, ready, struct_support,
+            #                   |tanh(base_margin)|] -> 5 scalars.
+            self.eg_gate_v3_signals = 5
+            self.eg_gate_v3_head = MLP(self.eg_gate_v3_signals, 1,
+                                       num_layers=self.head_layers, bias=True)
+            self.eg_gate_v3_bias = nn.Parameter(
+                torch.tensor(math.log(0.05 / 0.95)))
+            self.eg_gate_l1 = float(getattr(cfg.model, 'eg_gate_l1', 1e-3))
+            self.eg_gate_warmup_epochs = int(
+                getattr(cfg.model, 'eg_gate_warmup_epochs', 20))
+            # Set from the train loop each epoch (default large so eval is never
+            # treated as warm-up).
+            self._eg_cur_epoch = 10 ** 9
+            self._eg_gate_penalty = None
 
     def _edge_mask(self, batch):
         task = cfg.dataset.task_entity
@@ -4407,8 +4431,19 @@ class HeteroGNNEdgeHead(nn.Module):
             z_struct = self.eg_struct_head(torch.nan_to_num(struct_feat))
             if not torch.isfinite(z_struct).all():
                 raise FloatingPointError("evidence_gate produced non-finite structural logits")
+            # Normalised 1-hop support: how many neighbours the aggregation saw
+            # (u out-degree + v in-degree). A bounded data statistic telling the
+            # gate whether the structural context is meaningful. No parameters.
+            ones = h_all.new_ones((h_all.size(0), 1))
+            out_deg = scatter(ones, src_all, dim=0,
+                              dim_size=num_nodes, reduce='sum')
+            in_deg = scatter(ones, dst_all, dim=0,
+                             dim_size=num_nodes, reduce='sum')
+            struct_support = torch.tanh(
+                0.5 * torch.log1p(out_deg[tgt_src] + in_deg[tgt_dst]))
         else:
             z_struct = torch.zeros_like(z_core)
+            struct_support = torch.zeros_like(z_core)
 
         # Per-sample uncertainty of the core decision. Binary classification in
         # this codebase is represented by a single logit, so use sigmoid entropy
@@ -4430,18 +4465,33 @@ class HeteroGNNEdgeHead(nn.Module):
             else:
                 base_margin = z_base.max(dim=-1, keepdim=True).values
         uncertainty = torch.nan_to_num(uncertainty)
-        gate_feat = torch.cat(
-            [h, uncertainty, proto_margin.abs(), ready,
-             torch.tanh(base_margin)], dim=-1)
-        gate_feat = torch.nan_to_num(gate_feat)
-        g = torch.sigmoid(self.eg_gate(gate_feat))
+
+        if self.eg_gate_v3:
+            # v3 gate: routing scalars ONLY (no h, so it cannot memorise a
+            # constant), started shut via a dedicated negative bias.
+            gate_feat = torch.cat(
+                [uncertainty, proto_margin.abs(), ready, struct_support,
+                 torch.tanh(base_margin).abs()], dim=-1)
+            gate_feat = torch.nan_to_num(gate_feat)
+            g = torch.sigmoid(
+                self.eg_gate_v3_head(gate_feat) + self.eg_gate_v3_bias)
+            # Warm-up: force the gate shut for the first few epochs so the base
+            # and prototype core settle before the structural branch can act.
+            if self.training and self._eg_cur_epoch < self.eg_gate_warmup_epochs:
+                g = torch.zeros_like(g)
+        else:
+            gate_feat = torch.cat(
+                [h, uncertainty, proto_margin.abs(), ready,
+                 torch.tanh(base_margin)], dim=-1)
+            gate_feat = torch.nan_to_num(gate_feat)
+            g = torch.sigmoid(self.eg_gate(gate_feat))
         if not torch.isfinite(g).all():
             raise FloatingPointError("evidence_gate produced non-finite gates")
 
         # Diagnostic (eval only, throttled): report whether the per-sample gate
-        # actually varies -- the core premise of v2. If g collapses to a near
-        # constant (std ~ 0, frac<0.05 or frac>0.95 ~ 1.0), the uncertainty
-        # routing is inactive and any v2 effect is really just the prototype core.
+        # actually varies -- the core premise of the gate. If g collapses to a
+        # near constant (std ~ 0, frac<0.05 or frac>0.95 ~ 1.0), the routing is
+        # inactive and any effect is really just the prototype core.
         if not self.training:
             self._eg_log_step = getattr(self, '_eg_log_step', 0) + 1
             if self._eg_log_step % 64 == 1:
@@ -4462,7 +4512,16 @@ class HeteroGNNEdgeHead(nn.Module):
                         (gf > 0.95).float().mean().item(),
                         uf.mean().item(), uf.std(unbiased=False).item())
 
-        z_final = z_core + g * torch.sigmoid(self.eg_struct_alpha) * z_struct
+        if self.eg_gate_v3:
+            # Convex fusion: opening the gate discards the reliable core, so g
+            # carries a real opportunity cost and cannot trivially saturate.
+            # No redundant global scale -- g is the branch's only modulator.
+            z_final = (1.0 - g) * z_core + g * z_struct
+            # L1/budget penalty (train only) so the gate defaults closed.
+            if self.training:
+                self._eg_gate_penalty = self.eg_gate_l1 * g.mean()
+        else:
+            z_final = z_core + g * torch.sigmoid(self.eg_struct_alpha) * z_struct
         if not torch.isfinite(z_final).all():
             raise FloatingPointError("evidence_gate produced non-finite final logits")
 

@@ -100,3 +100,8 @@ def extended_cfg(cfg):
     cfg.model.loss_fun_weight = []
     cfg.model.loss_fun_gamma = 2.0
     cfg.model.auto_tune_thresh = False
+
+    # evidence_gate_v3: L1/budget penalty weight on the structural gate g, and
+    # number of warm-up epochs during which the gate is forced shut (g=0).
+    cfg.model.eg_gate_l1 = 1e-3
+    cfg.model.eg_gate_warmup_epochs = 20

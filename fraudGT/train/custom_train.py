@@ -161,9 +161,27 @@ def update_early_stop_state(val_perf, cur_epoch, state):
 #                             dataset_name=cfg.dataset.name)
 #         time_start = time.time()
 
+def _set_evidence_gate_epoch(model, cur_epoch):
+    '''Tell evidence_gate_v3 heads the current epoch (for gate warm-up).'''
+    for module in model.modules():
+        if hasattr(module, '_eg_cur_epoch'):
+            module._eg_cur_epoch = cur_epoch
+
+
+def _evidence_gate_penalty(model):
+    '''Sum any stashed evidence_gate_v3 L1 gate penalties (0 if none).'''
+    penalty = 0.0
+    for module in model.modules():
+        pen = getattr(module, '_eg_gate_penalty', None)
+        if pen is not None:
+            penalty = penalty + pen
+    return penalty
+
+
 def train_epoch(cur_epoch, logger, loader, model, optimizer, scheduler, batch_accumulation):
     pbar = tqdm(total=len(loader), disable=not cfg.train.tqdm)
     pbar.set_description(f'Train epoch')
+    _set_evidence_gate_epoch(model, cur_epoch)
 
     model.train()
 
@@ -236,6 +254,7 @@ def train_epoch(cur_epoch, logger, loader, model, optimizer, scheduler, batch_ac
                 loss, pred_score = compute_loss(pred, true, cur_epoch)
             else:
                 loss, pred_score = compute_loss(pred, true)
+            loss = loss + _evidence_gate_penalty(model)
             _true = true.detach().to('cpu', non_blocking=True)
             _pred = pred_score.detach().to('cpu', non_blocking=True)
             runtime_stats_cuda.end_region("loss")

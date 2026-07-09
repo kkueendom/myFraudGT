@@ -59,6 +59,43 @@ Large-HI, Large-LI, Small-LI** (the ones where v2 diverged from expectation).
 
 Report back the M1-vs-v2 val-F1 table before doing P2/P3.
 
+## 🆕 v3 — the redesigned (fixed) gate
+
+Root cause of the P0 collapse: `g` and `σ(α_s)` both multiplied `z_struct` (two
+learned knobs on the same branch → non-identifiable → `g` drifts to constant 1).
+The new route `evidence_gate_v3` fixes this:
+- **removes** the redundant `σ(α_s)`;
+- **convex fusion** `z_final = (1−g)·z_core + g·z_struct` (opening the gate costs
+  you the reliable core, so `g` can't trivially saturate);
+- gate fed **routing signals only** `[uncertainty, |proto_margin|, ready,
+  struct_support, |base_margin|]` (no `h`), started **shut** (negative bias),
+  with an **L1 penalty** `λ·mean(g)` (`cfg.model.eg_gate_l1`, default 1e-3) and a
+  **warm-up** (`cfg.model.eg_gate_warmup_epochs`, default 20).
+
+Base + prototype core are identical to M1, so **v3 vs M1** isolates whether a
+*properly-gated* structural branch beats the prototype core alone.
+
+**Steps (after M1 vs v2):**
+```bash
+git pull
+# smoke test first (banks warm, no NaN, loss falls, gate penalty finite):
+python -m fraudGT.main --cfg configs/evidence_gate_v3/AML-Small-HI.yaml \
+  --repeat 1 --gpu 0 optim.max_epoch 4 train.iter_per_epoch 16 seed 42
+# then the queue (seeds 42-44 -> results/evidence_gate_v3):
+python run/evidence_gate_v3_queue.py
+python run/evidence_gate_v2_audit.py --roots <REPO>/results/evidence_gate_v3
+```
+
+**Verify the gate is now ALIVE (primary):** grep `evidence_gate/` in a v3 eval
+log — `g.std` must be clearly > 0 and `frac<.05` substantial (NOT `g=1.000
+std=0`). `g` should track `uncertainty`. If it still collapses, report back
+before running all seeds.
+
+**Decide:** compare **M1 vs v2 vs v3** on `Test@Val F1` (3-seed mean, all 6
+datasets). v3 is only worth keeping if it **beats M1**; otherwise the honest
+conclusion is the prototype core (M1) is the main line and the gate is a
+documented negative result.
+
 ---
 
 ## P0 — Gate diagnostic (reference; already DONE, result above)
