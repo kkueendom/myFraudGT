@@ -1,3 +1,4 @@
+import logging
 import math
 import torch
 import torch.nn as nn
@@ -4422,6 +4423,31 @@ class HeteroGNNEdgeHead(nn.Module):
         g = torch.sigmoid(self.eg_gate(gate_feat))
         if not torch.isfinite(g).all():
             raise FloatingPointError("evidence_gate produced non-finite gates")
+
+        # Diagnostic (eval only, throttled): report whether the per-sample gate
+        # actually varies -- the core premise of v2. If g collapses to a near
+        # constant (std ~ 0, frac<0.05 or frac>0.95 ~ 1.0), the uncertainty
+        # routing is inactive and any v2 effect is really just the prototype core.
+        if not self.training:
+            self._eg_log_step = getattr(self, '_eg_log_step', 0) + 1
+            if self._eg_log_step % 64 == 1:
+                with torch.no_grad():
+                    gf = g.detach().float().view(-1)
+                    uf = uncertainty.detach().float().view(-1)
+                    logging.info(
+                        "[evidence_gate/%s] g: mean=%.4f std=%.4f min=%.4f "
+                        "max=%.4f p10=%.4f p50=%.4f p90=%.4f frac<.05=%.3f "
+                        "frac>.95=%.3f | uncert: mean=%.4f std=%.4f",
+                        getattr(batch, 'split', '?'),
+                        gf.mean().item(), gf.std(unbiased=False).item(),
+                        gf.min().item(), gf.max().item(),
+                        torch.quantile(gf, 0.10).item(),
+                        torch.quantile(gf, 0.50).item(),
+                        torch.quantile(gf, 0.90).item(),
+                        (gf < 0.05).float().mean().item(),
+                        (gf > 0.95).float().mean().item(),
+                        uf.mean().item(), uf.std(unbiased=False).item())
+
         z_final = z_core + g * torch.sigmoid(self.eg_struct_alpha) * z_struct
         if not torch.isfinite(z_final).all():
             raise FloatingPointError("evidence_gate produced non-finite final logits")
