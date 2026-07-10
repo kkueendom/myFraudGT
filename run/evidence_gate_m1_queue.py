@@ -290,7 +290,7 @@ def torch_cuda_ok(gpu):
 
 
 def parse_task_from_args(args):
-    if "python -m fraudGT.main" not in args:
+    if "-m fraudGT.main" not in args:
         return None
     if str(PRIMARY_OUT_DIR) not in args:
         return None
