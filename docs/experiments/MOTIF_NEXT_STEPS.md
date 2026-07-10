@@ -2,7 +2,33 @@
 
 New research direction (encoder architecture innovation). The decoder line
 (v1/v2/M1/v3) is deprioritized — under the honest val-selected F1 metric it gave
-~0 gain over the FraudGT baseline.
+~0 gain over the FraudGT baseline. Branch: `feature/motif-aware-gt`.
+
+## ⚡ FAST go/no-go first (do this before the full sweep)
+
+One command runs motif-ON vs motif-OFF on the two smallest datasets at a short
+budget and prints the val-selected test F1 delta. Both arms are identical except
+`gt.motif_bias`, so the delta is purely the mechanism.
+
+```bash
+git pull                        # branch feature/motif-aware-gt
+PY=/d/miniconda3/envs/fraudGT/bin/python EPOCHS=80 bash run/motif_quickcheck.sh
+# (set GPU=<n> / DATASETS="Small-HI Small-LI" / SEED=42 as needed)
+```
+
+It prints a table ending with `mean Δ Test@Val (motif - baseline)`. **Decision:**
+- clearly **positive Δ** on both small datasets → the mechanism works; proceed to
+  the full matched sweep below (and add more seeds / all 6 datasets).
+- **≈0 or negative Δ** → motif-biased attention (this structural version) is not
+  enough; report back before investing more. Likely next: amount-weighted / longer
+  motifs, or the motif *node encoder*, or a different architectural angle.
+
+Also confirm the mechanism is actually active (not zero): after a run, the learned
+`motif_proj.weight` norm should be > 0 (it is zero-initialised).
+
+---
+
+## Full run (only if the fast check is positive)
 
 ## What this is
 
