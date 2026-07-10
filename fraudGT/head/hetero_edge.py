@@ -25,14 +25,20 @@ class HeteroGNNEdgeHead(nn.Module):
         # prototype residual ONLY (no structural branch, no gate) -- it isolates
         # the prototype core so we can tell whether the (currently always-open)
         # structural branch helps at all.
-        # `evidence_gate_v3` is the fixed gate: identifiable (no redundant global
-        # scale), convex fusion with an opportunity cost, gate fed only routing
-        # signals (not h), started shut, with an L1 penalty + warm-up. See
-        # `_evidence_gate_head`.
+        # `evidence_gate_v3` is the convex-fusion gate experiment.
+        # `evidence_gate_v4_residual` fixes its dead-expert failure mode with a
+        # bounded residual structural expert, a nonzero fixed-open warm-up, and
+        # a target-budget router. `evidence_gate_v4_nogate` is the controlled
+        # diagnostic that applies the same residual expert without a router.
         self.use_evidence_gate = self.edge_decoding in {
-            'evidence_gate', 'evidence_gate_proto', 'evidence_gate_v3'}
+            'evidence_gate', 'evidence_gate_proto', 'evidence_gate_v3',
+            'evidence_gate_v4_residual', 'evidence_gate_v4_nogate'}
         self.eg_proto_only = (self.edge_decoding == 'evidence_gate_proto')
         self.eg_gate_v3 = (self.edge_decoding == 'evidence_gate_v3')
+        self.eg_gate_v4 = self.edge_decoding in {
+            'evidence_gate_v4_residual', 'evidence_gate_v4_nogate'}
+        self.eg_gate_v4_nogate = (
+            self.edge_decoding == 'evidence_gate_v4_nogate')
         self.use_pair_chain_head = self.edge_decoding in {
             'pair_chain',
             'pair_chain_contextresid',
@@ -1444,6 +1450,50 @@ class HeteroGNNEdgeHead(nn.Module):
             # treated as warm-up).
             self._eg_cur_epoch = 10 ** 9
             self._eg_gate_penalty = None
+
+        if self.eg_gate_v4:
+            # v4 routes a bounded structural *correction*, rather than replacing
+            # the reliable core logits. The two additional routing signals tell
+            # the gate how large the proposed correction is and whether it
+            # agrees with the current core decision.
+            self.eg_gate_v4_signals = 7
+            self.eg_gate_v4_head = MLP(self.eg_gate_v4_signals, 1,
+                                       num_layers=self.head_layers, bias=True)
+            self.eg_gate_init_open = float(
+                getattr(cfg.model, 'eg_gate_init_open', 0.10))
+            self.eg_gate_budget_target = float(
+                getattr(cfg.model, 'eg_gate_budget_target', 0.10))
+            self.eg_gate_budget_weight = float(
+                getattr(cfg.model, 'eg_gate_budget_weight', 1e-2))
+            self.eg_struct_aux_weight = float(
+                getattr(cfg.model, 'eg_struct_aux_weight', 0.25))
+            self.eg_struct_aux_epochs = int(
+                getattr(cfg.model, 'eg_struct_aux_epochs', 60))
+            self.eg_struct_residual_scale = float(
+                getattr(cfg.model, 'eg_struct_residual_scale', 1.0))
+            self.eg_gate_warmup_epochs = int(
+                getattr(cfg.model, 'eg_gate_warmup_epochs', 20))
+
+            # Initialise the router as a constant, modestly-open gate without a
+            # second additive bias parameter. This removes the v3 duplicate-bias
+            # ambiguity and gives the structural expert a gradient from step 1.
+            final_linear = None
+            for module in self.eg_gate_v4_head.modules():
+                if isinstance(module, nn.Linear):
+                    final_linear = module
+            if final_linear is None:
+                raise RuntimeError("evidence_gate_v4 router has no linear output")
+            nn.init.zeros_(final_linear.weight)
+            nn.init.constant_(
+                final_linear.bias,
+                math.log(self.eg_gate_init_open /
+                         (1.0 - self.eg_gate_init_open)))
+
+            self._eg_cur_epoch = 10 ** 9
+            self._eg_gate_penalty = None
+            self._eg_struct_aux_logits = None
+            self._eg_struct_aux_labels = None
+            self._eg_struct_aux_scale = 0.0
 
     def _edge_mask(self, batch):
         task = cfg.dataset.task_entity
@@ -4373,6 +4423,14 @@ class HeteroGNNEdgeHead(nn.Module):
     def _evidence_gate_head(self, batch):
         '''Scale-agnostic evidence decoder: z_base (+) bounded prototype core
         (+) uncertainty-gated higher-order structural evidence.'''
+        if self.eg_gate_v4:
+            # These tensors belong to one forward pass only. Clearing them here
+            # prevents a skipped/failed batch from reusing an old auxiliary loss.
+            self._eg_gate_penalty = None
+            self._eg_struct_aux_logits = None
+            self._eg_struct_aux_labels = None
+            self._eg_struct_aux_scale = 0.0
+
         task = cfg.dataset.task_entity
         feat_all, edge_index = self._edge_inputs(batch)
         mask = self._edge_mask(batch)
@@ -4443,7 +4501,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 0.5 * torch.log1p(out_deg[tgt_src] + in_deg[tgt_dst]))
         else:
             z_struct = torch.zeros_like(z_core)
-            struct_support = torch.zeros_like(z_core)
+            struct_support = z_core.new_zeros((z_core.size(0), 1))
 
         # Per-sample uncertainty of the core decision. Binary classification in
         # this codebase is represented by a single logit, so use sigmoid entropy
@@ -4466,7 +4524,52 @@ class HeteroGNNEdgeHead(nn.Module):
                 base_margin = z_base.max(dim=-1, keepdim=True).values
         uncertainty = torch.nan_to_num(uncertainty)
 
-        if self.eg_gate_v3:
+        delta_struct = None
+        if self.eg_gate_v4:
+            # The structural branch proposes a bounded logit correction. Unlike
+            # v3 convex fusion, opening the gate never removes the reliable core.
+            delta_struct = (
+                self.eg_struct_residual_scale * torch.tanh(z_struct))
+            delta_magnitude = delta_struct.abs().mean(dim=-1, keepdim=True)
+
+            if num_outputs == 1:
+                core_margin = z_core
+                delta_margin = delta_struct
+                core_delta_alignment = (
+                    torch.tanh(core_margin.detach()) *
+                    torch.tanh(delta_margin.detach()))
+            elif num_outputs == 2:
+                core_margin = z_core[:, 1:2] - z_core[:, 0:1]
+                delta_margin = (
+                    delta_struct[:, 1:2] - delta_struct[:, 0:1])
+                core_delta_alignment = (
+                    torch.tanh(core_margin.detach()) *
+                    torch.tanh(delta_margin.detach()))
+            else:
+                core_delta_alignment = F.cosine_similarity(
+                    z_core.detach(), delta_struct.detach(),
+                    dim=-1, eps=1e-6).unsqueeze(-1)
+
+            gate_feat = torch.cat(
+                [uncertainty, proto_margin.abs(), ready, struct_support,
+                 torch.tanh(base_margin).abs(), delta_magnitude,
+                 core_delta_alignment], dim=-1)
+            # Routing should learn how to use evidence, not reshape the core or
+            # structural expert through an indirect gate-input gradient path.
+            gate_feat = torch.nan_to_num(gate_feat).detach()
+
+            if self.eg_gate_v4_nogate:
+                g = torch.ones_like(uncertainty)
+            else:
+                learned_g = torch.sigmoid(self.eg_gate_v4_head(gate_feat))
+                if (self.training and
+                        self._eg_cur_epoch < self.eg_gate_warmup_epochs):
+                    # A small nonzero opening trains the structural expert from
+                    # the first step while preserving most of the core decision.
+                    g = torch.full_like(learned_g, self.eg_gate_init_open)
+                else:
+                    g = learned_g
+        elif self.eg_gate_v3:
             # v3 gate: routing scalars ONLY (no h, so it cannot memorise a
             # constant), started shut via a dedicated negative bias.
             gate_feat = torch.cat(
@@ -4498,21 +4601,56 @@ class HeteroGNNEdgeHead(nn.Module):
                 with torch.no_grad():
                     gf = g.detach().float().view(-1)
                     uf = uncertainty.detach().float().view(-1)
-                    logging.info(
-                        "[evidence_gate/%s] g: mean=%.4f std=%.4f min=%.4f "
-                        "max=%.4f p10=%.4f p50=%.4f p90=%.4f frac<.05=%.3f "
-                        "frac>.95=%.3f | uncert: mean=%.4f std=%.4f",
-                        getattr(batch, 'split', '?'),
-                        gf.mean().item(), gf.std(unbiased=False).item(),
-                        gf.min().item(), gf.max().item(),
-                        torch.quantile(gf, 0.10).item(),
-                        torch.quantile(gf, 0.50).item(),
-                        torch.quantile(gf, 0.90).item(),
-                        (gf < 0.05).float().mean().item(),
-                        (gf > 0.95).float().mean().item(),
-                        uf.mean().item(), uf.std(unbiased=False).item())
+                    if self.eg_gate_v4:
+                        df = delta_struct.detach().float().abs().view(-1)
+                        logging.info(
+                            "[evidence_gate_v4/%s] g: mean=%.4f std=%.4f "
+                            "min=%.4f max=%.4f p10=%.4f p50=%.4f p90=%.4f "
+                            "frac<.05=%.3f frac>.95=%.3f | delta_abs: "
+                            "mean=%.4f p90=%.4f | uncert: mean=%.4f std=%.4f",
+                            getattr(batch, 'split', '?'),
+                            gf.mean().item(), gf.std(unbiased=False).item(),
+                            gf.min().item(), gf.max().item(),
+                            torch.quantile(gf, 0.10).item(),
+                            torch.quantile(gf, 0.50).item(),
+                            torch.quantile(gf, 0.90).item(),
+                            (gf < 0.05).float().mean().item(),
+                            (gf > 0.95).float().mean().item(),
+                            df.mean().item(), torch.quantile(df, 0.90).item(),
+                            uf.mean().item(), uf.std(unbiased=False).item())
+                    else:
+                        logging.info(
+                            "[evidence_gate/%s] g: mean=%.4f std=%.4f min=%.4f "
+                            "max=%.4f p10=%.4f p50=%.4f p90=%.4f frac<.05=%.3f "
+                            "frac>.95=%.3f | uncert: mean=%.4f std=%.4f",
+                            getattr(batch, 'split', '?'),
+                            gf.mean().item(), gf.std(unbiased=False).item(),
+                            gf.min().item(), gf.max().item(),
+                            torch.quantile(gf, 0.10).item(),
+                            torch.quantile(gf, 0.50).item(),
+                            torch.quantile(gf, 0.90).item(),
+                            (gf < 0.05).float().mean().item(),
+                            (gf > 0.95).float().mean().item(),
+                            uf.mean().item(), uf.std(unbiased=False).item())
 
-        if self.eg_gate_v3:
+        if self.eg_gate_v4:
+            z_candidate = z_core + delta_struct
+            if self.eg_gate_v4_nogate:
+                z_final = z_candidate
+            else:
+                z_final = z_core + g * delta_struct
+                if self.training:
+                    self._eg_gate_penalty = self.eg_gate_budget_weight * (
+                        g.mean() - self.eg_gate_budget_target).pow(2)
+                    if self._eg_cur_epoch < self.eg_struct_aux_epochs:
+                        # Detach the core in the auxiliary path: this objective
+                        # teaches the structural expert to correct core errors
+                        # without simply giving the core a second loss term.
+                        self._eg_struct_aux_logits = (
+                            z_core.detach() + delta_struct)
+                        self._eg_struct_aux_labels = labels
+                        self._eg_struct_aux_scale = self.eg_struct_aux_weight
+        elif self.eg_gate_v3:
             # Convex fusion: opening the gate discards the reliable core, so g
             # carries a real opportunity cost and cannot trivially saturate.
             # No redundant global scale -- g is the branch's only modulator.

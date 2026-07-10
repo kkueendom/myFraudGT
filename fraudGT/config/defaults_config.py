@@ -101,7 +101,16 @@ def extended_cfg(cfg):
     cfg.model.loss_fun_gamma = 2.0
     cfg.model.auto_tune_thresh = False
 
-    # evidence_gate_v3: L1/budget penalty weight on the structural gate g, and
-    # number of warm-up epochs during which the gate is forced shut (g=0).
+    # evidence_gate_v3: L1 penalty and zero-gate warm-up.
     cfg.model.eg_gate_l1 = 1e-3
     cfg.model.eg_gate_warmup_epochs = 20
+
+    # evidence_gate_v4: residual structural expert and target-budget router.
+    # Warm-up uses a fixed nonzero gate, then the learned per-sample router takes
+    # over. The auxiliary candidate loss is active only in early training.
+    cfg.model.eg_gate_init_open = 0.10
+    cfg.model.eg_gate_budget_target = 0.10
+    cfg.model.eg_gate_budget_weight = 1e-2
+    cfg.model.eg_struct_aux_weight = 0.25
+    cfg.model.eg_struct_aux_epochs = 60
+    cfg.model.eg_struct_residual_scale = 1.0

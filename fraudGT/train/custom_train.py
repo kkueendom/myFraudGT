@@ -162,20 +162,33 @@ def update_early_stop_state(val_perf, cur_epoch, state):
 #         time_start = time.time()
 
 def _set_evidence_gate_epoch(model, cur_epoch):
-    '''Tell evidence_gate_v3 heads the current epoch (for gate warm-up).'''
+    '''Tell evidence-gate heads the current epoch (for warm-up schedules).'''
     for module in model.modules():
         if hasattr(module, '_eg_cur_epoch'):
             module._eg_cur_epoch = cur_epoch
 
 
 def _evidence_gate_penalty(model):
-    '''Sum any stashed evidence_gate_v3 L1 gate penalties (0 if none).'''
+    '''Sum any stashed evidence-gate routing penalties (0 if none).'''
     penalty = 0.0
     for module in model.modules():
         pen = getattr(module, '_eg_gate_penalty', None)
         if pen is not None:
             penalty = penalty + pen
     return penalty
+
+
+def _evidence_gate_aux_loss(model):
+    '''Train a v4 structural candidate before the learned router trusts it.'''
+    aux_total = 0.0
+    for module in model.modules():
+        logits = getattr(module, '_eg_struct_aux_logits', None)
+        labels = getattr(module, '_eg_struct_aux_labels', None)
+        scale = float(getattr(module, '_eg_struct_aux_scale', 0.0))
+        if logits is not None and labels is not None and scale > 0.0:
+            aux_loss, _ = compute_loss(logits, labels)
+            aux_total = aux_total + scale * aux_loss
+    return aux_total
 
 
 def train_epoch(cur_epoch, logger, loader, model, optimizer, scheduler, batch_accumulation):
@@ -254,7 +267,11 @@ def train_epoch(cur_epoch, logger, loader, model, optimizer, scheduler, batch_ac
                 loss, pred_score = compute_loss(pred, true, cur_epoch)
             else:
                 loss, pred_score = compute_loss(pred, true)
-            loss = loss + _evidence_gate_penalty(model)
+            loss = (
+                loss +
+                _evidence_gate_penalty(model) +
+                _evidence_gate_aux_loss(model)
+            )
             _true = true.detach().to('cpu', non_blocking=True)
             _pred = pred_score.detach().to('cpu', non_blocking=True)
             runtime_stats_cuda.end_region("loss")
