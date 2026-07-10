@@ -87,6 +87,11 @@ def set_cfg_gt(cfg):
     cfg.gt.temporal_gate = False
     cfg.gt.temporal_gate_init = 1.0
 
+    # Laundering-motif-biased attention in SparseNodeTransformer: adds a learned
+    # per-head additive attention bias driven by fraud-specific structural motif
+    # descriptors (scatter-gather / reciprocity / short cycles) of each edge.
+    cfg.gt.motif_bias = False
+
     # Aggregate updated edge states back into node states.
     # Options used in our experiments: none, mean, attn_mean,
     # dir_meanmax, dir_meanspike, dir_meantail,

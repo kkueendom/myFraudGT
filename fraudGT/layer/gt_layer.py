@@ -14,6 +14,7 @@ from torch_geometric.nn import (Linear, MLP, HeteroConv, GraphConv, SAGEConv, GI
                                 GATConv)
 from torch_geometric.utils import softmax as pyg_softmax
 from fraudGT.timer import runtime_stats_cuda, is_performance_stats_enabled, enable_runtime_stats, disable_runtime_stats
+from fraudGT.transform.motif_stats import compute_motif_edge_features, MOTIF_EDGE_DIM
 
 
 class GTLayer(nn.Module):
@@ -46,6 +47,10 @@ class GTLayer(nn.Module):
         self.temporal_gate_enabled = (
             global_model_type == 'SparseNodeTransformer' and
             cfg.gt.temporal_gate
+        )
+        self.motif_bias_enabled = (
+            global_model_type == 'SparseNodeTransformer' and
+            getattr(cfg.gt, 'motif_bias', False)
         )
         self.edge_writeback_enabled = (
             global_model_type == 'SparseNodeTransformer' and
@@ -231,6 +236,14 @@ class GTLayer(nn.Module):
                 self.temporal_gate_alpha = nn.Parameter(
                     torch.full((self.num_heads,), cfg.gt.temporal_gate_init)
                 )
+            if self.motif_bias_enabled:
+                # Per-head additive attention bias from the edge motif descriptor.
+                # LayerNorm stabilises the (log-degree) features; the Linear starts
+                # near zero so training begins from the plain FraudGT attention.
+                self.motif_norm = nn.LayerNorm(MOTIF_EDGE_DIM)
+                self.motif_proj = nn.Linear(MOTIF_EDGE_DIM, self.num_heads)
+                nn.init.zeros_(self.motif_proj.weight)
+                nn.init.zeros_(self.motif_proj.bias)
             if self.edge_writeback_enabled:
                 self.writeback_update = torch.nn.ModuleDict()
                 self.writeback_gate = torch.nn.ModuleDict()
@@ -1781,6 +1794,17 @@ class GTLayer(nn.Module):
                             F.softplus(self.temporal_alpha).unsqueeze(-1) *
                             temporal_delta.unsqueeze(0)
                         )
+                    if self.motif_bias_enabled:
+                        # Laundering-motif-biased attention: add a learned per-head
+                        # bias so attention is amplified along edges participating in
+                        # scatter-gather / reciprocal (short-cycle) structure. The
+                        # motif descriptor is a parameter-free data statistic.
+                        with torch.no_grad():
+                            motif_e = compute_motif_edge_features(
+                                torch.stack([src_nodes, dst_nodes], dim=0), L
+                            )
+                        motif_bias = self.motif_proj(self.motif_norm(motif_e))  # (E, H)
+                        edge_scores = edge_scores + motif_bias.transpose(0, 1)
                     edge_scores = torch.clamp(edge_scores, min=-5, max=5)
                     if cfg.gt.attn_mask in ['kHop']:
                         edge_scores = edge_scores + attn_mask[dst_nodes, src_nodes]
