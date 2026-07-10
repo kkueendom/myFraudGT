@@ -82,7 +82,10 @@ def main():
     screen_root = v4_repo / "results" / "evidence_gate_v4_screen"
     variant_roots = {
         "M1 proto": existing_roots(args.old_repos, "evidence_gate_m1_proto"),
-        "v3 convex gate": existing_roots(args.old_repos, "evidence_gate_v3"),
+        "v3 convex gate": (
+            existing_roots(args.old_repos, "evidence_gate_v3")
+            + existing_roots(args.old_repos, "evidence_gate_v3_full_small")
+        ),
         "v4 no-gate": [
             screen_root / "nogate-small-hi",
             screen_root / "nogate-small-li",
