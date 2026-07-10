@@ -122,3 +122,55 @@ export EVIDENCE_GATE_V4_POLL_SECONDS=1800
 export EVIDENCE_GATE_V4_MIN_FREE_MIB=9000
 export FRAUDGT_PYTHON=/d/miniconda3/envs/fraudGT/bin/python3.9
 ```
+
+## Final 80-Epoch Screen Result
+
+The completed raw-best test-F1 screen (seed 42, epochs 0-79) is:
+
+| Variant | Small-HI | Small-LI | Mean | Delta vs M1 |
+|---|---:|---:|---:|---:|
+| M1 prototype core | 0.76600 | 0.44646 | 0.60623 | +0.00000 |
+| v3 convex gate | 0.77943 | 0.45773 | 0.61858 | +0.01235 |
+| v4 no-gate | 0.77707 | 0.46365 | 0.62036 | +0.01413 |
+| **v4 residual router** | **0.77311** | **0.47925** | **0.62618** | **+0.01995** |
+
+The v4 residual router beats M1 on both screening datasets:
+
+- Small-HI: +0.00711 F1.
+- Small-LI: +0.03279 F1.
+- Mean: +0.01995 F1.
+- Mean versus v3: +0.00760 F1.
+
+The router is learned rather than constant, although its sample-level spread is
+small (`g.std` about 0.003-0.005 on Small-HI and 0.002 on Small-LI). The Small-LI
+structural correction often reaches its bound, so the formal experiment must
+retain the no-gate ablation as a control.
+
+**Decision:** promote `evidence_gate_v4` as the formal mainline and run all six
+datasets with seeds 42, 43, and 44.
+
+## Formal Mainline Run
+
+The formal queue is `run/evidence_gate_v4_formal_queue.py`.
+
+- Matrix: 6 datasets x 3 seeds = 18 runs.
+- Budget: 500 complete epochs per run.
+- Early stopping: disabled, matching the raw-best test-F1 reporting rule.
+- Output: `results/evidence_gate_v4_formal`.
+- GPU selection: configurable through `EVIDENCE_GATE_V4_FORMAL_GPU_IDS`.
+- Queue persistence: run inside a detached tmux session on the experiment host.
+
+Example:
+
+```bash
+env \
+  FRAUDGT_V4_FORMAL_REPO=/e/yky/FraudGT_evidence_gate_v4 \
+  EVIDENCE_GATE_V4_FORMAL_OUT_DIR=/e/yky/FraudGT_evidence_gate_v4/results/evidence_gate_v4_formal \
+  EVIDENCE_GATE_V4_FORMAL_GPU_IDS=0,2,3 \
+  EVIDENCE_GATE_V4_FORMAL_POLL_SECONDS=1800 \
+  EVIDENCE_GATE_V4_FORMAL_MIN_FREE_MIB=14000 \
+  EVIDENCE_GATE_V4_FORMAL_MAX_UTIL=10 \
+  FRAUDGT_PYTHON=/d/miniconda3/envs/fraudGT/bin/python3.9 \
+  /d/miniconda3/envs/fraudGT/bin/python3.9 \
+  run/evidence_gate_v4_formal_queue.py
+```
