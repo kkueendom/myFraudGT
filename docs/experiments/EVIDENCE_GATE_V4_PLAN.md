@@ -118,7 +118,7 @@ python run/evidence_gate_v4_screen_audit.py
 Useful environment overrides:
 
 ```bash
-export EVIDENCE_GATE_V4_POLL_SECONDS=900
+export EVIDENCE_GATE_V4_POLL_SECONDS=1800
 export EVIDENCE_GATE_V4_MIN_FREE_MIB=9000
 export FRAUDGT_PYTHON=/d/miniconda3/envs/fraudGT/bin/python3.9
 ```
