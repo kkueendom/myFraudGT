@@ -7,6 +7,7 @@ It logs only state changes plus a sparse heartbeat.
 
 import json
 import os
+import shlex
 import subprocess
 import time
 from datetime import datetime
@@ -26,6 +27,10 @@ EVENTS = REPO / ".evidence_gate_v4_queue.events"
 POLL_SECONDS = int(os.environ.get("EVIDENCE_GATE_V4_POLL_SECONDS", "900"))
 MIN_FREE_MIB = int(os.environ.get("EVIDENCE_GATE_V4_MIN_FREE_MIB", "9000"))
 MAX_UTIL = int(os.environ.get("EVIDENCE_GATE_V4_MAX_UTIL", "10"))
+PYTHON = os.environ.get(
+    "FRAUDGT_PYTHON",
+    "/d/miniconda3/envs/fraudGT/bin/python3.9",
+)
 
 
 TASKS = [
@@ -223,10 +228,9 @@ def launch(task, gpu):
     task_out(task).mkdir(parents=True, exist_ok=True)
     log_path = REPO / f".evidence_gate_v4_{task['name']}_gpu{gpu}.stdout"
     command = (
-        "source ~/.bashrc >/dev/null 2>&1 || true; "
-        "conda activate fraudgt_dual_gate; "
         f"export CUDA_VISIBLE_DEVICES={gpu}; "
-        f"exec python -m fraudGT.main --cfg {task['cfg']} --repeat 1 --gpu 0 "
+        f"exec {shlex.quote(PYTHON)} -m fraudGT.main "
+        f"--cfg {shlex.quote(task['cfg'])} --repeat 1 --gpu 0 "
         f"out_dir {task_out(task)} seed 42 "
         f"optim.max_epoch {task['max_epoch']} "
         f"train.iter_per_epoch {task['train_iters']} "
@@ -261,7 +265,7 @@ def main():
     FAILED_DIR.mkdir(parents=True, exist_ok=True)
     log(
         f"v4 queue started poll={POLL_SECONDS}s min_free={MIN_FREE_MIB}MiB "
-        f"max_util={MAX_UTIL}%"
+        f"max_util={MAX_UTIL}% python={PYTHON}"
     )
     heartbeat = 0
     while True:
