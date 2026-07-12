@@ -56,12 +56,12 @@ VARIANTS = [
     },
     {
         "name": "no_aux",
-        "overrides": ["model.eg_struct_aux_weight", "0", "model.eg_struct_aux_epochs", "0"],
+        "overrides": ["model.eg_struct_aux_weight", "0.0", "model.eg_struct_aux_epochs", "0"],
         "purpose": "remove early auxiliary supervision for structural expert",
     },
     {
         "name": "no_budget",
-        "overrides": ["model.eg_gate_budget_weight", "0"],
+        "overrides": ["model.eg_gate_budget_weight", "0.0"],
         "purpose": "remove gate-budget regularization",
     },
     {
