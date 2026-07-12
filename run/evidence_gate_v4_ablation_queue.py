@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""GPU queue for formal evidence-gate v4 ablations.
+"""GPU queue for best-seed evidence-gate v4 ablations.
 
 Launches only when a GPU is idle enough. It avoids duplicate dataset/seed/variant
 runs in the ablation output dir and coexists with the remaining formal v4 runs.
@@ -15,8 +15,8 @@ from pathlib import Path
 
 
 REPO = Path(os.environ.get("FRAUDGT_V4_ABLATION_REPO", str(Path(__file__).resolve().parents[1]))).resolve()
-EVENTS = REPO / ".evidence_gate_v4_formal_ablation_queue.events"
-ACTIVE_DIR = REPO / ".evidence_gate_v4_formal_ablation_active"
+EVENTS = REPO / ".evidence_gate_v4_best_seed_ablation_queue.events"
+ACTIVE_DIR = REPO / ".evidence_gate_v4_best_seed_ablation_active"
 POLL_SECONDS = int(os.environ.get("EVIDENCE_GATE_V4_ABLATION_POLL_SECONDS", "600"))
 LAUNCH_SETTLE_SECONDS = int(os.environ.get("EVIDENCE_GATE_V4_ABLATION_LAUNCH_SETTLE_SECONDS", "60"))
 MIN_FREE_MIB = int(os.environ.get("EVIDENCE_GATE_V4_ABLATION_MIN_FREE_MIB", "14000"))
@@ -24,7 +24,7 @@ MAX_UTIL = int(os.environ.get("EVIDENCE_GATE_V4_ABLATION_MAX_UTIL", "15"))
 GPU_IDS_RAW = os.environ.get("EVIDENCE_GATE_V4_ABLATION_GPU_IDS", "").strip()
 ALLOWED_GPU_IDS = {int(x.strip()) for x in GPU_IDS_RAW.split(",") if x.strip()} if GPU_IDS_RAW else None
 PYTHON = os.environ.get("FRAUDGT_PYTHON", "/d/miniconda3/envs/fraudGT/bin/python3.9")
-OUT_DIR = Path(os.environ.get("EVIDENCE_GATE_V4_ABLATION_OUT_DIR", str(REPO / "results" / "evidence_gate_v4_formal_ablation")))
+OUT_DIR = Path(os.environ.get("EVIDENCE_GATE_V4_ABLATION_OUT_DIR", str(REPO / "results" / "evidence_gate_v4_best_seed_ablation")))
 DONE_EPOCH = int(os.environ.get("EVIDENCE_GATE_V4_ABLATION_DONE_EPOCH", "499"))
 DRY_RUN = os.environ.get("EVIDENCE_GATE_V4_ABLATION_DRY_RUN", "0") == "1"
 
@@ -112,7 +112,7 @@ def variant_by_name(name):
 
 
 def run_stem(dataset, variant, seed):
-    return f"AML-{dataset}-V4FormalAblation-{variant}-Seed{seed}"
+    return f"AML-{dataset}-V4BestSeedAblation-{variant}-Seed{seed}"
 
 
 def run_dirs(dataset, variant, seed):
@@ -275,14 +275,14 @@ def active_task_keys(markers):
 def launch(dataset, variant_name, seed, gpu):
     variant = variant_by_name(variant_name)
     run_name = f"{run_stem(dataset, variant_name, seed)}-gpu{gpu}"
-    log_path = REPO / f".evidence_gate_v4_formal_ablation_{run_name}.log"
+    log_path = REPO / f".evidence_gate_v4_best_seed_ablation_{run_name}.log"
     cmd = [
         PYTHON, "-m", "fraudGT.main",
         "--cfg", cfg_for(dataset),
         "--repeat", "1",
         "--gpu", "0",
         "out_dir", str(OUT_DIR),
-        "name_tag", f"V4FormalAblation-{variant_name}-Seed{seed}",
+        "name_tag", f"V4BestSeedAblation-{variant_name}-Seed{seed}",
         "seed", str(seed),
         "optim.max_epoch", "500",
         "train.early_stop", "False",
