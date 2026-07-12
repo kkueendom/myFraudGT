@@ -30,15 +30,21 @@ class HeteroGNNEdgeHead(nn.Module):
         # bounded residual structural expert, a nonzero fixed-open warm-up, and
         # a target-budget router. `evidence_gate_v4_nogate` is the controlled
         # diagnostic that applies the same residual expert without a router.
+        # `evidence_gate_v4_noproto` removes both the prototype residual and
+        # every prototype-derived router input.
         self.use_evidence_gate = self.edge_decoding in {
             'evidence_gate', 'evidence_gate_proto', 'evidence_gate_v3',
-            'evidence_gate_v4_residual', 'evidence_gate_v4_nogate'}
+            'evidence_gate_v4_residual', 'evidence_gate_v4_nogate',
+            'evidence_gate_v4_noproto'}
         self.eg_proto_only = (self.edge_decoding == 'evidence_gate_proto')
         self.eg_gate_v3 = (self.edge_decoding == 'evidence_gate_v3')
         self.eg_gate_v4 = self.edge_decoding in {
-            'evidence_gate_v4_residual', 'evidence_gate_v4_nogate'}
+            'evidence_gate_v4_residual', 'evidence_gate_v4_nogate',
+            'evidence_gate_v4_noproto'}
         self.eg_gate_v4_nogate = (
             self.edge_decoding == 'evidence_gate_v4_nogate')
+        self.eg_gate_v4_noproto = (
+            self.edge_decoding == 'evidence_gate_v4_noproto')
         self.use_pair_chain_head = self.edge_decoding in {
             'pair_chain',
             'pair_chain_contextresid',
@@ -4453,16 +4459,23 @@ class HeteroGNNEdgeHead(nn.Module):
         # prototype context is computed from banks built on *past* train
         # batches; banks are updated only afterwards and only in training,
         # so no label leaks into the current prediction or into eval.
-        (pos_proto, neg_proto, pos_sim, neg_sim, proto_margin, ready,
-         pos_peak, neg_peak, pos_spread, neg_spread) = \
-            self._support_class_proto_context(h)
-        proto_feat = torch.cat(
-            [pos_sim, neg_sim, proto_margin, ready,
-             pos_peak, neg_peak, pos_spread, neg_spread], dim=-1)
-        z_proto = self.eg_proto_head(torch.nan_to_num(proto_feat))
-        if not torch.isfinite(z_proto).all():
-            raise FloatingPointError("evidence_gate produced non-finite prototype logits")
-        z_core = z_base + torch.sigmoid(self.eg_proto_alpha) * ready * z_proto
+        if self.eg_gate_v4_noproto:
+            # This ablation removes all prototype information: no bank lookup,
+            # no residual and no prototype signals passed to the router.
+            proto_margin = z_base.new_zeros((z_base.size(0), 1))
+            ready = z_base.new_zeros((z_base.size(0), 1))
+            z_core = z_base
+        else:
+            (pos_proto, neg_proto, pos_sim, neg_sim, proto_margin, ready,
+             pos_peak, neg_peak, pos_spread, neg_spread) = \
+                self._support_class_proto_context(h)
+            proto_feat = torch.cat(
+                [pos_sim, neg_sim, proto_margin, ready,
+                 pos_peak, neg_peak, pos_spread, neg_spread], dim=-1)
+            z_proto = self.eg_proto_head(torch.nan_to_num(proto_feat))
+            if not torch.isfinite(z_proto).all():
+                raise FloatingPointError("evidence_gate produced non-finite prototype logits")
+            z_core = z_base + torch.sigmoid(self.eg_proto_alpha) * ready * z_proto
         if not torch.isfinite(z_core).all():
             raise FloatingPointError("evidence_gate produced non-finite core logits")
 
@@ -4639,17 +4652,18 @@ class HeteroGNNEdgeHead(nn.Module):
                 z_final = z_candidate
             else:
                 z_final = z_core + g * delta_struct
-                if self.training:
+            if self.training:
+                if not self.eg_gate_v4_nogate:
                     self._eg_gate_penalty = self.eg_gate_budget_weight * (
                         g.mean() - self.eg_gate_budget_target).pow(2)
-                    if self._eg_cur_epoch < self.eg_struct_aux_epochs:
-                        # Detach the core in the auxiliary path: this objective
-                        # teaches the structural expert to correct core errors
-                        # without simply giving the core a second loss term.
-                        self._eg_struct_aux_logits = (
-                            z_core.detach() + delta_struct)
-                        self._eg_struct_aux_labels = labels
-                        self._eg_struct_aux_scale = self.eg_struct_aux_weight
+                if self._eg_cur_epoch < self.eg_struct_aux_epochs:
+                    # Detach the core in the auxiliary path: this objective
+                    # teaches the structural expert to correct core errors
+                    # without simply giving the core a second loss term.
+                    self._eg_struct_aux_logits = (
+                        z_core.detach() + delta_struct)
+                    self._eg_struct_aux_labels = labels
+                    self._eg_struct_aux_scale = self.eg_struct_aux_weight
         elif self.eg_gate_v3:
             # Convex fusion: opening the gate discards the reliable core, so g
             # carries a real opportunity cost and cannot trivially saturate.
@@ -4665,7 +4679,7 @@ class HeteroGNNEdgeHead(nn.Module):
 
         # Update prototype banks from the current (train) batch, after
         # prediction. Frozen at eval because self.training is False.
-        if self.training:
+        if self.training and not self.eg_gate_v4_noproto:
             self._update_support_class_prototypes(h, labels)
 
         return z_final, labels
