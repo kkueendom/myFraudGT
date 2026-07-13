@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Dual-GPU queue for the evidence-gate v2 formal runs.
+"""GPU queue for the evidence-gate v3 formal runs.
 
 The queue is intentionally conservative:
 - it launches at most one training process per GPU;
@@ -18,13 +18,38 @@ from datetime import datetime
 from pathlib import Path
 
 
-REPO = Path("/e/yyk/FraudGT_evidence_gate_decoder")
+REPO = Path(
+    os.environ.get(
+        "FRAUDGT_V3_REPO",
+        str(Path(__file__).resolve().parents[1]),
+    )
+).resolve()
 EVENTS = REPO / ".evidence_gate_v3_queue.events"
 LEGACY_QUEUE_PID = REPO / ".evidence_gate_queue.pid"
 ACTIVE_DIR = REPO / ".evidence_gate_v3_active"
-POLL_SECONDS = int(os.environ.get("EVIDENCE_GATE_V2_POLL_SECONDS", "1800"))
-LAUNCH_SETTLE_SECONDS = int(os.environ.get("EVIDENCE_GATE_V2_LAUNCH_SETTLE_SECONDS", "300"))
+POLL_SECONDS = int(
+    os.environ.get(
+        "EVIDENCE_GATE_V3_POLL_SECONDS",
+        os.environ.get("EVIDENCE_GATE_V2_POLL_SECONDS", "1800"),
+    )
+)
+LAUNCH_SETTLE_SECONDS = int(
+    os.environ.get(
+        "EVIDENCE_GATE_V3_LAUNCH_SETTLE_SECONDS",
+        os.environ.get("EVIDENCE_GATE_V2_LAUNCH_SETTLE_SECONDS", "300"),
+    )
+)
 MIN_FREE_MIB = int(os.environ.get("EVIDENCE_GATE_MIN_FREE_MIB", "14000"))
+GPU_IDS_RAW = os.environ.get("EVIDENCE_GATE_V3_GPU_IDS", "").strip()
+ALLOWED_GPU_IDS = (
+    {int(token.strip()) for token in GPU_IDS_RAW.split(",") if token.strip()}
+    if GPU_IDS_RAW
+    else None
+)
+PYTHON = os.environ.get(
+    "FRAUDGT_PYTHON",
+    "/d/miniconda3/envs/fraudGT/bin/python3.9",
+)
 PRIMARY_OUT_DIR = Path(
     os.environ.get(
         "EVIDENCE_GATE_V3_OUT_DIR",
@@ -212,9 +237,12 @@ def gpu_indices():
     indices = []
     for line in result.stdout.splitlines():
         try:
-            indices.append(int(line.strip()))
+            index = int(line.strip())
         except Exception:
             continue
+        if ALLOWED_GPU_IDS is not None and index not in ALLOWED_GPU_IDS:
+            continue
+        indices.append(index)
     return indices
 
 
@@ -244,9 +272,7 @@ def gpu_compute_pids(gpu):
 
 def torch_cuda_ok(gpu):
     cmd = (
-        "source ~/.bashrc >/dev/null 2>&1 || true; "
-        "conda activate fraudgt_dual_gate; "
-        f"CUDA_VISIBLE_DEVICES={gpu} python - <<'PY'\n"
+        f"CUDA_VISIBLE_DEVICES={gpu} {shlex.quote(PYTHON)} - <<'PY'\n"
         "import torch\n"
         "assert torch.cuda.is_available()\n"
         "x = torch.tensor([1.0], device='cuda:0')\n"
@@ -264,7 +290,7 @@ def torch_cuda_ok(gpu):
 
 
 def parse_task_from_args(args):
-    if "python -m fraudGT.main" not in args:
+    if "-m fraudGT.main" not in args:
         return None
     if str(PRIMARY_OUT_DIR) not in args:
         return None
@@ -294,7 +320,7 @@ def parse_task_from_args(args):
 
 def active_tasks_from_ps():
     result = subprocess.run(
-        ["ps", "-u", "yyk", "-o", "pid=,args="],
+        ["ps", "-u", os.environ.get("USER", "yky"), "-o", "pid=,args="],
         text=True,
         capture_output=True,
         check=False,
@@ -325,10 +351,9 @@ def active_tasks():
 
 
 def reserved_gpus():
+    # Allow lightweight external services when the free-memory threshold passes.
+    # Only jobs launched by this queue are explicitly reserved.
     reserved = set()
-    for gpu in gpu_indices():
-        if gpu_compute_pids(gpu):
-            reserved.add(gpu)
     for marker in active_markers():
         reserved.add(int(marker["gpu"]))
     return reserved
@@ -378,10 +403,9 @@ def launch_detached(dataset, seed, gpu):
     cfg_path = cfg_for(dataset)
     log_path = REPO / f".evidence_gate_v3_{dataset}_seed{seed}_gpu{gpu}.stdout"
     cmd = (
-        "source ~/.bashrc >/dev/null 2>&1 || true; "
-        "conda activate fraudgt_dual_gate; "
         f"export CUDA_VISIBLE_DEVICES={gpu}; "
-        f"exec python -m fraudGT.main --cfg {cfg_path} --repeat 1 --gpu 0 "
+        f"exec {shlex.quote(PYTHON)} -m fraudGT.main "
+        f"--cfg {cfg_path} --repeat 1 --gpu 0 "
         f"out_dir {PRIMARY_OUT_DIR} seed {seed} "
         "train.tqdm False val.tqdm False "
         "train.auto_resume True train.epoch_resume -1"
@@ -409,13 +433,18 @@ def runnable_tasks():
 
 
 def main():
-    log("evidence_gate v2 5-seed dual-gpu queue started")
+    gpu_scope = (
+        ",".join(str(gpu) for gpu in sorted(ALLOWED_GPU_IDS))
+        if ALLOWED_GPU_IDS is not None
+        else "all"
+    )
+    log(f"evidence_gate v3 queue started gpu_ids={gpu_scope}")
     while True:
         reap_children()
 
         pending = pending_tasks()
         if not pending:
-            log("evidence_gate v2 5-seed queue finished")
+            log("evidence_gate v3 queue finished")
             return 0
 
         if legacy_queue_alive():

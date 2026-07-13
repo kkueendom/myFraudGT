@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""GPU queue for the evidence-gate M1 formal runs.
+"""GPU queue for the evidence-gate v4 residual-router formal runs.
 
 The queue is intentionally conservative:
 - it launches at most one training process per GPU;
@@ -20,27 +20,36 @@ from pathlib import Path
 
 REPO = Path(
     os.environ.get(
-        "FRAUDGT_M1_REPO",
+        "FRAUDGT_V4_FORMAL_REPO",
         str(Path(__file__).resolve().parents[1]),
     )
 ).resolve()
-EVENTS = REPO / ".evidence_gate_m1_queue.events"
+EVENTS = REPO / ".evidence_gate_v4_formal_queue.events"
 LEGACY_QUEUE_PID = REPO / ".evidence_gate_queue.pid"
-ACTIVE_DIR = REPO / ".evidence_gate_m1_active"
+ACTIVE_DIR = REPO / ".evidence_gate_v4_formal_active"
 POLL_SECONDS = int(
     os.environ.get(
-        "EVIDENCE_GATE_M1_POLL_SECONDS",
-        os.environ.get("EVIDENCE_GATE_V2_POLL_SECONDS", "1800"),
+        "EVIDENCE_GATE_V4_FORMAL_POLL_SECONDS",
+        os.environ.get(
+            "EVIDENCE_GATE_V4_POLL_SECONDS",
+            os.environ.get("EVIDENCE_GATE_V2_POLL_SECONDS", "1800"),
+        ),
     )
 )
 LAUNCH_SETTLE_SECONDS = int(
     os.environ.get(
-        "EVIDENCE_GATE_M1_LAUNCH_SETTLE_SECONDS",
+        "EVIDENCE_GATE_V4_FORMAL_LAUNCH_SETTLE_SECONDS",
         os.environ.get("EVIDENCE_GATE_V2_LAUNCH_SETTLE_SECONDS", "300"),
     )
 )
-MIN_FREE_MIB = int(os.environ.get("EVIDENCE_GATE_MIN_FREE_MIB", "14000"))
-GPU_IDS_RAW = os.environ.get("EVIDENCE_GATE_M1_GPU_IDS", "").strip()
+MIN_FREE_MIB = int(
+    os.environ.get(
+        "EVIDENCE_GATE_V4_FORMAL_MIN_FREE_MIB",
+        os.environ.get("EVIDENCE_GATE_MIN_FREE_MIB", "14000"),
+    )
+)
+MAX_UTIL = int(os.environ.get("EVIDENCE_GATE_V4_FORMAL_MAX_UTIL", "10"))
+GPU_IDS_RAW = os.environ.get("EVIDENCE_GATE_V4_FORMAL_GPU_IDS", "").strip()
 ALLOWED_GPU_IDS = (
     {int(token.strip()) for token in GPU_IDS_RAW.split(",") if token.strip()}
     if GPU_IDS_RAW
@@ -52,8 +61,8 @@ PYTHON = os.environ.get(
 )
 PRIMARY_OUT_DIR = Path(
     os.environ.get(
-        "EVIDENCE_GATE_M1_OUT_DIR",
-        str(REPO / "results" / "evidence_gate_m1_proto"),
+        "EVIDENCE_GATE_V4_FORMAL_OUT_DIR",
+        str(REPO / "results" / "evidence_gate_v4_formal"),
     )
 )
 DONE_EPOCH = 499
@@ -67,7 +76,9 @@ DATASETS = [
     "Large-LI",
 ]
 SEEDS = [42, 43, 44]
-CFG_RE = re.compile(r"configs/evidence_gate_proto/AML-(?P<dataset>[^/\s]+)\.yaml")
+CFG_RE = re.compile(
+    r"configs/evidence_gate_v4/AML-(?P<dataset>[^/\s]+)\.yaml"
+)
 
 
 def log(message):
@@ -92,7 +103,7 @@ def rows(path):
 
 
 def cfg_for(dataset):
-    return f"configs/evidence_gate_proto/AML-{dataset}.yaml"
+    return f"configs/evidence_gate_v4/AML-{dataset}.yaml"
 
 
 def run_dirs(out_dir, dataset):
@@ -110,10 +121,7 @@ def seed_done_in(out_dir, dataset, seed):
             train_rows
             and val_rows
             and test_rows
-            and (
-                int(train_rows[-1]["epoch"]) >= DONE_EPOCH
-                or (seed_dir / "early_stop.json").exists()
-            )
+            and int(train_rows[-1]["epoch"]) >= DONE_EPOCH
         ):
             return True
     return False
@@ -391,6 +399,9 @@ def free_gpus():
         if free_mib < MIN_FREE_MIB:
             log(f"skip gpu={idx}; free={free_mib}MiB < min_free={MIN_FREE_MIB}MiB")
             continue
+        if util > MAX_UTIL:
+            log(f"skip gpu={idx}; util={util}% > max_util={MAX_UTIL}%")
+            continue
         if not torch_cuda_ok(idx):
             log(f"skip gpu={idx}; torch cuda probe failed")
             continue
@@ -401,12 +412,15 @@ def free_gpus():
 
 def launch_detached(dataset, seed, gpu):
     cfg_path = cfg_for(dataset)
-    log_path = REPO / f".evidence_gate_m1_{dataset}_seed{seed}_gpu{gpu}.stdout"
+    log_path = (
+        REPO / f".evidence_gate_v4_formal_{dataset}_seed{seed}_gpu{gpu}.stdout"
+    )
     cmd = (
         f"export CUDA_VISIBLE_DEVICES={gpu}; "
         f"exec {shlex.quote(PYTHON)} -m fraudGT.main "
         f"--cfg {cfg_path} --repeat 1 --gpu 0 "
         f"out_dir {PRIMARY_OUT_DIR} seed {seed} "
+        "optim.max_epoch 500 train.early_stop False "
         "train.tqdm False val.tqdm False "
         "train.auto_resume True train.epoch_resume -1"
     )
@@ -438,13 +452,16 @@ def main():
         if ALLOWED_GPU_IDS is not None
         else "all"
     )
-    log(f"evidence_gate M1 queue started gpu_ids={gpu_scope}")
+    log(
+        f"evidence_gate v4 formal queue started gpu_ids={gpu_scope} "
+        f"min_free={MIN_FREE_MIB}MiB max_util={MAX_UTIL}%"
+    )
     while True:
         reap_children()
 
         pending = pending_tasks()
         if not pending:
-            log("evidence_gate M1 queue finished")
+            log("evidence_gate v4 formal queue finished")
             return 0
 
         if legacy_queue_alive():
