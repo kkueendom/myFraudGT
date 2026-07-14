@@ -25,6 +25,8 @@ class HeteroGNNEdgeHead(nn.Module):
         # prototype residual ONLY (no structural branch, no gate) -- it isolates
         # the prototype core so we can tell whether the (currently always-open)
         # structural branch helps at all.
+        # `dmprd` keeps only a distribution-aware multi-prototype residual. It
+        # has no structural expert, sample gate, auxiliary loss, or gate budget.
         # `evidence_gate_v3` is the convex-fusion gate experiment.
         # `evidence_gate_v4_residual` fixes its dead-expert failure mode with a
         # bounded residual structural expert, a nonzero fixed-open warm-up, and
@@ -33,10 +35,13 @@ class HeteroGNNEdgeHead(nn.Module):
         # `evidence_gate_v4_noproto` removes both the prototype residual and
         # every prototype-derived router input.
         self.use_evidence_gate = self.edge_decoding in {
-            'evidence_gate', 'evidence_gate_proto', 'evidence_gate_v3',
+            'evidence_gate', 'evidence_gate_proto', 'dmprd',
+            'evidence_gate_v3',
             'evidence_gate_v4_residual', 'evidence_gate_v4_nogate',
             'evidence_gate_v4_noproto'}
-        self.eg_proto_only = (self.edge_decoding == 'evidence_gate_proto')
+        self.use_dmprd = (self.edge_decoding == 'dmprd')
+        self.eg_proto_only = self.edge_decoding in {
+            'evidence_gate_proto', 'dmprd'}
         self.eg_gate_v3 = (self.edge_decoding == 'evidence_gate_v3')
         self.eg_gate_v4 = self.edge_decoding in {
             'evidence_gate_v4_residual', 'evidence_gate_v4_nogate',
@@ -1408,7 +1413,11 @@ class HeteroGNNEdgeHead(nn.Module):
         # --- class-prototype core (reuses the proven prototype machinery) ---
         self.use_support_class_prototype_expert = True
         self.num_class_prototypes = max(dim_out, 2)
-        self.num_class_proto_slots = 4
+        self.num_class_proto_slots = (
+            int(getattr(cfg.model, 'dmprd_num_slots', 4))
+            if self.use_dmprd else 4)
+        if self.num_class_proto_slots < 1:
+            raise ValueError("dmprd_num_slots must be at least 1")
         self.register_buffer(
             'support_class_proto_bank',
             torch.zeros(self.num_class_prototypes,
@@ -1425,6 +1434,20 @@ class HeteroGNNEdgeHead(nn.Module):
                                  num_layers=self.head_layers, bias=True)
         self.eg_proto_alpha = nn.Parameter(
             torch.full((1,), math.log(0.10 / 0.90)))
+
+        if self.use_dmprd:
+            self.dmprd_use_distribution_stats = bool(getattr(
+                cfg.model, 'dmprd_use_distribution_stats', True))
+            self.dmprd_delta_max = float(getattr(
+                cfg.model, 'dmprd_delta_max', 1.0))
+            self.dmprd_beta_max = float(getattr(
+                cfg.model, 'dmprd_beta_max', 1.0))
+            if self.dmprd_delta_max <= 0.0:
+                raise ValueError("dmprd_delta_max must be positive")
+            if self.dmprd_beta_max <= 0.0:
+                raise ValueError("dmprd_beta_max must be positive")
+            self._dmprd_log_step = 0
+            return
 
         # --- higher-order 1-hop structural evidence branch ---
         self.eg_struct_head = MLP(dim_in * 3, dim_out,
@@ -4469,13 +4492,25 @@ class HeteroGNNEdgeHead(nn.Module):
             (pos_proto, neg_proto, pos_sim, neg_sim, proto_margin, ready,
              pos_peak, neg_peak, pos_spread, neg_spread) = \
                 self._support_class_proto_context(h)
+            if self.use_dmprd and not self.dmprd_use_distribution_stats:
+                pos_peak = torch.zeros_like(pos_peak)
+                neg_peak = torch.zeros_like(neg_peak)
+                pos_spread = torch.zeros_like(pos_spread)
+                neg_spread = torch.zeros_like(neg_spread)
             proto_feat = torch.cat(
                 [pos_sim, neg_sim, proto_margin, ready,
                  pos_peak, neg_peak, pos_spread, neg_spread], dim=-1)
             z_proto = self.eg_proto_head(torch.nan_to_num(proto_feat))
             if not torch.isfinite(z_proto).all():
                 raise FloatingPointError("evidence_gate produced non-finite prototype logits")
-            z_core = z_base + torch.sigmoid(self.eg_proto_alpha) * ready * z_proto
+            if self.use_dmprd:
+                dmprd_delta = self.dmprd_delta_max * torch.tanh(z_proto)
+                dmprd_beta = self.dmprd_beta_max * torch.sigmoid(
+                    self.eg_proto_alpha)
+                z_core = z_base + dmprd_beta * ready * dmprd_delta
+            else:
+                z_core = z_base + (
+                    torch.sigmoid(self.eg_proto_alpha) * ready * z_proto)
         if not torch.isfinite(z_core).all():
             raise FloatingPointError("evidence_gate produced non-finite core logits")
 
@@ -4483,6 +4518,27 @@ class HeteroGNNEdgeHead(nn.Module):
         # residual only. No structural evidence, no gate. Everything else in the
         # forward is identical to v2, so M1 vs v2 differs by exactly this branch.
         if self.eg_proto_only:
+            if self.use_dmprd and not self.training:
+                self._dmprd_log_step += 1
+                if self._dmprd_log_step % 64 == 1:
+                    with torch.no_grad():
+                        delta_abs = dmprd_delta.detach().float().abs().view(-1)
+                        margin = proto_margin.detach().float().view(-1)
+                        ready_flat = ready.detach().float().view(-1)
+                        logging.info(
+                            "[dmprd/%s] slots=%d distribution=%s beta=%.4f | "
+                            "delta_abs: mean=%.4f p90=%.4f max=%.4f | "
+                            "proto_margin: mean=%.4f std=%.4f | ready=%.4f",
+                            getattr(batch, 'split', '?'),
+                            self.num_class_proto_slots,
+                            self.dmprd_use_distribution_stats,
+                            dmprd_beta.item(),
+                            delta_abs.mean().item(),
+                            torch.quantile(delta_abs, 0.90).item(),
+                            delta_abs.max().item(),
+                            margin.mean().item(),
+                            margin.std(unbiased=False).item(),
+                            ready_flat.mean().item())
             if self.training:
                 self._update_support_class_prototypes(h, labels)
             return z_core, labels

@@ -114,3 +114,9 @@ def extended_cfg(cfg):
     cfg.model.eg_struct_aux_weight = 0.25
     cfg.model.eg_struct_aux_epochs = 60
     cfg.model.eg_struct_residual_scale = 1.0
+
+    # DMPRD: one clean prototype-residual path with controlled ablation knobs.
+    cfg.model.dmprd_num_slots = 4
+    cfg.model.dmprd_use_distribution_stats = True
+    cfg.model.dmprd_delta_max = 1.0
+    cfg.model.dmprd_beta_max = 1.0
