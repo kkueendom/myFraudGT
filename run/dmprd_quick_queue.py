@@ -269,6 +269,7 @@ def launch(dataset, variant_name, seed, gpu):
     ]
     env = os.environ.copy()
     env["CUDA_VISIBLE_DEVICES"] = str(gpu)
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
     env["WANDB_MODE"] = "disabled"
     with stdout_path.open("ab") as handle:
         process = subprocess.Popen(
