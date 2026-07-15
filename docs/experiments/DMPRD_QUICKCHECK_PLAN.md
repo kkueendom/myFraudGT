@@ -29,6 +29,19 @@ EvidenceGate-v4 before spending compute on formal three-seed runs.
   added distribution statistics in A3 do not improve either selection rule.
 - Formal 500-epoch A2 screen: pending at the time of this document update.
 
+### A2 Formal Interim Result
+
+At the latest audit, four Small/Medium datasets had completed 500 epochs and
+the two Large datasets had reached epochs 398 and 389. Raw-best already beat
+the historical FraudGT baseline on all six datasets with a mean gain of
+`+0.02319`, so the baseline mainline criterion is irreversibly satisfied.
+
+A2 still trails full-budget `proto_only` by `-0.00503` mean raw-best, with four
+dataset losses below `-0.005`. This creates a second question not answered by
+the original Small-LI ablation: distribution statistics may be useful outside
+Small-LI. An A3 500-epoch control is therefore run on all six datasets while
+the remaining A2 Large jobs finish.
+
 ## Quick Results
 
 | Small-LI variant | Val-selected test F1 | Raw-best test F1 |
@@ -143,6 +156,21 @@ Formal audit:
   run/dmprd_formal_audit.py
 ```
 
+A3 distribution-statistics control:
+
+```bash
+nohup env DMPRD_A3_FORMAL_MAX_EPOCH=500 \
+  DMPRD_A3_FORMAL_POLL_SECONDS=600 \
+  /d/miniconda3/envs/fraudGT/bin/python3.9 \
+  run/dmprd_a3_formal_queue.py \
+  >> .dmprd_a3_formal500_queue.nohup.log 2>&1 &
+```
+
+The A3 audit compares the same run against the historical baseline,
+full-budget `proto_only`, and A2. Distribution statistics are retained only if
+their mean val-select and raw-best deltas versus A2 are both positive and A3
+wins raw-best on at least four of six datasets.
+
 ## Outputs
 
 - Results: `results/dmprd_quick120`
@@ -153,3 +181,5 @@ Formal audit:
 - Formal results: `results/dmprd_formal500`
 - Formal queue events: `.dmprd_formal500_queue.events`
 - Formal audit: stdout from `run/dmprd_formal_audit.py`
+- A3 control results: `results/dmprd_a3_formal500`
+- A3 control audit: stdout from `run/dmprd_a3_formal_audit.py`
