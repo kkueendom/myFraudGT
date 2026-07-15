@@ -1,0 +1,12 @@
+dataset	variant	seed	last_epoch	test_val_select	val_epoch	test_raw_best	raw_epoch	proto120_val	proto120_raw	delta_val_vs_proto120	delta_raw_vs_proto120	baseline_final_val	baseline_final_raw
+Small-LI	a1_single	42	119	0.45081	95	0.48178	99	0.42936	0.46614	0.02145	0.01564	0.50355	0.50474
+Small-LI	a2_multi	42	119	0.46575	113	0.48880	99	0.42936	0.46614	0.03639	0.02266	0.50355	0.50474
+Small-LI	a3_full	42	119	0.46024	95	0.48790	99	0.42936	0.46614	0.03088	0.02176	0.50355	0.50474
+Medium-HI	a3_full	42	119	0.70732	107	0.73641	87	0.68596	0.73115	0.02136	0.00526	0.74601	0.76768
+Large-LI	a3_full	44	119	0.16883	117	0.27225	109	0.14013	0.19497	0.02870	0.07728	0.35000	0.41379
+Small-HI	a3_full	42	119	0.75056	105	0.77796	85	0.72556	0.77879	0.02500	-0.00083	0.76683	0.78599
+Medium-LI	a3_full	44	119	0.44000	99	0.44000	99	0.33161	0.40964	0.10839	0.03036	0.43231	0.51852
+Large-HI	a3_full	43	119	0.66174	111	0.68030	85	0.65008	0.68226	0.01166	-0.00196	0.68048	0.72120
+dmprd_quick_summary
+a3_matched=6/6 mean_delta_val_vs_proto120=+0.03766 mean_delta_raw_vs_proto120=+0.02198 raw_losses_below_minus_0.005=0
+six_dataset_go_no_go=PASS
