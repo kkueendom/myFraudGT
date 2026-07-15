@@ -5,7 +5,7 @@
 - Origin Skill: academic-research-suite / experiment-agent
 - Origin Mode: plan + run
 - Origin Date: 2026-07-15
-- Verification Status: QUICK SCREEN VERIFIED / FORMAL SCREEN PENDING
+- Verification Status: A2 FORMAL VERIFIED / A3 CONTROL PENDING
 - Version Label: dmprd_quickcheck_v2
 
 ## Objective
@@ -27,20 +27,21 @@ EvidenceGate-v4 before spending compute on formal three-seed runs.
 - Six-dataset quick decision: `PASS`.
 - Small-LI ablation selected A2: four prototype slots are useful, while the
   added distribution statistics in A3 do not improve either selection rule.
-- Formal 500-epoch A2 screen: pending at the time of this document update.
+- Formal 500-epoch A2 screen: completed without failures on 2026-07-16.
 
-### A2 Formal Interim Result
+### A2 Formal Result
 
-At the latest audit, four Small/Medium datasets had completed 500 epochs and
-the two Large datasets had reached epochs 398 and 389. Raw-best already beat
-the historical FraudGT baseline on all six datasets with a mean gain of
-`+0.02319`, so the baseline mainline criterion is irreversibly satisfied.
+All six datasets completed 500 epochs. Raw-best beats the historical FraudGT
+baseline on all six datasets with a mean gain of `+0.02981`; mean val-select
+also improves by `+0.01343` with wins on four of six datasets. The strict
+baseline mainline criterion is `PASS`.
 
-A2 still trails full-budget `proto_only` by `-0.00503` mean raw-best, with four
-dataset losses below `-0.005`. This creates a second question not answered by
-the original Small-LI ablation: distribution statistics may be useful outside
-Small-LI. An A3 500-epoch control is therefore run on all six datasets while
-the remaining A2 Large jobs finish.
+A2 has a mean raw-best gain of `+0.00159` and mean val-select gain of `+0.00883`
+over full-budget `proto_only`, so the prototype go/no-go criterion also passes.
+The gains are heterogeneous: raw-best trails `proto_only` on Small-LI,
+Small-HI, Medium-HI, and Large-HI, but only Small-LI and Medium-HI fall below
+`-0.005`. The A3 control tests whether distribution statistics can reduce
+these dataset-specific losses.
 
 ## Quick Results
 

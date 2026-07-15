@@ -1,0 +1,12 @@
+dataset	variant	seed	last_epoch	test_val_select	val_epoch	test_raw_best	raw_epoch	proto500_val	proto500_raw	delta_val_vs_proto500	delta_raw_vs_proto500	baseline_final_val	baseline_final_raw	delta_val_vs_baseline	delta_raw_vs_baseline
+Small-LI	a2_multi	42	499	0.46247	167	0.50667	227	0.46923	0.53229	-0.00676	-0.02562	0.50355	0.50474	-0.04108	0.00193
+Small-HI	a2_multi	42	499	0.77984	251	0.79497	485	0.76581	0.79884	0.01403	-0.00387	0.76683	0.78599	0.01301	0.00898
+Medium-LI	a2_multi	44	499	0.51163	411	0.59031	301	0.44037	0.54688	0.07126	0.04343	0.43231	0.51852	0.07932	0.07179
+Medium-HI	a2_multi	42	499	0.77574	383	0.78940	419	0.76620	0.80925	0.00954	-0.01985	0.74601	0.76768	0.02973	0.02172
+Large-LI	a2_multi	44	499	0.30108	445	0.44720	489	0.35294	0.42683	-0.05186	0.02037	0.35000	0.41379	-0.04892	0.03341
+Large-HI	a2_multi	43	499	0.72897	397	0.76223	445	0.71218	0.76717	0.01679	-0.00494	0.68048	0.72120	0.04849	0.04103
+dmprd_formal_summary
+a2_matched=6/6 mean_delta_val_vs_proto500=+0.00883 mean_delta_raw_vs_proto500=+0.00159 raw_losses_below_minus_0.005=2
+prototype_go_no_go=PASS
+baseline_matched=6/6 mean_delta_val_vs_baseline=+0.01343 mean_delta_raw_vs_baseline=+0.02981 val_wins=4/6 raw_wins=6/6
+baseline_mainline_ready=PASS
