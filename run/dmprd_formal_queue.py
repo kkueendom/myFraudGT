@@ -236,7 +236,7 @@ def pending_tasks(markers):
 def launch(dataset, variant_name, seed, gpu):
     variant = VARIANTS[variant_name]
     run_name = run_stem(dataset, variant_name, seed)
-    stdout_path = REPO / f".dmprd_quick120_{run_name}_gpu{gpu}.log"
+    stdout_path = REPO / f".dmprd_formal500_{run_name}_gpu{gpu}.log"
     cmd = [
         PYTHON, "-m", "fraudGT.main",
         "--cfg", f"configs/evidence_gate_v4/AML-{dataset}.yaml",
