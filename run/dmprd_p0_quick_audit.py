@@ -71,6 +71,10 @@ def fmt(value):
     return "-" if value is None else f"{value:.5f}"
 
 
+def complete(run, epoch_limit):
+    return run is not None and run["last_epoch"] >= epoch_limit
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -100,7 +104,10 @@ def main():
         delta_raw = (
             p0_raw - a2_raw
             if p0_raw is not None and a2_raw is not None else None)
-        if delta_val is not None and delta_raw is not None:
+        if (
+                complete(a2, args.epoch_limit) and
+                complete(p0, args.epoch_limit) and
+                delta_val is not None and delta_raw is not None):
             paired.append((dataset, delta_val, delta_raw))
         print("\t".join([
             dataset,
