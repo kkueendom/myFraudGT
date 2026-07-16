@@ -120,3 +120,11 @@ def extended_cfg(cfg):
     cfg.model.dmprd_use_distribution_stats = True
     cfg.model.dmprd_delta_max = 1.0
     cfg.model.dmprd_beta_max = 1.0
+    # P0: reliability-calibrated prototype residual. Disabled by default so
+    # existing DMPRD/A2 checkpoints and commands keep their original behavior.
+    cfg.model.dmprd_use_reliability_gate = False
+    cfg.model.dmprd_use_sample_gate = True
+    cfg.model.dmprd_support_tau = 16.0
+    cfg.model.dmprd_variance_tau = 0.25
+    cfg.model.dmprd_margin_tau = 0.10
+    cfg.model.dmprd_reliability_floor = 0.25

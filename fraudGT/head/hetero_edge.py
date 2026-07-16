@@ -1426,6 +1426,14 @@ class HeteroGNNEdgeHead(nn.Module):
             'support_class_proto_ready',
             torch.zeros(self.num_class_prototypes,
                         self.num_class_proto_slots))
+        self.register_buffer(
+            'support_class_proto_count',
+            torch.zeros(self.num_class_prototypes,
+                        self.num_class_proto_slots))
+        self.register_buffer(
+            'support_class_proto_variance',
+            torch.zeros(self.num_class_prototypes,
+                        self.num_class_proto_slots))
         self.support_class_proto_momentum = nn.Parameter(
             torch.tensor(math.log(0.95 / 0.05)))
         self.support_class_proto_temperature = nn.Parameter(torch.tensor(0.0))
@@ -1442,10 +1450,31 @@ class HeteroGNNEdgeHead(nn.Module):
                 cfg.model, 'dmprd_delta_max', 1.0))
             self.dmprd_beta_max = float(getattr(
                 cfg.model, 'dmprd_beta_max', 1.0))
+            self.dmprd_use_reliability_gate = bool(getattr(
+                cfg.model, 'dmprd_use_reliability_gate', False))
+            self.dmprd_use_sample_gate = bool(getattr(
+                cfg.model, 'dmprd_use_sample_gate', True))
+            self.dmprd_support_tau = float(getattr(
+                cfg.model, 'dmprd_support_tau', 16.0))
+            self.dmprd_variance_tau = float(getattr(
+                cfg.model, 'dmprd_variance_tau', 0.25))
+            self.dmprd_margin_tau = float(getattr(
+                cfg.model, 'dmprd_margin_tau', 0.10))
+            self.dmprd_reliability_floor = float(getattr(
+                cfg.model, 'dmprd_reliability_floor', 0.25))
             if self.dmprd_delta_max <= 0.0:
                 raise ValueError("dmprd_delta_max must be positive")
             if self.dmprd_beta_max <= 0.0:
                 raise ValueError("dmprd_beta_max must be positive")
+            if self.dmprd_support_tau <= 0.0:
+                raise ValueError("dmprd_support_tau must be positive")
+            if self.dmprd_variance_tau <= 0.0:
+                raise ValueError("dmprd_variance_tau must be positive")
+            if self.dmprd_margin_tau <= 0.0:
+                raise ValueError("dmprd_margin_tau must be positive")
+            if not 0.0 <= self.dmprd_reliability_floor <= 1.0:
+                raise ValueError(
+                    "dmprd_reliability_floor must be between 0 and 1")
             self._dmprd_log_step = 0
             return
 
@@ -1760,6 +1789,11 @@ class HeteroGNNEdgeHead(nn.Module):
                         class_repr[:fill_count]
                     )
                     self.support_class_proto_ready[class_idx, :fill_count] = 1.0
+                    if hasattr(self, 'support_class_proto_count'):
+                        self.support_class_proto_count[
+                            class_idx, :fill_count] = 1.0
+                        self.support_class_proto_variance[
+                            class_idx, :fill_count] = 0.0
                     class_repr = class_repr[fill_count:]
                     ready_mask = self.support_class_proto_ready[class_idx] > 0
                 elif ready_mask.sum() < self.num_class_proto_slots:
@@ -1783,6 +1817,11 @@ class HeteroGNNEdgeHead(nn.Module):
                             class_repr[sample_idx]
                         )
                         self.support_class_proto_ready[class_idx, slot_idx] = 1.0
+                        if hasattr(self, 'support_class_proto_count'):
+                            self.support_class_proto_count[
+                                class_idx, slot_idx] = 1.0
+                            self.support_class_proto_variance[
+                                class_idx, slot_idx] = 0.0
                         used_mask[sample_idx] = True
                     class_repr = class_repr[~used_mask]
                     ready_mask = self.support_class_proto_ready[class_idx] > 0
@@ -1799,11 +1838,32 @@ class HeteroGNNEdgeHead(nn.Module):
                     slot_mask = assign == local_slot
                     if not slot_mask.any():
                         continue
+                    slot_samples = class_repr[slot_mask]
                     slot_mean = F.normalize(
-                        class_repr[slot_mask].mean(dim=0),
+                        slot_samples.mean(dim=0),
                         dim=0,
                         eps=1e-6,
                     )
+                    if hasattr(self, 'support_class_proto_count'):
+                        batch_count = slot_samples.new_tensor(
+                            float(slot_samples.size(0)))
+                        batch_variance = (
+                            (slot_samples - slot_mean.unsqueeze(0)).pow(2)
+                            .sum(dim=-1).mean()
+                        )
+                        old_count = self.support_class_proto_count[
+                            class_idx, slot_idx]
+                        new_count = old_count + batch_count
+                        old_variance = self.support_class_proto_variance[
+                            class_idx, slot_idx]
+                        new_variance = (
+                            old_count * old_variance +
+                            batch_count * batch_variance
+                        ) / new_count.clamp(min=1.0)
+                        self.support_class_proto_count[
+                            class_idx, slot_idx] = new_count
+                        self.support_class_proto_variance[
+                            class_idx, slot_idx] = new_variance
                     updated = (
                         momentum * self.support_class_proto_bank[class_idx, slot_idx] +
                         (1.0 - momentum) * slot_mean
@@ -1884,6 +1944,38 @@ class HeteroGNNEdgeHead(nn.Module):
             pos_spread,
             neg_spread,
         )
+
+    def _support_class_proto_reliability(self, query_repr, class_idx):
+        """Return query-local reliability from prototype support and spread."""
+        zero_score = query_repr.new_zeros((query_repr.size(0), 1))
+        if not hasattr(self, 'support_class_proto_count'):
+            return zero_score
+        ready_mask = self.support_class_proto_ready[class_idx] > 0
+        if not ready_mask.any():
+            return zero_score
+
+        class_bank = F.normalize(
+            self.support_class_proto_bank[class_idx, ready_mask],
+            dim=-1,
+            eps=1e-6,
+        )
+        query_norm = F.normalize(query_repr, dim=-1, eps=1e-6)
+        temperature = self.support_class_proto_temperature.exp().clamp(
+            min=0.25, max=4.0)
+        weights = F.softmax(
+            (query_norm @ class_bank.transpose(0, 1)) / temperature,
+            dim=-1,
+        )
+        support = self.support_class_proto_count[class_idx, ready_mask]
+        variance = self.support_class_proto_variance[class_idx, ready_mask]
+        support_reliability = support / (
+            support + self.dmprd_support_tau)
+        variance_reliability = torch.exp(
+            -variance / self.dmprd_variance_tau)
+        slot_reliability = (
+            support_reliability * variance_reliability
+        ).clamp(min=0.0, max=1.0)
+        return weights @ slot_reliability.unsqueeze(-1)
 
     def _cosine_feature(self, left_repr, right_repr):
         if left_repr is None or right_repr is None:
@@ -4507,7 +4599,53 @@ class HeteroGNNEdgeHead(nn.Module):
                 dmprd_delta = self.dmprd_delta_max * torch.tanh(z_proto)
                 dmprd_beta = self.dmprd_beta_max * torch.sigmoid(
                     self.eg_proto_alpha)
-                z_core = z_base + dmprd_beta * ready * dmprd_delta
+                dmprd_local_reliability = torch.ones_like(ready)
+                dmprd_base_uncertainty = torch.ones_like(ready)
+                dmprd_proto_confidence = torch.ones_like(ready)
+                dmprd_reliability_gate = torch.ones_like(ready)
+                if self.dmprd_use_reliability_gate:
+                    pos_reliability = self._support_class_proto_reliability(
+                        h, 1)
+                    neg_reliability = self._support_class_proto_reliability(
+                        h, 0)
+                    dmprd_local_reliability = torch.sqrt(
+                        (pos_reliability * neg_reliability).clamp(min=0.0))
+                    if self.dmprd_use_sample_gate:
+                        if z_base.size(-1) == 1:
+                            base_prob = torch.sigmoid(z_base).clamp(
+                                min=1e-6, max=1.0 - 1e-6)
+                            dmprd_base_uncertainty = -(
+                                base_prob * base_prob.log() +
+                                (1.0 - base_prob) *
+                                (1.0 - base_prob).log()
+                            ) / math.log(2.0)
+                        else:
+                            base_prob = F.softmax(z_base, dim=-1).clamp(
+                                min=1e-6)
+                            dmprd_base_uncertainty = -(
+                                base_prob * base_prob.log()
+                            ).sum(dim=-1, keepdim=True) / math.log(
+                                float(z_base.size(-1)))
+                        dmprd_proto_confidence = torch.tanh(
+                            proto_margin.abs() / self.dmprd_margin_tau)
+                        reliability_signal = (
+                            dmprd_local_reliability *
+                            dmprd_base_uncertainty *
+                            dmprd_proto_confidence
+                        )
+                    else:
+                        reliability_signal = dmprd_local_reliability
+                    reliability_signal = torch.nan_to_num(
+                        reliability_signal, nan=0.0, posinf=1.0,
+                        neginf=0.0).clamp(min=0.0, max=1.0)
+                    dmprd_reliability_gate = (
+                        self.dmprd_reliability_floor +
+                        (1.0 - self.dmprd_reliability_floor) *
+                        reliability_signal
+                    ).detach()
+                z_core = z_base + (
+                    dmprd_beta * ready * dmprd_reliability_gate *
+                    dmprd_delta)
             else:
                 z_core = z_base + (
                     torch.sigmoid(self.eg_proto_alpha) * ready * z_proto)
@@ -4525,10 +4663,16 @@ class HeteroGNNEdgeHead(nn.Module):
                         delta_abs = dmprd_delta.detach().float().abs().view(-1)
                         margin = proto_margin.detach().float().view(-1)
                         ready_flat = ready.detach().float().view(-1)
+                        reliability_flat = (
+                            dmprd_reliability_gate.detach().float().view(-1))
+                        local_reliability_flat = (
+                            dmprd_local_reliability.detach().float().view(-1))
                         logging.info(
                             "[dmprd/%s] slots=%d distribution=%s beta=%.4f | "
                             "delta_abs: mean=%.4f p90=%.4f max=%.4f | "
-                            "proto_margin: mean=%.4f std=%.4f | ready=%.4f",
+                            "proto_margin: mean=%.4f std=%.4f | ready=%.4f | "
+                            "reliability: gate=%.4f local=%.4f base_u=%.4f "
+                            "proto_conf=%.4f",
                             getattr(batch, 'split', '?'),
                             self.num_class_proto_slots,
                             self.dmprd_use_distribution_stats,
@@ -4538,7 +4682,11 @@ class HeteroGNNEdgeHead(nn.Module):
                             delta_abs.max().item(),
                             margin.mean().item(),
                             margin.std(unbiased=False).item(),
-                            ready_flat.mean().item())
+                            ready_flat.mean().item(),
+                            reliability_flat.mean().item(),
+                            local_reliability_flat.mean().item(),
+                            dmprd_base_uncertainty.detach().float().mean().item(),
+                            dmprd_proto_confidence.detach().float().mean().item())
             if self.training:
                 self._update_support_class_prototypes(h, labels)
             return z_core, labels
