@@ -1,0 +1,14 @@
+dataset	variant	seed	last_epoch	test_val_select	val_epoch	test_raw_best	raw_epoch	proto500_val	proto500_raw	delta_val_vs_proto500	delta_raw_vs_proto500	baseline_final_val	baseline_final_raw	delta_val_vs_baseline	delta_raw_vs_baseline	a2_val	a2_raw	delta_val_vs_a2	delta_raw_vs_a2
+Small-LI	a3_full	42	499	0.42915	399	0.50575	261	0.46923	0.53229	-0.04008	-0.02654	0.50355	0.50474	-0.07440	0.00101	0.46247	0.50667	-0.03332	-0.00092
+Small-HI	a3_full	42	499	0.76763	151	0.78953	189	0.76581	0.79884	0.00182	-0.00931	0.76683	0.78599	0.00080	0.00354	0.77984	0.79497	-0.01221	-0.00544
+Medium-LI	a3_full	44	499	0.49533	411	0.59130	301	0.44037	0.54688	0.05496	0.04442	0.43231	0.51852	0.06302	0.07278	0.51163	0.59031	-0.01630	0.00099
+Medium-HI	a3_full	42	499	0.75823	383	0.79357	419	0.76620	0.80925	-0.00797	-0.01568	0.74601	0.76768	0.01222	0.02589	0.77574	0.78940	-0.01751	0.00417
+Large-LI	a3_full	44	499	0.27451	461	0.44156	489	0.35294	0.42683	-0.07843	0.01473	0.35000	0.41379	-0.07549	0.02777	0.30108	0.44720	-0.02657	-0.00564
+Large-HI	a3_full	43	499	0.67206	415	0.77108	499	0.71218	0.76717	-0.04012	0.00391	0.68048	0.72120	-0.00842	0.04988	0.72897	0.76223	-0.05691	0.00885
+dmprd_formal_summary
+a3_matched=6/6 mean_delta_val_vs_proto500=-0.01830 mean_delta_raw_vs_proto500=+0.00192 raw_losses_below_minus_0.005=3
+prototype_go_no_go=FAIL
+baseline_matched=6/6 mean_delta_val_vs_baseline=-0.01371 mean_delta_raw_vs_baseline=+0.03015 val_wins=3/6 raw_wins=6/6
+baseline_mainline_ready=PASS
+a2_reference_matched=6/6 mean_delta_val_vs_a2=-0.02714 mean_delta_raw_vs_a2=+0.00034 val_wins=0/6 raw_wins=3/6
+distribution_stats_contribute=FAIL

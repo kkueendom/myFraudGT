@@ -127,12 +127,16 @@ def main():
     robust_datasets = 0
     complete_datasets = 0
     for dataset, results in dataset_results.items():
-        if not results:
-            print(f"{dataset}\tmatched=0/3")
+        complete = [
+            item for item in results
+            if item["last_epoch"] >= args.epoch_limit]
+        if not complete:
+            print(
+                f"{dataset}\tavailable={len(results)}/3 complete=0/3")
             continue
-        raw = [item["raw_best"] for item in results]
+        raw = [item["raw_best"] for item in complete]
         val = [
-            item["test_at_val"] for item in results
+            item["test_at_val"] for item in complete
             if item["test_at_val"] is not None]
         raw_wins = sum(value > BASELINE[dataset]["raw"] for value in raw)
         val_wins = sum(value > BASELINE[dataset]["val"] for value in val)
@@ -141,12 +145,13 @@ def main():
         val_mean = statistics.mean(val) if val else None
         val_std = statistics.pstdev(val) if len(val) > 1 else 0.0
         print(
-            f"{dataset}\tmatched={len(results)}/3 "
+            f"{dataset}\tavailable={len(results)}/3 "
+            f"complete={len(complete)}/3 "
             f"val_mean={fmt(val_mean)} val_std={fmt(val_std)} "
             f"raw_mean={raw_mean:.5f} raw_std={raw_std:.5f} "
             f"val_wins={val_wins}/{len(val)} "
             f"raw_wins={raw_wins}/{len(raw)}")
-        if len(results) == 3:
+        if len(complete) == 3:
             complete_datasets += 1
             if raw_mean > BASELINE[dataset]["raw"] and raw_wins >= 2:
                 robust_datasets += 1

@@ -5,7 +5,7 @@
 - Origin Skill: academic-research-suite / experiment-agent
 - Origin Mode: plan + run
 - Origin Date: 2026-07-15
-- Verification Status: A2 FORMAL VERIFIED / A3 CONTROL PENDING
+- Verification Status: A2 AND A3 FORMAL VERIFIED / ROBUSTNESS RUNNING
 - Version Label: dmprd_quickcheck_v2
 
 ## Objective
@@ -171,6 +171,17 @@ The A3 audit compares the same run against the historical baseline,
 full-budget `proto_only`, and A2. Distribution statistics are retained only if
 their mean val-select and raw-best deltas versus A2 are both positive and A3
 wins raw-best on at least four of six datasets.
+
+### A3 Formal Result
+
+All six A3 datasets completed 500 epochs without failures. Against A2, A3 has
+a negligible mean raw-best change of `+0.00034`, wins raw-best on only three of
+six datasets, and reduces mean val-select by `0.02714` with zero val-select
+wins. Therefore `distribution_stats_contribute=FAIL`.
+
+A3 also beats the historical baseline in raw-best on all six datasets, but it
+does not provide an identifiable improvement over A2. A2 remains the selected
+mainline because it is simpler and substantially better under val selection.
 
 ### A2 Seed Robustness
 
