@@ -1,0 +1,5 @@
+dataset	seed	a2_last	p0_last	a2_val_select	p0_val_select	delta_val	a2_raw_best	p0_raw_best	delta_raw	a2_val_epoch	p0_val_epoch	a2_raw_epoch	p0_raw_epoch
+Small-LI	42	119	119	0.45064	0.47059	0.01995	0.48871	0.49520	0.00649	119	113	99	99
+Medium-HI	42	119	119	0.71083	0.72253	0.01170	0.74394	0.74317	-0.00077	107	99	87	87
+Large-LI	44	119	119	0.19626	0.23000	0.03374	0.22131	0.23000	0.00869	113	111	109	111
+summary	-	-	-	-	-	0.02180	-	-	0.00480	-	-	-	-
