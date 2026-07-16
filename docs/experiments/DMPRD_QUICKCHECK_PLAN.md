@@ -172,6 +172,15 @@ full-budget `proto_only`, and A2. Distribution statistics are retained only if
 their mean val-select and raw-best deltas versus A2 are both positive and A3
 wins raw-best on at least four of six datasets.
 
+### A2 Seed Robustness
+
+As A3 tasks release GPUs, a separate queue fills in the other two seeds from
+`{42, 43, 44}` for every dataset. The original A2 formal run supplies the
+historical best seed; the supplemental queue supplies the remaining 12 runs.
+The robustness audit reports three-seed mean and population standard deviation.
+A dataset is considered robust against the historical baseline when its
+three-seed raw-best mean is higher and at least two of three seeds win.
+
 ## Outputs
 
 - Results: `results/dmprd_quick120`
@@ -184,3 +193,5 @@ wins raw-best on at least four of six datasets.
 - Formal audit: stdout from `run/dmprd_formal_audit.py`
 - A3 control results: `results/dmprd_a3_formal500`
 - A3 control audit: stdout from `run/dmprd_a3_formal_audit.py`
+- A2 robustness results: `results/dmprd_a2_robust500`
+- A2 robustness audit: stdout from `run/dmprd_a2_robust_audit.py`
