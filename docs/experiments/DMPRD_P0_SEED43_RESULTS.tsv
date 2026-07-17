@@ -1,0 +1,4 @@
+dataset	seed	variant	val_select	raw_best	val_epoch	raw_epoch
+Small-LI	43	a2_control	0.43262	0.49378	117	113
+Small-LI	43	p0_full	0.45149	0.49516	117	105
+Small-LI	43	delta_p0_minus_a2	0.01887	0.00138	-	-
