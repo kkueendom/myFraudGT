@@ -135,3 +135,15 @@ def extended_cfg(cfg):
     cfg.model.campr_adv_scale_floor = 1e-4
     cfg.model.campr_route_min = 0.50
     cfg.model.campr_route_max = 1.50
+
+    # ACDR-Help: A2-centered marginal help critic. The router is sample-local
+    # and starts at the exact A2 dose (1.0); labels supervise only its detached
+    # training target between low/high counterfactual doses.
+    cfg.model.acdr_help_router_hidden = 32
+    cfg.model.acdr_help_route_radius = 1.0
+    cfg.model.acdr_help_aux_weight = 0.05
+    cfg.model.acdr_help_aux_start_epoch = 10
+    cfg.model.acdr_help_aux_end_epoch = 150
+    cfg.model.acdr_help_low_dose = 0.75
+    cfg.model.acdr_help_high_dose = 1.25
+    cfg.model.acdr_help_deadzone = 1e-4

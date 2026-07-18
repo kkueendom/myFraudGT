@@ -28,7 +28,9 @@ class HeteroGNNEdgeHead(nn.Module):
         # `dmprd` keeps only a distribution-aware multi-prototype residual. It
         # has no structural expert, sample gate, auxiliary loss, or gate budget.
         # `campr` adds counterfactual-advantage supervision and mean-preserving
-        # sample routing on top of that same A2 residual.
+        # sample routing on top of that same A2 residual. `acdr_help` instead
+        # learns a sample-local, batch-independent residual dose from marginal
+        # help/harm supervision around the A2 operating point.
         # `evidence_gate_v3` is the convex-fusion gate experiment.
         # `evidence_gate_v4_residual` fixes its dead-expert failure mode with a
         # bounded residual structural expert, a nonzero fixed-open warm-up, and
@@ -38,13 +40,16 @@ class HeteroGNNEdgeHead(nn.Module):
         # every prototype-derived router input.
         self.use_evidence_gate = self.edge_decoding in {
             'evidence_gate', 'evidence_gate_proto', 'dmprd', 'campr',
+            'acdr_help',
             'evidence_gate_v3',
             'evidence_gate_v4_residual', 'evidence_gate_v4_nogate',
             'evidence_gate_v4_noproto'}
-        self.use_dmprd = self.edge_decoding in {'dmprd', 'campr'}
+        self.use_dmprd = self.edge_decoding in {
+            'dmprd', 'campr', 'acdr_help'}
         self.use_campr = (self.edge_decoding == 'campr')
+        self.use_acdr_help = (self.edge_decoding == 'acdr_help')
         self.eg_proto_only = self.edge_decoding in {
-            'evidence_gate_proto', 'dmprd', 'campr'}
+            'evidence_gate_proto', 'dmprd', 'campr', 'acdr_help'}
         self.eg_gate_v3 = (self.edge_decoding == 'evidence_gate_v3')
         self.eg_gate_v4 = self.edge_decoding in {
             'evidence_gate_v4_residual', 'evidence_gate_v4_nogate',
@@ -1394,6 +1399,17 @@ class HeteroGNNEdgeHead(nn.Module):
             if self.use_evidence_gate:
                 self._build_evidence_gate(dim_in, dim_out)
 
+    @staticmethod
+    def _make_acdr_help_router(input_dim, hidden_dim):
+        router = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, 1),
+        )
+        nn.init.zeros_(router[-1].weight)
+        nn.init.zeros_(router[-1].bias)
+        return router
+
     def _build_evidence_gate(self, dim_in, dim_out):
         '''Modules for the scale-agnostic, uncertainty-gated evidence decoder.
 
@@ -1510,6 +1526,56 @@ class HeteroGNNEdgeHead(nn.Module):
                 self._eg_gate_penalty = None
                 self._campr_log_step = 0
                 self._campr_train_log_step = 0
+            if self.use_acdr_help:
+                self.acdr_help_router_hidden = int(getattr(
+                    cfg.model, 'acdr_help_router_hidden', 32))
+                self.acdr_help_route_radius = float(getattr(
+                    cfg.model, 'acdr_help_route_radius', 1.0))
+                self.acdr_help_aux_weight = float(getattr(
+                    cfg.model, 'acdr_help_aux_weight', 0.05))
+                self.acdr_help_aux_start_epoch = int(getattr(
+                    cfg.model, 'acdr_help_aux_start_epoch', 10))
+                self.acdr_help_aux_end_epoch = int(getattr(
+                    cfg.model, 'acdr_help_aux_end_epoch', 150))
+                self.acdr_help_low_dose = float(getattr(
+                    cfg.model, 'acdr_help_low_dose', 0.75))
+                self.acdr_help_high_dose = float(getattr(
+                    cfg.model, 'acdr_help_high_dose', 1.25))
+                self.acdr_help_deadzone = float(getattr(
+                    cfg.model, 'acdr_help_deadzone', 1e-4))
+                if self.acdr_help_router_hidden < 1:
+                    raise ValueError(
+                        "acdr_help_router_hidden must be positive")
+                if not 0.0 <= self.acdr_help_route_radius <= 1.0:
+                    raise ValueError(
+                        "acdr_help_route_radius must be in [0, 1]")
+                if self.acdr_help_aux_weight < 0.0:
+                    raise ValueError(
+                        "acdr_help_aux_weight must be non-negative")
+                if self.acdr_help_aux_start_epoch < 0:
+                    raise ValueError(
+                        "acdr_help_aux_start_epoch must be non-negative")
+                if (self.acdr_help_aux_end_epoch <
+                        self.acdr_help_aux_start_epoch):
+                    raise ValueError(
+                        "acdr_help_aux_end_epoch must not precede start")
+                if not (0.0 <= self.acdr_help_low_dose < 1.0 <
+                        self.acdr_help_high_dose):
+                    raise ValueError(
+                        "acdr_help doses must straddle the A2 dose 1")
+                if self.acdr_help_deadzone < 0.0:
+                    raise ValueError(
+                        "acdr_help_deadzone must be non-negative")
+
+                # h plus ten label-free scalar signals. This critic is
+                # deliberately independent of the global GNN dropout setting.
+                self.acdr_help_num_signals = 10
+                self.acdr_help_router = self._make_acdr_help_router(
+                    dim_in + self.acdr_help_num_signals,
+                    self.acdr_help_router_hidden)
+                self._eg_cur_epoch = 0
+                self._eg_gate_penalty = None
+                self._acdr_help_train_log_step = 0
             self._dmprd_log_step = 0
             return
 
@@ -2086,6 +2152,44 @@ class HeteroGNNEdgeHead(nn.Module):
         ).detach()
         route = 1.0 + range_scale * centered
         return route_logits, gate_probability, route
+
+    def _acdr_help_route(self, h, z_base, dmprd_delta, pos_sim, neg_sim,
+                         proto_margin, ready):
+        """Return a label-free, sample-local dose independent of its batch."""
+        base_margin = self._campr_logit_margin(z_base.detach())
+        delta_margin = self._campr_logit_margin(dmprd_delta.detach())
+        alignment = base_margin * delta_margin
+        route_scalars = torch.cat([
+            base_margin,
+            base_margin.abs(),
+            delta_margin,
+            delta_margin.abs(),
+            pos_sim.detach(),
+            neg_sim.detach(),
+            proto_margin.detach(),
+            proto_margin.detach().abs(),
+            alignment,
+            ready.detach(),
+        ], dim=-1)
+        route_feat = torch.cat([h.detach(), route_scalars], dim=-1)
+        route_score = self.acdr_help_router(torch.nan_to_num(
+            route_feat, nan=0.0, posinf=1e4, neginf=-1e4))
+        help_probability = torch.sigmoid(route_score)
+        dose = 1.0 + self.acdr_help_route_radius * (
+            2.0 * help_probability - 1.0)
+        return route_score, help_probability, dose
+
+    @staticmethod
+    def _acdr_help_correlation(left, right):
+        if left.numel() < 2:
+            return left.new_zeros(())
+        left = left.float().view(-1)
+        right = right.float().view(-1)
+        left = left - left.mean()
+        right = right - right.mean()
+        denominator = torch.sqrt(
+            left.square().sum() * right.square().sum()).clamp(min=1e-12)
+        return (left * right).sum() / denominator
 
     def _cosine_feature(self, left_repr, right_repr):
         if left_repr is None or right_repr is None:
@@ -4654,13 +4758,17 @@ class HeteroGNNEdgeHead(nn.Module):
     def _evidence_gate_head(self, batch):
         '''Scale-agnostic evidence decoder: z_base (+) bounded prototype core
         (+) uncertainty-gated higher-order structural evidence.'''
-        if self.eg_gate_v4 or self.use_campr:
+        if self.eg_gate_v4 or self.use_campr or self.use_acdr_help:
             # These tensors belong to one forward pass only. Clearing them here
             # prevents a skipped/failed batch from reusing an old auxiliary loss.
             self._eg_gate_penalty = None
         if self.use_campr:
             self._campr_advantage = None
             self._campr_advantage_target = None
+        if self.use_acdr_help:
+            self._acdr_help_marginal_advantage = None
+            self._acdr_help_target = None
+            self._acdr_help_valid = None
         if self.eg_gate_v4:
             self._eg_struct_aux_logits = None
             self._eg_struct_aux_labels = None
@@ -4718,6 +4826,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 dmprd_proto_confidence = torch.ones_like(ready)
                 dmprd_reliability_gate = torch.ones_like(ready)
                 campr_gate_probability = torch.ones_like(ready)
+                acdr_help_probability = torch.full_like(ready, 0.5)
                 if self.use_campr:
                     (campr_route_logits, campr_gate_probability,
                      dmprd_reliability_gate) = self._campr_route(
@@ -4777,6 +4886,124 @@ class HeteroGNNEdgeHead(nn.Module):
                                     advantage_target.std(
                                         unbiased=False).item(),
                                     advantage_scale.item(),
+                                    ready.detach().float().mean().item())
+                elif self.use_acdr_help:
+                    (acdr_help_score, acdr_help_probability,
+                     dmprd_reliability_gate) = self._acdr_help_route(
+                        h, z_base, dmprd_delta, pos_sim, neg_sim,
+                        proto_margin, ready)
+                    aux_active = (
+                        self.training and self.acdr_help_aux_weight > 0.0 and
+                        self.acdr_help_aux_start_epoch <= self._eg_cur_epoch <=
+                        self.acdr_help_aux_end_epoch)
+                    if aux_active:
+                        detached_residual = (
+                            dmprd_beta.detach() * ready.detach() *
+                            dmprd_delta.detach())
+                        low_candidate = (
+                            z_base.detach() + self.acdr_help_low_dose *
+                            detached_residual)
+                        high_candidate = (
+                            z_base.detach() + self.acdr_help_high_dose *
+                            detached_residual)
+                        low_loss = self._campr_per_sample_loss(
+                            low_candidate, labels)
+                        high_loss = self._campr_per_sample_loss(
+                            high_candidate, labels)
+                        marginal_advantage = (
+                            low_loss - high_loss).detach()
+                        target = (marginal_advantage > 0.0).float()
+                        valid = (
+                            marginal_advantage.abs() >=
+                            self.acdr_help_deadzone
+                        ) & (ready.detach().view(-1) > 0.0)
+
+                        help_mask = valid & (target > 0.5)
+                        harm_mask = valid & (target < 0.5)
+                        help_count = help_mask.float().sum()
+                        harm_count = harm_mask.float().sum()
+                        group_count = (
+                            (help_count > 0).float() +
+                            (harm_count > 0).float()).clamp(min=1.0)
+                        balance_weight = target.new_zeros(target.shape)
+                        balance_weight = torch.where(
+                            help_mask,
+                            torch.ones_like(balance_weight) /
+                            help_count.clamp(min=1.0) / group_count,
+                            balance_weight)
+                        balance_weight = torch.where(
+                            harm_mask,
+                            torch.ones_like(balance_weight) /
+                            harm_count.clamp(min=1.0) / group_count,
+                            balance_weight)
+                        route_aux_per_sample = (
+                            F.binary_cross_entropy_with_logits(
+                                acdr_help_score.view(-1), target,
+                                reduction='none'))
+                        route_aux = (
+                            route_aux_per_sample * balance_weight).sum()
+                        self._eg_gate_penalty = (
+                            self.acdr_help_aux_weight * route_aux)
+                        self._acdr_help_marginal_advantage = (
+                            marginal_advantage)
+                        self._acdr_help_target = target
+                        self._acdr_help_valid = valid
+
+                        self._acdr_help_train_log_step += 1
+                        diagnostic_steps = {
+                            1, 2, 257, 1025, 4097, 16385, 65537,
+                        }
+                        if self._acdr_help_train_log_step in diagnostic_steps:
+                            with torch.no_grad():
+                                valid_count = valid.float().sum()
+                                coverage = valid.float().mean()
+                                help_ratio = (
+                                    (target * valid.float()).sum() /
+                                    valid_count.clamp(min=1.0))
+                                route_flat = (
+                                    dmprd_reliability_gate.float().view(-1))
+                                route_valid = route_flat[valid]
+                                target_valid = target[valid]
+                                route_target_corr = (
+                                    self._acdr_help_correlation(
+                                        route_valid, target_valid))
+                                lower_bound = (
+                                    1.0 - self.acdr_help_route_radius)
+                                upper_bound = (
+                                    1.0 + self.acdr_help_route_radius)
+                                boundary_width = max(
+                                    0.01 * 2.0 *
+                                    self.acdr_help_route_radius, 1e-6)
+                                lower_fraction = (
+                                    route_flat <=
+                                    lower_bound + boundary_width
+                                ).float().mean()
+                                upper_fraction = (
+                                    route_flat >=
+                                    upper_bound - boundary_width
+                                ).float().mean()
+                                logging.info(
+                                    "[acdr_help/train] epoch=%d "
+                                    "route_aux=%.5f | marginal: "
+                                    "mean=%.6f std=%.6f | help=%.3f "
+                                    "coverage=%.3f corr=%.3f | dose: "
+                                    "mean=%.4f std=%.4f min=%.4f "
+                                    "max=%.4f low_bound=%.3f "
+                                    "high_bound=%.3f | ready=%.4f",
+                                    self._eg_cur_epoch,
+                                    route_aux.detach().item(),
+                                    marginal_advantage.mean().item(),
+                                    marginal_advantage.std(
+                                        unbiased=False).item(),
+                                    help_ratio.item(),
+                                    coverage.item(),
+                                    route_target_corr.item(),
+                                    route_flat.mean().item(),
+                                    route_flat.std(unbiased=False).item(),
+                                    route_flat.min().item(),
+                                    route_flat.max().item(),
+                                    lower_fraction.item(),
+                                    upper_fraction.item(),
                                     ready.detach().float().mean().item())
                 elif self.dmprd_use_reliability_gate:
                     pos_reliability = self._support_class_proto_reliability(
@@ -4855,6 +5082,28 @@ class HeteroGNNEdgeHead(nn.Module):
                                 dmprd_beta.item(),
                                 gate_flat.mean().item(),
                                 gate_flat.std(unbiased=False).item(),
+                                reliability_flat.mean().item(),
+                                reliability_flat.std(unbiased=False).item(),
+                                reliability_flat.min().item(),
+                                reliability_flat.max().item(),
+                                delta_abs.mean().item(),
+                                torch.quantile(delta_abs, 0.90).item(),
+                                margin.mean().item(),
+                                margin.std(unbiased=False).item(),
+                                ready_flat.mean().item())
+                        elif self.use_acdr_help:
+                            probability_flat = (
+                                acdr_help_probability.detach().float().view(-1))
+                            logging.info(
+                                "[acdr_help/%s] beta=%.4f | help_prob: "
+                                "mean=%.4f std=%.4f | dose: mean=%.4f "
+                                "std=%.4f min=%.4f max=%.4f | delta_abs: "
+                                "mean=%.4f p90=%.4f | proto_margin: "
+                                "mean=%.4f std=%.4f | ready=%.4f",
+                                getattr(batch, 'split', '?'),
+                                dmprd_beta.item(),
+                                probability_flat.mean().item(),
+                                probability_flat.std(unbiased=False).item(),
                                 reliability_flat.mean().item(),
                                 reliability_flat.std(unbiased=False).item(),
                                 reliability_flat.min().item(),
