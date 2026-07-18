@@ -88,6 +88,9 @@ auxiliary weight alone is therefore unlikely to solve the problem.
 - pause points before resume: approximately Large-LI `120`, Small-LI `194`;
 - scheduler-preserving resume checkpoints: Large-LI epoch `99`, Small-LI epoch
   `149`;
+- `run/campr_formal_audit.py` deduplicates resumed JSONL rows by epoch and keeps
+  the last record, preventing old validation rows from being paired with the
+  resumed trajectory's test rows;
 - the unrelated Medium-HI pilot remains paused and is not part of the current
   first-stage decision.
 

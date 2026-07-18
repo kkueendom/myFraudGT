@@ -20,15 +20,18 @@ NO_AUX_TASKS = [
 def rows(path, epoch_limit):
     if not path.exists():
         return []
-    output = []
+    by_epoch = {}
     for line in path.read_text(errors="ignore").splitlines():
         try:
             row = json.loads(line)
         except Exception:
             continue
         if "epoch" in row and int(row["epoch"]) <= epoch_limit:
-            output.append(row)
-    return output
+            # A scheduler-preserving resume can append a second lineage after
+            # the latest checkpoint. The last record is the authoritative row
+            # for that epoch and must replace the pre-resume trajectory.
+            by_epoch[int(row["epoch"])] = row
+    return [by_epoch[epoch] for epoch in sorted(by_epoch)]
 
 
 def summarize(seed_dir, epoch_limit):
