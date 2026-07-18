@@ -135,3 +135,13 @@ def extended_cfg(cfg):
     cfg.model.campr_adv_scale_floor = 1e-4
     cfg.model.campr_route_min = 0.50
     cfg.model.campr_route_max = 1.50
+
+    # CPAR-K4: A2-centred counterfactual action routing. The auxiliary action
+    # target is used only during the bounded early/mid-training window; task
+    # loss continues to train the label-free router for the full run.
+    cfg.model.cpar_aux_weight = 0.05
+    cfg.model.cpar_aux_start_epoch = 10
+    cfg.model.cpar_aux_end_epoch = 150
+    cfg.model.cpar_gap_floor = 1e-4
+    cfg.model.cpar_gap_threshold = 0.05
+    cfg.model.cpar_router_hidden = 32

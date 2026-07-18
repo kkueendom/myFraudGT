@@ -28,7 +28,9 @@ class HeteroGNNEdgeHead(nn.Module):
         # `dmprd` keeps only a distribution-aware multi-prototype residual. It
         # has no structural expert, sample gate, auxiliary loss, or gate budget.
         # `campr` adds counterfactual-advantage supervision and mean-preserving
-        # sample routing on top of that same A2 residual.
+        # sample routing on top of that same A2 residual. `cpar_k4` instead
+        # predicts one of four counterfactual residual doses and falls back to
+        # the exact A2 dose whenever its action distribution is uniform.
         # `evidence_gate_v3` is the convex-fusion gate experiment.
         # `evidence_gate_v4_residual` fixes its dead-expert failure mode with a
         # bounded residual structural expert, a nonzero fixed-open warm-up, and
@@ -38,13 +40,16 @@ class HeteroGNNEdgeHead(nn.Module):
         # every prototype-derived router input.
         self.use_evidence_gate = self.edge_decoding in {
             'evidence_gate', 'evidence_gate_proto', 'dmprd', 'campr',
+            'cpar_k4',
             'evidence_gate_v3',
             'evidence_gate_v4_residual', 'evidence_gate_v4_nogate',
             'evidence_gate_v4_noproto'}
-        self.use_dmprd = self.edge_decoding in {'dmprd', 'campr'}
+        self.use_dmprd = self.edge_decoding in {
+            'dmprd', 'campr', 'cpar_k4'}
         self.use_campr = (self.edge_decoding == 'campr')
+        self.use_cpar_k4 = (self.edge_decoding == 'cpar_k4')
         self.eg_proto_only = self.edge_decoding in {
-            'evidence_gate_proto', 'dmprd', 'campr'}
+            'evidence_gate_proto', 'dmprd', 'campr', 'cpar_k4'}
         self.eg_gate_v3 = (self.edge_decoding == 'evidence_gate_v3')
         self.eg_gate_v4 = self.edge_decoding in {
             'evidence_gate_v4_residual', 'evidence_gate_v4_nogate',
@@ -1510,6 +1515,49 @@ class HeteroGNNEdgeHead(nn.Module):
                 self._eg_gate_penalty = None
                 self._campr_log_step = 0
                 self._campr_train_log_step = 0
+            if self.use_cpar_k4:
+                self.cpar_aux_weight = float(getattr(
+                    cfg.model, 'cpar_aux_weight', 0.05))
+                self.cpar_aux_start_epoch = int(getattr(
+                    cfg.model, 'cpar_aux_start_epoch', 10))
+                self.cpar_aux_end_epoch = int(getattr(
+                    cfg.model, 'cpar_aux_end_epoch', 150))
+                self.cpar_gap_floor = float(getattr(
+                    cfg.model, 'cpar_gap_floor', 1e-4))
+                self.cpar_gap_threshold = float(getattr(
+                    cfg.model, 'cpar_gap_threshold', 0.05))
+                self.cpar_router_hidden = int(getattr(
+                    cfg.model, 'cpar_router_hidden', 32))
+                if self.cpar_aux_weight < 0.0:
+                    raise ValueError("cpar_aux_weight must be non-negative")
+                if self.cpar_aux_start_epoch < 0:
+                    raise ValueError(
+                        "cpar_aux_start_epoch must be non-negative")
+                if self.cpar_aux_end_epoch < self.cpar_aux_start_epoch:
+                    raise ValueError(
+                        "cpar_aux_end_epoch must not precede the start epoch")
+                if self.cpar_gap_floor <= 0.0:
+                    raise ValueError("cpar_gap_floor must be positive")
+                if self.cpar_gap_threshold <= 0.0:
+                    raise ValueError("cpar_gap_threshold must be positive")
+                if self.cpar_router_hidden < 1:
+                    raise ValueError("cpar_router_hidden must be positive")
+                self.register_buffer(
+                    'cpar_action_doses',
+                    torch.tensor([0.0, 0.5, 1.0, 1.5]))
+                # h plus nine label-free scalars. This router deliberately does
+                # not inherit cfg.gnn.dropout from the generic GraphGym MLP.
+                self.cpar_router = nn.Sequential(
+                    nn.Linear(dim_in + 9, self.cpar_router_hidden),
+                    nn.GELU(),
+                    nn.Linear(self.cpar_router_hidden, 4),
+                )
+                nn.init.zeros_(self.cpar_router[-1].weight)
+                nn.init.zeros_(self.cpar_router[-1].bias)
+                self._eg_cur_epoch = 0
+                self._eg_gate_penalty = None
+                self._cpar_log_step = 0
+                self._cpar_train_log_step = 0
             self._dmprd_log_step = 0
             return
 
@@ -2086,6 +2134,68 @@ class HeteroGNNEdgeHead(nn.Module):
         ).detach()
         route = 1.0 + range_scale * centered
         return route_logits, gate_probability, route
+
+    def _cpar_route(self, h, z_base, a2_residual, pos_sim, neg_sim,
+                    proto_margin, ready):
+        """Predict an A2-centred residual dose without batch-level signals."""
+        base_margin = self._campr_logit_margin(z_base.detach())
+        residual_margin = self._campr_logit_margin(a2_residual.detach())
+        alignment = (
+            torch.sign(base_margin) * torch.sign(residual_margin))
+        route_feat = torch.cat([
+            h.detach(),
+            base_margin,
+            base_margin.abs(),
+            residual_margin,
+            residual_margin.abs(),
+            pos_sim.detach(),
+            neg_sim.detach(),
+            proto_margin.detach(),
+            ready.detach(),
+            alignment,
+        ], dim=-1)
+        route_logits = self.cpar_router(
+            torch.nan_to_num(route_feat).detach())
+        action_prob = F.softmax(route_logits, dim=-1)
+        entropy = -(
+            action_prob * action_prob.clamp(min=1e-8).log()
+        ).sum(dim=-1, keepdim=True)
+        confidence = (
+            1.0 - entropy / math.log(float(self.cpar_action_doses.numel()))
+        ).clamp(min=0.0, max=1.0)
+        # Make zero-initialised, exactly uniform logits a bit-exact A2 fallback.
+        uniform = torch.full_like(
+            action_prob, 1.0 / float(self.cpar_action_doses.numel()))
+        is_uniform = (action_prob == uniform).all(dim=-1, keepdim=True)
+        confidence = torch.where(
+            is_uniform, torch.zeros_like(confidence), confidence)
+        expected_dose = (
+            action_prob * self.cpar_action_doses.to(action_prob)
+        ).sum(dim=-1, keepdim=True)
+        dose = 1.0 + confidence * (expected_dose - 1.0)
+        return route_logits, action_prob, confidence, dose
+
+    def _cpar_counterfactual_targets(
+            self, z_base, a2_residual, labels):
+        """Return best dose and a scale-robust confidence weight per sample."""
+        detached_base = z_base.detach()
+        detached_residual = a2_residual.detach()
+        action_losses = []
+        for action in self.cpar_action_doses.detach():
+            candidate = detached_base + action * detached_residual
+            action_losses.append(
+                self._campr_per_sample_loss(candidate, labels).detach())
+        action_losses = torch.stack(action_losses, dim=-1)
+        sorted_losses, _ = action_losses.sort(dim=-1)
+        best_action = action_losses.argmin(dim=-1).detach()
+        best_gap = (sorted_losses[:, 1] - sorted_losses[:, 0]).detach()
+        loss_scale = action_losses.abs().mean(dim=-1).clamp(
+            min=self.cpar_gap_floor).detach()
+        normalized_gap = (best_gap / loss_scale).detach()
+        gap_weight = (
+            normalized_gap / self.cpar_gap_threshold
+        ).clamp(min=0.0, max=1.0).detach()
+        return action_losses, best_action, normalized_gap, gap_weight
 
     def _cosine_feature(self, left_repr, right_repr):
         if left_repr is None or right_repr is None:
@@ -4654,13 +4764,17 @@ class HeteroGNNEdgeHead(nn.Module):
     def _evidence_gate_head(self, batch):
         '''Scale-agnostic evidence decoder: z_base (+) bounded prototype core
         (+) uncertainty-gated higher-order structural evidence.'''
-        if self.eg_gate_v4 or self.use_campr:
+        if self.eg_gate_v4 or self.use_campr or self.use_cpar_k4:
             # These tensors belong to one forward pass only. Clearing them here
             # prevents a skipped/failed batch from reusing an old auxiliary loss.
             self._eg_gate_penalty = None
         if self.use_campr:
             self._campr_advantage = None
             self._campr_advantage_target = None
+        if self.use_cpar_k4:
+            self._cpar_action_losses = None
+            self._cpar_action_target = None
+            self._cpar_gap_weight = None
         if self.eg_gate_v4:
             self._eg_struct_aux_logits = None
             self._eg_struct_aux_labels = None
@@ -4718,7 +4832,83 @@ class HeteroGNNEdgeHead(nn.Module):
                 dmprd_proto_confidence = torch.ones_like(ready)
                 dmprd_reliability_gate = torch.ones_like(ready)
                 campr_gate_probability = torch.ones_like(ready)
-                if self.use_campr:
+                cpar_action_prob = None
+                cpar_confidence = torch.zeros_like(ready)
+                cpar_dose = torch.ones_like(ready)
+                a2_residual = (
+                    dmprd_beta * ready * dmprd_delta)
+                if self.use_cpar_k4:
+                    (cpar_route_logits, cpar_action_prob,
+                     cpar_confidence, cpar_dose) = self._cpar_route(
+                        h, z_base, a2_residual, pos_sim, neg_sim,
+                        proto_margin, ready)
+                    dmprd_reliability_gate = cpar_dose
+                    if self.training:
+                        (action_losses, best_action, normalized_gap,
+                         gap_weight) = self._cpar_counterfactual_targets(
+                            z_base, a2_residual, labels)
+                        self._cpar_action_losses = action_losses
+                        self._cpar_action_target = best_action
+                        self._cpar_gap_weight = gap_weight
+                        aux_active = (
+                            self.cpar_aux_weight > 0.0 and
+                            self.cpar_aux_start_epoch <= self._eg_cur_epoch <=
+                            self.cpar_aux_end_epoch)
+                        if aux_active:
+                            route_ce = F.cross_entropy(
+                                cpar_route_logits,
+                                best_action,
+                                reduction='none')
+                            sample_weights = self._campr_sample_weights(labels)
+                            effective_weight = (
+                                gap_weight * sample_weights).detach()
+                            route_aux = (
+                                route_ce * effective_weight
+                            ).sum() / effective_weight.sum().clamp(min=1e-6)
+                            self._eg_gate_penalty = (
+                                self.cpar_aux_weight * route_aux)
+                        else:
+                            route_aux = cpar_route_logits.new_zeros(())
+
+                        self._cpar_train_log_step += 1
+                        diagnostic_steps = {
+                            1, 2, 257, 1025, 4097, 16385, 65537,
+                        }
+                        if self._cpar_train_log_step in diagnostic_steps:
+                            with torch.no_grad():
+                                action_fraction = torch.stack([
+                                    (best_action == idx).float().mean()
+                                    for idx in range(4)
+                                ])
+                                oracle_gain = (
+                                    action_losses[:, 2] -
+                                    action_losses.min(dim=-1).values)
+                                logging.info(
+                                    "[cpar_k4/train] epoch=%d aux_active=%s "
+                                    "route_aux=%.5f | best_action: "
+                                    "a0=%.3f a0.5=%.3f a1=%.3f a1.5=%.3f "
+                                    "| normalized_gap: mean=%.5f p90=%.5f "
+                                    "effective=%.3f | oracle_gain: "
+                                    "mean=%.6f | route: confidence=%.4f "
+                                    "dose_mean=%.4f dose_std=%.4f ready=%.4f",
+                                    self._eg_cur_epoch,
+                                    aux_active,
+                                    route_aux.detach().item(),
+                                    action_fraction[0].item(),
+                                    action_fraction[1].item(),
+                                    action_fraction[2].item(),
+                                    action_fraction[3].item(),
+                                    normalized_gap.mean().item(),
+                                    torch.quantile(
+                                        normalized_gap, 0.90).item(),
+                                    (gap_weight > 0.0).float().mean().item(),
+                                    oracle_gain.mean().item(),
+                                    cpar_confidence.detach().mean().item(),
+                                    cpar_dose.detach().mean().item(),
+                                    cpar_dose.detach().std(
+                                        unbiased=False).item(),
+                                    ready.detach().float().mean().item())
+                elif self.use_campr:
                     (campr_route_logits, campr_gate_probability,
                      dmprd_reliability_gate) = self._campr_route(
                         z_base, dmprd_delta, pos_sim, neg_sim,
@@ -4842,7 +5032,47 @@ class HeteroGNNEdgeHead(nn.Module):
                             dmprd_reliability_gate.detach().float().view(-1))
                         local_reliability_flat = (
                             dmprd_local_reliability.detach().float().view(-1))
-                        if self.use_campr:
+                        if self.use_cpar_k4:
+                            dose_flat = cpar_dose.detach().float().view(-1)
+                            confidence_flat = (
+                                cpar_confidence.detach().float().view(-1))
+                            action_choice = cpar_action_prob.detach().argmax(
+                                dim=-1)
+                            action_fraction = torch.stack([
+                                (action_choice == idx).float().mean()
+                                for idx in range(4)
+                            ])
+                            mean_prob = cpar_action_prob.detach().float().mean(
+                                dim=0)
+                            logging.info(
+                                "[cpar_k4/%s] beta=%.4f | dose: "
+                                "mean=%.4f std=%.4f min=%.4f max=%.4f "
+                                "| confidence: mean=%.4f std=%.4f | "
+                                "argmax: a0=%.3f a0.5=%.3f a1=%.3f "
+                                "a1.5=%.3f | mean_q: %.3f/%.3f/%.3f/%.3f "
+                                "| delta_abs: mean=%.4f p90=%.4f | "
+                                "proto_margin: mean=%.4f std=%.4f | "
+                                "ready=%.4f",
+                                getattr(batch, 'split', '?'),
+                                dmprd_beta.item(),
+                                dose_flat.mean().item(),
+                                dose_flat.std(unbiased=False).item(),
+                                dose_flat.min().item(),
+                                dose_flat.max().item(),
+                                confidence_flat.mean().item(),
+                                confidence_flat.std(unbiased=False).item(),
+                                action_fraction[0].item(),
+                                action_fraction[1].item(),
+                                action_fraction[2].item(),
+                                action_fraction[3].item(),
+                                mean_prob[0].item(), mean_prob[1].item(),
+                                mean_prob[2].item(), mean_prob[3].item(),
+                                delta_abs.mean().item(),
+                                torch.quantile(delta_abs, 0.90).item(),
+                                margin.mean().item(),
+                                margin.std(unbiased=False).item(),
+                                ready_flat.mean().item())
+                        elif self.use_campr:
                             gate_flat = (
                                 campr_gate_probability.detach().float().view(-1))
                             logging.info(

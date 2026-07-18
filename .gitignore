@@ -4,3 +4,5 @@ figure.png
 __pycache__/
 *.pyc
 autorun_*.log
+.cpar_k4_formal500_*
+results/cpar_k4_formal500/
