@@ -6,7 +6,9 @@
 - Branch: `feature/acdr-marginal-help-critic`
 - Parent revision: `3424e1e`
 - Primary metric: Test F1 at the checkpoint selected by validation F1
-- Status: implementation prepared; no GPU experiment launched by this commit
+- Status: **INTERIM FAILURE; paired screen stopped and not advancing**
+- Outcome record: `docs/experiments/ACDR_HELP_INTERIM_FAILURE.md`
+- Preserved output: `results/acdr_help_pair500_faf972865181/`
 
 ## 1. Motivation
 
@@ -167,7 +169,10 @@ Raw-best Test F1 is reported only as a stability diagnostic. It is not used to
 select checkpoints or tune the method. Failure on either dataset rejects this
 version and prevents expansion to Medium-HI/Large-HI.
 
-## 8. Commands
+## 8. Historical Commands (Do Not Resume)
+
+These commands are retained for reproducibility only. The paired screen has
+been rejected; do not restart the queue or resume either incomplete task.
 
 CPU invariants:
 
@@ -175,7 +180,7 @@ CPU invariants:
 /d/miniconda3/envs/fraudGT/bin/python3.9 run/acdr_help_invariant_test.py
 ```
 
-Pair queue, to be started only after review:
+Historical pair-queue invocation:
 
 ```bash
 nohup /d/miniconda3/envs/fraudGT/bin/python3.9 \
@@ -194,3 +199,26 @@ Matched audit:
 The audit defaults to the established A2 results at
 `/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500` and accepts `--a2`
 or `A2_RESULTS_ROOT` for relocation.
+
+## 9. Interim Outcome and Next Direction
+
+The paired screen was rejected before 500 epochs. At the epoch-165 matched
+audit, Small-LI regressed by `-0.01660` on validation-selected Test F1 and
+`-0.01594` on raw-best, while Large-LI improved by `+0.03971` on both metrics.
+The latest validation diagnostics showed mean doses of `1.9984` on Small-LI
+and `1.9931` on Large-LI, with mean help probabilities above `0.996`.
+
+This means the A2-centered target recovered an absolute preference for stronger
+prototype residuals, but the binary critic became an almost constant global
+amplifier. Its function is therefore redundant with A2's global `beta`, and the
+claimed sample-level routing contribution is unsupported. Large-LI was stopped
+around epoch 171 and Small-LI around epoch 268; the incomplete trajectories are
+preserved under `results/acdr_help_pair500_faf972865181/` and must not be
+resumed as a formal 500-epoch experiment.
+
+The next COSTAR direction is motivated by this exact failure. It should keep
+global residual scale under `beta` and constrain the learned sample correction
+to be orthogonal to the global-scale direction. A collapsed sample router must
+then contribute zero and recover A2, rather than expressing another uniform
+increase in residual magnitude. See `ACDR_HELP_INTERIM_FAILURE.md` for the full
+evidence and interpretation.
