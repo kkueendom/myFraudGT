@@ -5,7 +5,7 @@
 - Origin Skill: academic-research-suite / experiment-agent
 - Origin Mode: method design + pre-registered experiment plan
 - Plan Date: 2026-07-18
-- Verification Status: V2 IMPLEMENTED / REPRESENTATIVE SCREEN PENDING
+- Verification Status: V2 500-EPOCH SMALL-LI + LARGE-LI HARD GATE RUNNING
 - Branch: `feature/campr-counterfactual-prototype-router`
 - Parent: P0 conclusion commit `55f5972`
 
@@ -174,6 +174,12 @@ This ablation is diagnostic and does not override the main A2 comparison.
 If the main screen fails, do not launch six-dataset or multi-seed expansion.
 Inspect advantage-target variance, route variance, saturation, and per-dataset
 deltas before changing one mechanism at a time.
+
+The V2 epoch-119 interim audit showed a material Small-LI regression despite a
+Large-LI win. This is a high-risk signal, not a formal rejection: the revised
+funnel requires complete 500-epoch results on both datasets. The two full tasks
+were resumed from scheduler-preserving checkpoints. See
+`CAMPR_V2_EPOCH119_INTERIM_AUDIT.md` for details.
 
 ## 11. Commands
 
