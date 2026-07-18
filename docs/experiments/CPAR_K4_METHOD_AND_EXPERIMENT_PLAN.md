@@ -1,4 +1,4 @@
-# CPAR-K4 方法与第一阶段实验计划
+# CPAR-K4 V2 方法与第一阶段实验计划
 
 ## 1. 研究问题
 
@@ -20,6 +20,12 @@ CPAR-K4 要回答更直接的问题：
 
 > 对当前样本，A2 原型残差应该关闭、减半、保持还是增强？
 
+V1 在 epoch 31 已被证伪：Small-LI 与 Large-LI 的 val-selected Test F1
+分别低于 matched A2 `-0.05599` 和 `-0.02645`。Large 的训练诊断同时出现
+`best_action a0=0.744, a1.5=0.225`，但只有 `0.225` 样本获得有效监督，最终
+router 却以 `0.9958` confidence 把平均 dose 推到 `1.4961`。V2 因此不再让
+弱 gap 样本退出损失，而是把它们明确监督为 A2 neutral action。
+
 ## 2. 方法：Counterfactual Prototype Action Router with K=4
 
 ### 2.1 A2 中心的反事实动作
@@ -38,9 +44,22 @@ z_i^{base}+a_k\beta r_i d_i, y_i
 \right),\quad a_k\in\mathcal A.
 \]
 
-最佳动作是 \(k_i^*=\arg\min_k L_{ik}\)。目标、base logits、encoder 表示、
-原型残差和 \(\beta\) 在这条辅助监督路径中全部 `detach`。标签只生成训练期
-动作目标，不进入推理特征，也不直接进入最终 logits。
+oracle 动作是 \(k_i^*=\arg\min_k L_{ik}\)。令标准化的最佳与次佳动作差为
+\(\tilde g_i\)，V2 的最终监督目标是：
+
+\[
+t_i=\begin{cases}
+k_i^*, & \tilde g_i\ge \gamma,\\
+2, & \tilde g_i<\gamma,
+\end{cases}
+\qquad \gamma=0.005.
+\]
+
+action index 2 对应 dose 1，即 A2 neutral。阈值 `0.005` 依据 V1 日志设定：
+失败批次的 normalized gap 均值仅 `0.00378`，这些弱差异不应被当成可靠 oracle；
+P90 为 `0.01907`，仍保留了一部分明确 strong 样本。目标、base logits、encoder
+表示、原型残差和 \(\beta\) 在辅助路径中全部 `detach`。标签只生成训练期目标，
+不进入推理特征或最终 logits。
 
 ### 2.2 无标签、无批依赖路由器
 
@@ -87,7 +106,9 @@ z_i=z_i^{base}+\hat a_i\beta r_i d_i
 \]
 
 当路由器均匀时，\(c_i=0\)、\(\hat a_i=1\)，模型精确回退 A2。与 CAMPR
-不同，这一保证不依赖当前 batch 的组成或大小。
+不同，这一保证不依赖当前 batch 的组成或大小。V2 进一步把 argmax action 2
+视为显式 abstention：前向 dose 直接置为 1，保证学习后的 neutral 决策也精确
+回退 A2；反向使用 straight-through soft dose，主分类损失仍能纠正错误 abstention。
 
 ### 2.4 稳健的动作辅助损失
 
@@ -100,20 +121,22 @@ z_i=z_i^{base}+\hat a_i\beta r_i d_i
 {\max(\frac14\sum_k |L_{ik}|,\epsilon)}.
 \]
 
-弱 gap 样本的权重为：
+V1 使用连续 gap weight，弱样本权重接近 0，结果只有单一 strong action 子集在
+训练 router。V2 改为“阈值 abstention + 最终 target 动作组平衡”。设动作组
+\(G_k=\{i:t_i=k\}\)，先在组内保留类别 sample weight \(\omega_{y_i}\)：
 
 \[
-w_i=\operatorname{clip}
-\left(\frac{\tilde g_i}{\gamma},0,1\right).
+u_i=\frac{\omega_{y_i}}
+{\sum_{j\in G_{t_i}}\omega_{y_j}}.
 \]
 
-动作辅助损失为 gap-weighted cross entropy，并沿用训练配置中的类别权重：
+每个当前 batch 中出现的最终动作组此时总权重都等于 1，再把全部权重归一化为
+batch mean 1，得到 \(\hat u_i\)。因此 neutral 组与每个出现的 strong action 组
+获得相等、受控的总监督质量，组内仍保留类别不平衡修正。动作损失为：
 
 \[
-\mathcal L_{action}=
-\frac{\sum_i w_i\omega_{y_i}
-\operatorname{CE}(s_i,k_i^*)}
-{\sum_i w_i\omega_{y_i}}.
+\mathcal L_{action}=\frac1N\sum_i
+\hat u_i\operatorname{CE}(s_i,t_i).
 \]
 
 总损失为：
@@ -123,7 +146,7 @@ w_i=\operatorname{clip}
 \]
 
 辅助损失只在 epoch 10 至 150（含端点）启用；主分类损失在完整 500 epoch 内
-仍可训练 router。默认 \(\epsilon=10^{-4}\)、\(\gamma=0.05\)。
+仍可训练 router。默认 \(\epsilon=10^{-4}\)、\(\gamma=0.005\)。
 
 ## 3. 相对已有方法的创新点
 
@@ -131,17 +154,20 @@ w_i=\operatorname{clip}
    保持、增强”，而不是间接预测一个难以解释的连续 gate。
 2. **决策点与部署点一致。** 四个反事实候选直接作用于 A2 residual；剂量 1 就是
    被比较和被回退的原模型。
-3. **弱证据自动弃权。** 动作分布熵高时，最终剂量自动收缩到 1，而不是在不确定时
-   使用任意动作均值。
-4. **反事实监督对 loss 尺度稳健。** 辅助权重由样本内相对 gap 决定，微弱、近似
-   并列的动作不会支配训练。
+3. **弱证据显式弃权。** normalized gap 低于阈值时，监督目标就是 A2 neutral，
+   而不是给带数值噪声的 argmin 一个接近零但方向偏置的权重。
+4. **动作组质量守恒。** 类别加权后再把每个出现的最终 target 组归一到相等总质量，
+   防止单一 strong action 子集像 V1 一样支配 router。
 5. **推理无标签且无 batch 依赖。** 推理只使用当前样本的表示、margin 和原型相似度；
    batch 顺序、大小和同批样本不会改变输出。
+6. **双重 A2 fallback。** uniform router 和学习后的 neutral argmax 都在前向精确使用
+   dose 1；straight-through 路径保留主任务梯度。
 
 ## 4. 第一阶段：困难 LI 数据集配对证伪
 
 所有任务从一开始使用 A2 相同的 500-epoch scheduler；中途 epoch 119/239/349
-只读取同一条轨迹，不启动短 scheduler 实验。
+只读取同一条轨迹，不启动短 scheduler 实验。V2 必须从 epoch 0 新跑，不能恢复
+V1 checkpoint。
 
 | 数据集 | CPAR seed | matched A2 seed | A2 val-select Test F1 | A2 raw-best（仅诊断） |
 |---|---:|---:|---:|---:|
@@ -171,8 +197,8 @@ feature/cpar-k4-counterfactual-action-router
 队列脚本：
 
 ```bash
-CPAR_GPU_ALLOWLIST=3,4 \
-python run/cpar_k4_formal_queue.py
+CPAR_V2_GPU_ALLOWLIST=3,4 \
+python run/cpar_k4_v2_formal_queue.py
 ```
 
 默认允许 GPU1-6，始终排除 GPU0。与其他方案并发时必须显式传入本方案独占的
@@ -181,19 +207,20 @@ python run/cpar_k4_formal_queue.py
 独立输出：
 
 ```text
-results/cpar_k4_formal500/
-.cpar_k4_formal500_queue.events
-.cpar_k4_formal500_active/
-.cpar_k4_formal500_failed/
+results/cpar_k4_v2_<shortSHA>_formal500/
+.cpar_k4_v2_<shortSHA>_formal500_queue.events
+.cpar_k4_v2_<shortSHA>_formal500_active/
+.cpar_k4_v2_<shortSHA>_formal500_failed/
 ```
 
-run name 会包含当前短 commit。队列启动前检查分支和干净工作区，禁止跨 commit
-自动恢复。
+V2 脚本、目录和 run name 都包含版本与当前短 commit。它们不会读取 V1 的
+`results/cpar_k4_formal500`、events 或 marker。队列启动前检查分支和干净工作区，
+禁止跨版本、跨 commit 自动恢复。
 
 正式审计：
 
 ```bash
-python run/cpar_k4_formal_audit.py --epoch-limit 499
+python run/cpar_k4_v2_formal_audit.py --epoch-limit 499
 ```
 
 audit 优先读取当前 worktree 的 `results/dmprd_formal500`；若不存在，则自动读取
@@ -203,16 +230,17 @@ audit 优先读取当前 worktree 的 `results/dmprd_formal500`；若不存在�
 中途只读审计示例：
 
 ```bash
-python run/cpar_k4_formal_audit.py --epoch-limit 119
+python run/cpar_k4_v2_formal_audit.py --epoch-limit 119
 ```
 
 ## 6. 必查机制诊断
 
 - uniform router 是否使 dose 精确等于 1；
 - 同一样本改变 batch 分块和顺序后，route/logits 是否不变；
-- 四个 best-action 的比例及是否坍缩为单一动作；
-- normalized gap 均值、P90 和有效样本覆盖率；
-- route confidence、dose 均值/标准差/极值；
+- strong coverage 与 abstain/neutral 比例；
+- 四个 strong oracle action 比例、最终 target 组比例和组平衡后的监督质量；
+- normalized gap 均值、P90 与阈值；
+- route confidence、dose 均值/标准差/极值、精确 A2 比例及上下边界比例；
 - A2 相对动作 oracle 的平均损失差；
 - prototype bank 是否仍只在当前 batch 预测完成后更新。
 

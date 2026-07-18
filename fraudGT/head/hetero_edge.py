@@ -1525,7 +1525,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 self.cpar_gap_floor = float(getattr(
                     cfg.model, 'cpar_gap_floor', 1e-4))
                 self.cpar_gap_threshold = float(getattr(
-                    cfg.model, 'cpar_gap_threshold', 0.05))
+                    cfg.model, 'cpar_gap_threshold', 0.005))
                 self.cpar_router_hidden = int(getattr(
                     cfg.model, 'cpar_router_hidden', 32))
                 if self.cpar_aux_weight < 0.0:
@@ -2172,12 +2172,20 @@ class HeteroGNNEdgeHead(nn.Module):
         expected_dose = (
             action_prob * self.cpar_action_doses.to(action_prob)
         ).sum(dim=-1, keepdim=True)
-        dose = 1.0 + confidence * (expected_dose - 1.0)
+        soft_dose = 1.0 + confidence * (expected_dose - 1.0)
+        # Action index 2 is an explicit abstention decision. Snap its forward
+        # dose to A2 exactly, but retain the soft-dose gradient so task loss can
+        # still move the router away from an incorrect neutral decision.
+        neutral_selected = action_prob.argmax(
+            dim=-1, keepdim=True) == 2
+        forward_dose = torch.where(
+            neutral_selected, torch.ones_like(soft_dose), soft_dose)
+        dose = forward_dose.detach() + (soft_dose - soft_dose.detach())
         return route_logits, action_prob, confidence, dose
 
     def _cpar_counterfactual_targets(
             self, z_base, a2_residual, labels):
-        """Return best dose and a scale-robust confidence weight per sample."""
+        """Use oracle actions only when their normalized advantage is clear."""
         detached_base = z_base.detach()
         detached_residual = a2_residual.detach()
         action_losses = []
@@ -2192,10 +2200,36 @@ class HeteroGNNEdgeHead(nn.Module):
         loss_scale = action_losses.abs().mean(dim=-1).clamp(
             min=self.cpar_gap_floor).detach()
         normalized_gap = (best_gap / loss_scale).detach()
-        gap_weight = (
-            normalized_gap / self.cpar_gap_threshold
-        ).clamp(min=0.0, max=1.0).detach()
-        return action_losses, best_action, normalized_gap, gap_weight
+        strong_mask = (
+            normalized_gap >= self.cpar_gap_threshold).detach()
+        neutral_action = torch.full_like(best_action, 2)
+        target_action = torch.where(
+            strong_mask, best_action, neutral_action).detach()
+        return (
+            action_losses, best_action, normalized_gap,
+            strong_mask, target_action)
+
+    def _cpar_group_balanced_weights(self, target_action, sample_weights):
+        """Give every observed final action group equal supervision mass."""
+        target_action = target_action.detach().view(-1).long()
+        sample_weights = sample_weights.detach().view(-1).float()
+        balanced = torch.zeros_like(sample_weights)
+        present_groups = 0
+        for action_idx in range(self.cpar_action_doses.numel()):
+            group_mask = target_action == action_idx
+            if not group_mask.any():
+                continue
+            present_groups += 1
+            group_weights = sample_weights[group_mask]
+            balanced[group_mask] = (
+                group_weights / group_weights.sum().clamp(min=1e-6))
+        if present_groups == 0:
+            return torch.ones_like(sample_weights)
+        # Each observed group currently sums to one. Renormalizing to mean one
+        # preserves equal group totals while keeping auxiliary-loss scale stable.
+        return (
+            balanced / balanced.mean().clamp(min=1e-6)
+        ).detach()
 
     def _cosine_feature(self, left_repr, right_repr):
         if left_repr is None or right_repr is None:
@@ -4773,8 +4807,10 @@ class HeteroGNNEdgeHead(nn.Module):
             self._campr_advantage_target = None
         if self.use_cpar_k4:
             self._cpar_action_losses = None
+            self._cpar_oracle_action = None
             self._cpar_action_target = None
-            self._cpar_gap_weight = None
+            self._cpar_strong_mask = None
+            self._cpar_supervision_weight = None
         if self.eg_gate_v4:
             self._eg_struct_aux_logits = None
             self._eg_struct_aux_labels = None
@@ -4844,12 +4880,20 @@ class HeteroGNNEdgeHead(nn.Module):
                         proto_margin, ready)
                     dmprd_reliability_gate = cpar_dose
                     if self.training:
-                        (action_losses, best_action, normalized_gap,
-                         gap_weight) = self._cpar_counterfactual_targets(
-                            z_base, a2_residual, labels)
+                        (action_losses, oracle_action, normalized_gap,
+                         strong_mask, target_action) = (
+                            self._cpar_counterfactual_targets(
+                                z_base, a2_residual, labels)
+                        )
+                        sample_weights = self._campr_sample_weights(labels)
+                        supervision_weight = (
+                            self._cpar_group_balanced_weights(
+                                target_action, sample_weights))
                         self._cpar_action_losses = action_losses
-                        self._cpar_action_target = best_action
-                        self._cpar_gap_weight = gap_weight
+                        self._cpar_oracle_action = oracle_action
+                        self._cpar_action_target = target_action
+                        self._cpar_strong_mask = strong_mask
+                        self._cpar_supervision_weight = supervision_weight
                         aux_active = (
                             self.cpar_aux_weight > 0.0 and
                             self.cpar_aux_start_epoch <= self._eg_cur_epoch <=
@@ -4857,14 +4901,10 @@ class HeteroGNNEdgeHead(nn.Module):
                         if aux_active:
                             route_ce = F.cross_entropy(
                                 cpar_route_logits,
-                                best_action,
+                                target_action,
                                 reduction='none')
-                            sample_weights = self._campr_sample_weights(labels)
-                            effective_weight = (
-                                gap_weight * sample_weights).detach()
                             route_aux = (
-                                route_ce * effective_weight
-                            ).sum() / effective_weight.sum().clamp(min=1e-6)
+                                route_ce * supervision_weight).mean()
                             self._eg_gate_penalty = (
                                 self.cpar_aux_weight * route_aux)
                         else:
@@ -4876,37 +4916,70 @@ class HeteroGNNEdgeHead(nn.Module):
                         }
                         if self._cpar_train_log_step in diagnostic_steps:
                             with torch.no_grad():
-                                action_fraction = torch.stack([
-                                    (best_action == idx).float().mean()
+                                strong_count = strong_mask.float().sum().clamp(
+                                    min=1.0)
+                                strong_action_fraction = torch.stack([
+                                    ((oracle_action == idx) & strong_mask)
+                                    .float().sum() / strong_count
+                                    for idx in range(4)
+                                ])
+                                target_fraction = torch.stack([
+                                    (target_action == idx).float().mean()
+                                    for idx in range(4)
+                                ])
+                                supervision_total = (
+                                    supervision_weight.sum().clamp(min=1e-6))
+                                supervision_mass = torch.stack([
+                                    supervision_weight[
+                                        target_action == idx].sum() /
+                                    supervision_total
                                     for idx in range(4)
                                 ])
                                 oracle_gain = (
                                     action_losses[:, 2] -
                                     action_losses.min(dim=-1).values)
+                                dose_flat = cpar_dose.detach().float().view(-1)
                                 logging.info(
-                                    "[cpar_k4/train] epoch=%d aux_active=%s "
-                                    "route_aux=%.5f | best_action: "
+                                    "[cpar_k4_v2/train] epoch=%d "
+                                    "aux_active=%s route_aux=%.5f "
+                                    "gap_threshold=%.5f | strong=%.3f "
+                                    "abstain_neutral=%.3f | strong_action: "
                                     "a0=%.3f a0.5=%.3f a1=%.3f a1.5=%.3f "
-                                    "| normalized_gap: mean=%.5f p90=%.5f "
-                                    "effective=%.3f | oracle_gain: "
-                                    "mean=%.6f | route: confidence=%.4f "
-                                    "dose_mean=%.4f dose_std=%.4f ready=%.4f",
+                                    "| target_group: %.3f/%.3f/%.3f/%.3f "
+                                    "mass: %.3f/%.3f/%.3f/%.3f | "
+                                    "normalized_gap: mean=%.5f p90=%.5f "
+                                    "| oracle_gain=%.6f | route: "
+                                    "confidence=%.4f dose_mean=%.4f "
+                                    "dose_std=%.4f exact_a2=%.3f low=%.3f "
+                                    "high=%.3f ready=%.4f",
                                     self._eg_cur_epoch,
                                     aux_active,
                                     route_aux.detach().item(),
-                                    action_fraction[0].item(),
-                                    action_fraction[1].item(),
-                                    action_fraction[2].item(),
-                                    action_fraction[3].item(),
+                                    self.cpar_gap_threshold,
+                                    strong_mask.float().mean().item(),
+                                    (~strong_mask).float().mean().item(),
+                                    strong_action_fraction[0].item(),
+                                    strong_action_fraction[1].item(),
+                                    strong_action_fraction[2].item(),
+                                    strong_action_fraction[3].item(),
+                                    target_fraction[0].item(),
+                                    target_fraction[1].item(),
+                                    target_fraction[2].item(),
+                                    target_fraction[3].item(),
+                                    supervision_mass[0].item(),
+                                    supervision_mass[1].item(),
+                                    supervision_mass[2].item(),
+                                    supervision_mass[3].item(),
                                     normalized_gap.mean().item(),
                                     torch.quantile(
                                         normalized_gap, 0.90).item(),
-                                    (gap_weight > 0.0).float().mean().item(),
                                     oracle_gain.mean().item(),
                                     cpar_confidence.detach().mean().item(),
-                                    cpar_dose.detach().mean().item(),
-                                    cpar_dose.detach().std(
-                                        unbiased=False).item(),
+                                    dose_flat.mean().item(),
+                                    dose_flat.std(unbiased=False).item(),
+                                    (dose_flat == 1.0).float().mean().item(),
+                                    (dose_flat <= 0.05).float().mean().item(),
+                                    (dose_flat >= 1.45).float().mean().item(),
                                     ready.detach().float().mean().item())
                 elif self.use_campr:
                     (campr_route_logits, campr_gate_probability,
@@ -5045,8 +5118,9 @@ class HeteroGNNEdgeHead(nn.Module):
                             mean_prob = cpar_action_prob.detach().float().mean(
                                 dim=0)
                             logging.info(
-                                "[cpar_k4/%s] beta=%.4f | dose: "
+                                "[cpar_k4_v2/%s] beta=%.4f | dose: "
                                 "mean=%.4f std=%.4f min=%.4f max=%.4f "
+                                "exact_a2=%.3f low=%.3f high=%.3f "
                                 "| confidence: mean=%.4f std=%.4f | "
                                 "argmax: a0=%.3f a0.5=%.3f a1=%.3f "
                                 "a1.5=%.3f | mean_q: %.3f/%.3f/%.3f/%.3f "
@@ -5059,6 +5133,9 @@ class HeteroGNNEdgeHead(nn.Module):
                                 dose_flat.std(unbiased=False).item(),
                                 dose_flat.min().item(),
                                 dose_flat.max().item(),
+                                (dose_flat == 1.0).float().mean().item(),
+                                (dose_flat <= 0.05).float().mean().item(),
+                                (dose_flat >= 1.45).float().mean().item(),
                                 confidence_flat.mean().item(),
                                 confidence_flat.std(unbiased=False).item(),
                                 action_fraction[0].item(),

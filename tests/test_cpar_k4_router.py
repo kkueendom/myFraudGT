@@ -22,6 +22,8 @@ class CparK4RouterTest(unittest.TestCase):
         )
         nn.init.zeros_(self.head.cpar_router[-1].weight)
         nn.init.zeros_(self.head.cpar_router[-1].bias)
+        self.head.cpar_gap_floor = 1e-4
+        self.head.cpar_gap_threshold = 0.005
 
     def inputs(self, count=11):
         h = torch.randn(count, self.dim_in)
@@ -72,6 +74,78 @@ class CparK4RouterTest(unittest.TestCase):
             self.assertTrue(torch.allclose(
                 full_tensor, permuted_tensor[inverse],
                 atol=1e-7, rtol=1e-6))
+
+    def test_learned_neutral_action_is_exact_a2_fallback(self):
+        with torch.no_grad():
+            self.head.cpar_router[-1].weight.zero_()
+            self.head.cpar_router[-1].bias.copy_(
+                torch.tensor([-12.0, -12.0, 12.0, -12.0]))
+        inputs = self.inputs()
+        _, action_prob, confidence, dose = self.route(inputs)
+        self.assertTrue(torch.equal(
+            action_prob.argmax(dim=-1),
+            torch.full((inputs[0].size(0),), 2, dtype=torch.long)))
+        self.assertTrue((confidence > 0.99).all())
+        self.assertTrue(torch.equal(dose, torch.ones_like(dose)))
+        self.assertTrue(torch.equal(
+            inputs[1] + dose * inputs[2],
+            inputs[1] + inputs[2]))
+        dose.sum().backward()
+        self.assertGreater(
+            self.head.cpar_router[-1].bias.grad.abs().sum().item(), 0.0)
+
+    def test_all_weak_gaps_abstain_to_neutral(self):
+        count = 8
+        z_base = torch.randn(count, 2)
+        zero_residual = torch.zeros_like(z_base)
+        labels = torch.arange(count) % 2
+        (action_losses, _, normalized_gap,
+         strong_mask, target_action) = (
+            self.head._cpar_counterfactual_targets(
+                z_base, zero_residual, labels))
+        self.assertEqual(tuple(action_losses.shape), (count, 4))
+        self.assertTrue(torch.equal(
+            normalized_gap, torch.zeros_like(normalized_gap)))
+        self.assertFalse(strong_mask.any())
+        self.assertTrue(torch.equal(
+            target_action, torch.full_like(target_action, 2)))
+
+    def test_tiny_nonzero_oracle_gap_still_abstains(self):
+        count = 6
+        z_base = torch.zeros(count, 2)
+        tiny_residual = torch.zeros_like(z_base)
+        tiny_residual[:, 1] = 1e-4
+        labels = torch.ones(count, dtype=torch.long)
+        (_, oracle_action, normalized_gap,
+         strong_mask, target_action) = (
+            self.head._cpar_counterfactual_targets(
+                z_base, tiny_residual, labels))
+        self.assertTrue(torch.equal(
+            oracle_action, torch.full_like(oracle_action, 3)))
+        self.assertTrue((normalized_gap > 0.0).all())
+        self.assertTrue(
+            (normalized_gap < self.head.cpar_gap_threshold).all())
+        self.assertFalse(strong_mask.any())
+        self.assertTrue(torch.equal(
+            target_action, torch.full_like(target_action, 2)))
+
+    def test_final_action_groups_have_equal_supervision_mass(self):
+        target_action = torch.tensor([2, 2, 2, 2, 0, 0, 3, 3, 3])
+        sample_weights = torch.tensor([
+            1.0, 6.0, 1.0, 6.0, 1.0, 6.0, 1.0, 2.0, 6.0])
+        balanced = self.head._cpar_group_balanced_weights(
+            target_action, sample_weights)
+        self.assertAlmostEqual(balanced.mean().item(), 1.0, places=6)
+        group_mass = torch.stack([
+            balanced[target_action == idx].sum()
+            for idx in (0, 2, 3)
+        ])
+        self.assertTrue(torch.allclose(
+            group_mass, torch.full_like(group_mass, 3.0), atol=1e-6))
+        self.assertAlmostEqual(
+            (balanced[1] / balanced[0]).item(),
+            (sample_weights[1] / sample_weights[0]).item(),
+            places=6)
 
     def test_router_contains_no_dropout(self):
         self.assertFalse(any(

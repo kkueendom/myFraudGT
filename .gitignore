@@ -6,3 +6,5 @@ __pycache__/
 autorun_*.log
 .cpar_k4_formal500_*
 results/cpar_k4_formal500/
+.cpar_k4_v2_*
+results/cpar_k4_v2_*/

@@ -143,5 +143,6 @@ def extended_cfg(cfg):
     cfg.model.cpar_aux_start_epoch = 10
     cfg.model.cpar_aux_end_epoch = 150
     cfg.model.cpar_gap_floor = 1e-4
-    cfg.model.cpar_gap_threshold = 0.05
+    # V2: below this normalized best-vs-second gap, abstain to A2 (dose 1).
+    cfg.model.cpar_gap_threshold = 0.005
     cfg.model.cpar_router_hidden = 32
