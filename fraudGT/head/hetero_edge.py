@@ -1482,7 +1482,9 @@ class HeteroGNNEdgeHead(nn.Module):
                 self.campr_aux_weight = float(getattr(
                     cfg.model, 'campr_aux_weight', 0.20))
                 self.campr_adv_temperature = float(getattr(
-                    cfg.model, 'campr_adv_temperature', 0.10))
+                    cfg.model, 'campr_adv_temperature', 1.0))
+                self.campr_adv_scale_floor = float(getattr(
+                    cfg.model, 'campr_adv_scale_floor', 1e-4))
                 self.campr_route_min = float(getattr(
                     cfg.model, 'campr_route_min', 0.50))
                 self.campr_route_max = float(getattr(
@@ -1492,6 +1494,9 @@ class HeteroGNNEdgeHead(nn.Module):
                 if self.campr_adv_temperature <= 0.0:
                     raise ValueError(
                         "campr_adv_temperature must be positive")
+                if self.campr_adv_scale_floor <= 0.0:
+                    raise ValueError(
+                        "campr_adv_scale_floor must be positive")
                 if not 0.0 < self.campr_route_min <= 1.0:
                     raise ValueError(
                         "campr_route_min must be in (0, 1]")
@@ -4727,9 +4732,22 @@ class HeteroGNNEdgeHead(nn.Module):
                         candidate_loss = self._campr_per_sample_loss(
                             a2_candidate, labels)
                         advantage = (base_loss - candidate_loss).detach()
-                        advantage_target = torch.sigmoid(
-                            advantage / self.campr_adv_temperature)
                         sample_weights = self._campr_sample_weights(labels)
+                        weight_sum = sample_weights.sum().clamp(min=1e-6)
+                        advantage_center = (
+                            advantage * sample_weights
+                        ).sum() / weight_sum
+                        centered_advantage = advantage - advantage_center
+                        advantage_scale = (
+                            centered_advantage.abs() * sample_weights
+                        ).sum() / weight_sum
+                        advantage_scale = advantage_scale.clamp(
+                            min=self.campr_adv_scale_floor).detach()
+                        normalized_advantage = (
+                            centered_advantage / advantage_scale)
+                        advantage_target = torch.sigmoid(
+                            normalized_advantage /
+                            self.campr_adv_temperature)
                         route_aux = F.binary_cross_entropy_with_logits(
                             campr_route_logits.view(-1),
                             advantage_target,
@@ -4749,7 +4767,8 @@ class HeteroGNNEdgeHead(nn.Module):
                                     "[campr/train] route_aux=%.5f | "
                                     "advantage: mean=%.5f std=%.5f "
                                     "frac>0=%.3f | target: mean=%.4f "
-                                    "std=%.4f | ready=%.4f",
+                                    "std=%.4f | adv_scale=%.6f "
+                                    "ready=%.4f",
                                     route_aux.detach().item(),
                                     advantage.mean().item(),
                                     advantage.std(unbiased=False).item(),
@@ -4757,6 +4776,7 @@ class HeteroGNNEdgeHead(nn.Module):
                                     advantage_target.mean().item(),
                                     advantage_target.std(
                                         unbiased=False).item(),
+                                    advantage_scale.item(),
                                     ready.detach().float().mean().item())
                 elif self.dmprd_use_reliability_gate:
                     pos_reliability = self._support_class_proto_reliability(

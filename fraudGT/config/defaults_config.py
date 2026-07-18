@@ -131,6 +131,7 @@ def extended_cfg(cfg):
 
     # CAMPR: counterfactual advantage-guided, mean-preserving A2 routing.
     cfg.model.campr_aux_weight = 0.20
-    cfg.model.campr_adv_temperature = 0.10
+    cfg.model.campr_adv_temperature = 1.0
+    cfg.model.campr_adv_scale_floor = 1e-4
     cfg.model.campr_route_min = 0.50
     cfg.model.campr_route_max = 1.50

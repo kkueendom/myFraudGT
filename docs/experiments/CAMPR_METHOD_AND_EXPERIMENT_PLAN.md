@@ -5,7 +5,7 @@
 - Origin Skill: academic-research-suite / experiment-agent
 - Origin Mode: method design + pre-registered experiment plan
 - Plan Date: 2026-07-18
-- Verification Status: IMPLEMENTED / REPRESENTATIVE SCREEN PENDING
+- Verification Status: V2 IMPLEMENTED / REPRESENTATIVE SCREEN PENDING
 - Branch: `feature/campr-counterfactual-prototype-router`
 - Parent: P0 conclusion commit `55f5972`
 
@@ -43,13 +43,23 @@ a_i = \ell(z_{base,i}, y_i)
       - \ell(z_{base,i}+\beta d_i, y_i).
 \]
 
-Positive `a_i` means that the A2 residual lowers classification loss. The soft
-router target and auxiliary objective are:
+Positive `a_i` means that the A2 residual lowers classification loss. Because
+the magnitude changes with training stage, beta, and dataset, CAMPR centers and
+normalizes it using the class-weighted batch mean and mean absolute deviation:
 
 \[
-t_i = \sigma(a_i/\tau), \qquad
+\hat a_i =
+\frac{a_i-\mathbb{E}_w[a]}{
+\mathbb{E}_w[|a-\mathbb{E}_w[a]|]+\epsilon},
+\qquad
+t_i = \sigma(\hat a_i/\tau), \qquad
 \mathcal{L}_{route}=\operatorname{BCE}(q_i,t_i).
 \]
+
+This relative target matches mean-preserving inference: the router learns which
+samples deserve more of a fixed residual budget, while beta learns whether the
+residual should be globally strong or weak. It is also invariant to the raw
+loss-difference scale that caused the first CAMPR pilot target to collapse.
 
 Labels are used only to construct this detached training target. The inference
 router receives ten label-free signals derived from base confidence, positive
@@ -99,22 +109,35 @@ silently shrinks the whole prototype branch.
   500-epoch budget, and scheduler.
 - Validation-selected test F1 is primary; raw-best is diagnostic only.
 
-## 7. Smoke Verification
+## 7. Pilot Failure and V2 Repair
 
-The latest one-epoch Small-LI smoke test completed on GPU2:
+The first five-task CAMPR pilot was stopped at epochs `8-17`. All processes
+were healthy, but the fixed absolute temperature `0.10` produced target
+standard deviations of only `0.0004-0.0008` on the three full runs. The
+counterfactual auxiliary objective was therefore effectively constant.
 
-- output: `results/campr_smoke_v3/AML-Small-LI-CAMPRSmokeV3-gpu0/42`;
+V2 uses the centered, scale-normalized target above and changes the
+dimensionless temperature to `1.0`. Pilot outputs remain preserved under
+`results/campr_formal500/`; V2 writes to `results/campr_formal500_v2/` so the
+failed pilot cannot be mistaken for formal evidence.
+
+## 8. Smoke Verification
+
+The V2 one-epoch Small-LI smoke test completed on GPU2:
+
+- output: `results/campr_smoke_v4/AML-Small-LI-CAMPRSmokeV4-gpu0/42`;
 - parameters: `281598` (121 more than A2/P0);
 - test route mean: `1.0000`;
 - observed test route range: approximately `[0.9437, 1.0236]`;
 - batch 1 had `ready=0` and the expected zero counterfactual advantage;
-- batch 2 had `ready=0.25` and nonzero advantage variance (`0.00056`),
-  confirming that the auxiliary target becomes active after bank initialization.
+- batch 2 had `ready=0.25`, advantage standard deviation `0.00056`, and
+  normalized target standard deviation `0.2375` (versus approximately
+  `0.0014` before V2), confirming that the repaired auxiliary target is active.
 
 An independent invariant test also verified route mean `1.00000000`, strict
 configured bounds, and zero numerical error for constant-router A2 fallback.
 
-## 8. Representative 500-Epoch Screen
+## 9. Representative 500-Epoch Screen
 
 Full CAMPR runs:
 
@@ -135,7 +158,7 @@ All five jobs use `optim.max_epoch=500` and the original 500-epoch cosine
 scheduler. Epoch 119/239/359 audits are diagnostic only and do not terminate a
 healthy run.
 
-## 9. Pre-Registered Decision Rule
+## 10. Pre-Registered Decision Rule
 
 CAMPR advances to all six datasets only if the three full runs satisfy all:
 
@@ -152,11 +175,11 @@ If the main screen fails, do not launch six-dataset or multi-seed expansion.
 Inspect advantage-target variance, route variance, saturation, and per-dataset
 deltas before changing one mechanism at a time.
 
-## 10. Commands
+## 11. Commands
 
 ```bash
 nohup python3 run/campr_formal_queue.py \
-  > .campr_formal500_queue.nohup.log 2>&1 &
+  > .campr_formal500_v2_queue.nohup.log 2>&1 &
 
 python3 run/campr_formal_audit.py
 python3 run/campr_formal_audit.py --epoch-limit 119

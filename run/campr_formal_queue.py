@@ -21,10 +21,10 @@ LAUNCH_SETTLE_SECONDS = int(os.environ.get(
 MIN_FREE_MIB = int(os.environ.get("CAMPR_MIN_FREE_MIB", "9000"))
 MAX_UTIL = int(os.environ.get("CAMPR_MAX_UTIL", "15"))
 OUT_DIR = Path(os.environ.get(
-    "CAMPR_OUT_DIR", str(REPO / "results" / "campr_formal500")))
-EVENTS = REPO / ".campr_formal500_queue.events"
-ACTIVE_DIR = REPO / ".campr_formal500_active"
-FAILED_DIR = REPO / ".campr_formal500_failed"
+    "CAMPR_OUT_DIR", str(REPO / "results" / "campr_formal500_v2")))
+EVENTS = REPO / ".campr_formal500_v2_queue.events"
+ACTIVE_DIR = REPO / ".campr_formal500_v2_active"
+FAILED_DIR = REPO / ".campr_formal500_v2_failed"
 
 
 VARIANTS = {
@@ -65,7 +65,7 @@ def rows(path):
 
 
 def run_stem(dataset, variant, seed):
-    return f"AML-{dataset}-CAMPRFormal500-{variant}-Seed{seed}"
+    return f"AML-{dataset}-CAMPRFormal500V2-{variant}-Seed{seed}"
 
 
 def run_dirs(dataset, variant, seed):
@@ -220,13 +220,13 @@ def pending_tasks(markers):
 def launch(dataset, variant_name, seed, gpu):
     variant = VARIANTS[variant_name]
     run_name = run_stem(dataset, variant_name, seed)
-    stdout_path = REPO / f".campr_formal500_{run_name}_gpu{gpu}.log"
+    stdout_path = REPO / f".campr_formal500_v2_{run_name}_gpu{gpu}.log"
     cmd = [
         PYTHON, "-m", "fraudGT.main",
         "--cfg", f"configs/evidence_gate_v4/AML-{dataset}.yaml",
         "--repeat", "1", "--gpu", "0",
         "out_dir", str(OUT_DIR),
-        "name_tag", f"CAMPRFormal500-{variant_name}-Seed{seed}",
+        "name_tag", f"CAMPRFormal500V2-{variant_name}-Seed{seed}",
         "seed", str(seed),
         "optim.max_epoch", str(MAX_EPOCH),
         "train.early_stop", "False",
@@ -238,7 +238,8 @@ def launch(dataset, variant_name, seed, gpu):
         "model.dmprd_use_distribution_stats", "False",
         "model.dmprd_use_reliability_gate", "False",
         "model.campr_aux_weight", str(variant["aux_weight"]),
-        "model.campr_adv_temperature", "0.10",
+        "model.campr_adv_temperature", "1.0",
+        "model.campr_adv_scale_floor", "0.0001",
         "model.campr_route_min", "0.50",
         "model.campr_route_max", "1.50",
         "model.dmprd_delta_max", "1.0",

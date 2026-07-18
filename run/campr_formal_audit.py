@@ -75,7 +75,7 @@ def a2_run(root, dataset, seed, epoch_limit):
 
 
 def campr_run(root, dataset, variant, seed, epoch_limit):
-    stem = f"AML-{dataset}-CAMPRFormal500-{variant}-Seed{seed}"
+    stem = f"AML-{dataset}-CAMPRFormal500V2-{variant}-Seed{seed}"
     return find_run(root, stem, seed, epoch_limit)
 
 
@@ -179,7 +179,7 @@ def main():
     repo = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--campr", default=str(repo / "results" / "campr_formal500"))
+        "--campr", default=str(repo / "results" / "campr_formal500_v2"))
     parser.add_argument(
         "--a2", default=str(repo / "results" / "dmprd_formal500"))
     parser.add_argument("--epoch-limit", type=int, default=499)
