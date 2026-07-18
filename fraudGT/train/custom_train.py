@@ -191,6 +191,60 @@ def _evidence_gate_aux_loss(model):
     return aux_total
 
 
+def _costar_training_terms(model):
+    """Return the detached-adapter terms stashed by one COSTAR head."""
+    terms = []
+    for module in model.modules():
+        anchor = getattr(module, '_costar_anchor_logits', None)
+        adapter_loss = getattr(module, '_costar_adapter_loss', None)
+        if anchor is not None:
+            if adapter_loss is None:
+                raise RuntimeError(
+                    "COSTAR anchor logits exist without an adapter loss")
+            terms.append((anchor, adapter_loss))
+    if len(terms) > 1:
+        raise RuntimeError("multiple COSTAR heads are not supported")
+    return terms[0] if terms else None
+
+
+def _costar_adapter_parameters(model):
+    parameters = []
+    for module in model.modules():
+        router = getattr(module, 'costar_router', None)
+        if router is not None:
+            parameters.extend(
+                parameter for parameter in router.parameters()
+                if parameter.requires_grad)
+    return parameters
+
+
+@torch.no_grad()
+def _costar_update_ema(model):
+    for module in model.modules():
+        update = getattr(module, 'costar_update_ema', None)
+        if update is not None:
+            update()
+
+
+def _clip_gradients(model, max_norm, separate_costar=False):
+    if not separate_costar:
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
+        return
+
+    adapter_parameters = _costar_adapter_parameters(model)
+    adapter_ids = {id(parameter) for parameter in adapter_parameters}
+    anchor_parameters = [
+        parameter for parameter in model.parameters()
+        if parameter.requires_grad and id(parameter) not in adapter_ids
+    ]
+    # Separate clipping prevents adapter gradients from changing the norm (and
+    # therefore the update) of the original A2 optimization path.
+    if anchor_parameters:
+        torch.nn.utils.clip_grad_norm_(anchor_parameters, max_norm)
+    if adapter_parameters:
+        torch.nn.utils.clip_grad_norm_(adapter_parameters, max_norm)
+
+
 def train_epoch(cur_epoch, logger, loader, model, optimizer, scheduler, batch_accumulation):
     pbar = tqdm(total=len(loader), disable=not cfg.train.tqdm)
     pbar.set_description(f'Train epoch')
@@ -264,9 +318,22 @@ def train_epoch(cur_epoch, logger, loader, model, optimizer, scheduler, batch_ac
             runtime_stats_cuda.end_region("forward")
             runtime_stats_cuda.start_region("loss", runtime_stats_cuda.get_last_event())
             if cfg.model.loss_fun == 'curriculum_learning_loss':
-                loss, pred_score = compute_loss(pred, true, cur_epoch)
+                reported_loss, pred_score = compute_loss(
+                    pred, true, cur_epoch)
             else:
-                loss, pred_score = compute_loss(pred, true)
+                reported_loss, pred_score = compute_loss(pred, true)
+
+            costar_terms = _costar_training_terms(model)
+            if costar_terms is None:
+                loss = reported_loss
+            else:
+                anchor_logits, adapter_loss = costar_terms
+                if cfg.model.loss_fun == 'curriculum_learning_loss':
+                    anchor_loss, _ = compute_loss(
+                        anchor_logits, true, cur_epoch)
+                else:
+                    anchor_loss, _ = compute_loss(anchor_logits, true)
+                loss = anchor_loss + adapter_loss
             loss = (
                 loss +
                 _evidence_gate_penalty(model) +
@@ -284,9 +351,12 @@ def train_epoch(cur_epoch, logger, loader, model, optimizer, scheduler, batch_ac
             # Parameters update after accumulating gradients for given num. batches.
             if ((it + 1) % batch_accumulation == 0) or (it + 1 == len(loader)):
                 if cfg.optim.clip_grad_norm:
-                    torch.nn.utils.clip_grad_norm_(model.parameters(),
-                                                cfg.optim.clip_grad_norm_value)
+                    _clip_gradients(
+                        model, cfg.optim.clip_grad_norm_value,
+                        separate_costar=(costar_terms is not None))
                 optimizer.step()
+                if costar_terms is not None:
+                    _costar_update_ema(model)
                 optimizer.zero_grad()
             runtime_stats_cuda.end_region("train")
             runtime_stats_cuda.end_region("total", runtime_stats_cuda.get_last_event())

@@ -135,3 +135,25 @@ def extended_cfg(cfg):
     cfg.model.campr_adv_scale_floor = 1e-4
     cfg.model.campr_route_min = 0.50
     cfg.model.campr_route_max = 1.50
+
+    # COSTAR: detached A2-anchored orthogonal prototype adapter. The current
+    # implementation uses a train-batch stratified threshold-transfer
+    # approximation; validation and test labels are never consumed by it.
+    cfg.model.costar_router_hidden = 32
+    cfg.model.costar_ema_decay = 0.995
+    cfg.model.costar_center_decay = 0.99
+    cfg.model.costar_consistency_tau = 0.25
+    cfg.model.costar_soft_f1_temperature = 0.10
+    cfg.model.costar_threshold_perturb = 0.10
+    cfg.model.costar_platform_tolerance = 0.01
+    cfg.model.costar_cvar_fraction = 0.50
+    cfg.model.costar_adapter_weight = 0.05
+    cfg.model.costar_rank_weight = 0.25
+    cfg.model.costar_safe_weight = 1.0
+    cfg.model.costar_orth_weight = 0.10
+    cfg.model.costar_time_weight = 0.05
+    cfg.model.costar_safe_margin = 0.0
+    cfg.model.costar_rank_safe_margin = 0.0
+    cfg.model.costar_start_epoch = 10
+    cfg.model.costar_fallback_confidence = 0.25
+    cfg.model.costar_fallback_delta = 1e-4

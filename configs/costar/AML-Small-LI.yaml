@@ -1,0 +1,104 @@
+# COSTAR full screen. The architecture and method settings are matched across
+# Small-LI and Large-LI; only dataset identity and batch size differ.
+out_dir: results/costar_formal500
+metric_best: f1
+seed: 42
+wandb:
+  use: False
+dataset:
+  dir: /e/yyk/data/archive
+  format: AML
+  name: Small-LI
+  add_ports: True
+  task: hetero_edge
+  task_type: classification
+  task_entity: ('node', 'to', 'node')
+  transductive: True
+  node_encoder: True
+  node_encoder_name: Hetero_Raw
+  node_encoder_bn: False
+  edge_encoder: True
+  edge_encoder_name: Hetero_Raw
+  edge_encoder_bn: False
+num_threads: 24
+num_workers: 12
+train:
+  mode: custom
+  sampler: link_neighbor
+  neighbor_sizes: [50, 50]
+  add_ego_id: True
+  iter_per_epoch: 256
+  batch_size: 2048
+  eval_period: 2
+  ckpt_period: 50
+  early_stop: False
+  tqdm: False
+  persistent_workers: True
+  pin_memory: True
+val:
+  sampler: link_neighbor
+  iter_per_epoch: 256
+  tqdm: False
+model:
+  type: GTModel
+  loss_fun: weighted_cross_entropy
+  loss_fun_weight: [1.0, 6.0]
+  edge_decoding: costar
+  dmprd_num_slots: 4
+  dmprd_use_distribution_stats: False
+  dmprd_use_reliability_gate: False
+  dmprd_delta_max: 1.0
+  dmprd_beta_max: 1.0
+  costar_router_hidden: 32
+  costar_ema_decay: 0.995
+  costar_center_decay: 0.99
+  costar_consistency_tau: 0.25
+  costar_soft_f1_temperature: 0.10
+  costar_threshold_perturb: 0.10
+  costar_platform_tolerance: 0.01
+  costar_cvar_fraction: 0.50
+  costar_adapter_weight: 0.05
+  costar_rank_weight: 0.25
+  costar_safe_weight: 1.0
+  costar_orth_weight: 0.10
+  costar_time_weight: 0.05
+  costar_safe_margin: 0.0
+  costar_rank_safe_margin: 0.0
+  costar_start_epoch: 10
+  costar_fallback_confidence: 0.25
+  costar_fallback_delta: 0.0001
+  graph_pooling: mean
+  auto_tune_thresh: True
+gt:
+  layer_type: SparseNodeTransformer
+  layers_pre_gt: 0
+  layers: 2
+  layers_post_gt: 2
+  attn_heads: 8
+  dim_hidden: 64
+  input_dropout: 0.0
+  dropout: 0.2
+  attn_dropout: 0.3
+  batch_norm: False
+  layer_norm: True
+  l2_norm: False
+  act: gelu
+  attn_mask: Edge
+  residual: Fixed
+  ffn: Type
+  jumping_knowledge: False
+  temporal_bias: none
+  temporal_gate: False
+  edge_writeback: dir_meanmaxwinnerprojtemporal
+  edge_writeback_dropout: 0.1
+gnn:
+  dropout: 0.2
+optim:
+  batch_accumulation: 8
+  clip_grad_norm: True
+  optimizer: adamW
+  weight_decay: 0.00001
+  base_lr: 0.001
+  max_epoch: 500
+  scheduler: cosine_with_warmup
+  num_warmup_epochs: 5

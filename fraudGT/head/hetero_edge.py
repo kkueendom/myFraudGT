@@ -1,3 +1,4 @@
+import copy
 import logging
 import math
 import torch
@@ -28,7 +29,9 @@ class HeteroGNNEdgeHead(nn.Module):
         # `dmprd` keeps only a distribution-aware multi-prototype residual. It
         # has no structural expert, sample gate, auxiliary loss, or gate budget.
         # `campr` adds counterfactual-advantage supervision and mean-preserving
-        # sample routing on top of that same A2 residual.
+        # sample routing on top of that same A2 residual. `costar` keeps A2 as
+        # an optimization anchor and learns a detached, orthogonal local
+        # correction with train-only threshold-robust supervision.
         # `evidence_gate_v3` is the convex-fusion gate experiment.
         # `evidence_gate_v4_residual` fixes its dead-expert failure mode with a
         # bounded residual structural expert, a nonzero fixed-open warm-up, and
@@ -37,14 +40,15 @@ class HeteroGNNEdgeHead(nn.Module):
         # `evidence_gate_v4_noproto` removes both the prototype residual and
         # every prototype-derived router input.
         self.use_evidence_gate = self.edge_decoding in {
-            'evidence_gate', 'evidence_gate_proto', 'dmprd', 'campr',
+            'evidence_gate', 'evidence_gate_proto', 'dmprd', 'campr', 'costar',
             'evidence_gate_v3',
             'evidence_gate_v4_residual', 'evidence_gate_v4_nogate',
             'evidence_gate_v4_noproto'}
-        self.use_dmprd = self.edge_decoding in {'dmprd', 'campr'}
+        self.use_dmprd = self.edge_decoding in {'dmprd', 'campr', 'costar'}
         self.use_campr = (self.edge_decoding == 'campr')
+        self.use_costar = (self.edge_decoding == 'costar')
         self.eg_proto_only = self.edge_decoding in {
-            'evidence_gate_proto', 'dmprd', 'campr'}
+            'evidence_gate_proto', 'dmprd', 'campr', 'costar'}
         self.eg_gate_v3 = (self.edge_decoding == 'evidence_gate_v3')
         self.eg_gate_v4 = self.edge_decoding in {
             'evidence_gate_v4_residual', 'evidence_gate_v4_nogate',
@@ -1510,6 +1514,109 @@ class HeteroGNNEdgeHead(nn.Module):
                 self._eg_gate_penalty = None
                 self._campr_log_step = 0
                 self._campr_train_log_step = 0
+            if self.use_costar:
+                self.costar_router_hidden = int(getattr(
+                    cfg.model, 'costar_router_hidden', 32))
+                self.costar_ema_decay = float(getattr(
+                    cfg.model, 'costar_ema_decay', 0.995))
+                self.costar_center_decay = float(getattr(
+                    cfg.model, 'costar_center_decay', 0.99))
+                self.costar_consistency_tau = float(getattr(
+                    cfg.model, 'costar_consistency_tau', 0.25))
+                self.costar_soft_f1_temperature = float(getattr(
+                    cfg.model, 'costar_soft_f1_temperature', 0.10))
+                self.costar_threshold_perturb = float(getattr(
+                    cfg.model, 'costar_threshold_perturb', 0.10))
+                self.costar_platform_tolerance = float(getattr(
+                    cfg.model, 'costar_platform_tolerance', 0.01))
+                self.costar_cvar_fraction = float(getattr(
+                    cfg.model, 'costar_cvar_fraction', 0.50))
+                self.costar_adapter_weight = float(getattr(
+                    cfg.model, 'costar_adapter_weight', 0.05))
+                self.costar_rank_weight = float(getattr(
+                    cfg.model, 'costar_rank_weight', 0.25))
+                self.costar_safe_weight = float(getattr(
+                    cfg.model, 'costar_safe_weight', 1.0))
+                self.costar_orth_weight = float(getattr(
+                    cfg.model, 'costar_orth_weight', 0.10))
+                self.costar_time_weight = float(getattr(
+                    cfg.model, 'costar_time_weight', 0.05))
+                self.costar_safe_margin = float(getattr(
+                    cfg.model, 'costar_safe_margin', 0.0))
+                self.costar_rank_safe_margin = float(getattr(
+                    cfg.model, 'costar_rank_safe_margin', 0.0))
+                self.costar_start_epoch = int(getattr(
+                    cfg.model, 'costar_start_epoch', 10))
+                self.costar_fallback_confidence = float(getattr(
+                    cfg.model, 'costar_fallback_confidence', 0.25))
+                self.costar_fallback_delta = float(getattr(
+                    cfg.model, 'costar_fallback_delta', 1e-4))
+
+                if self.costar_router_hidden < 1:
+                    raise ValueError("costar_router_hidden must be positive")
+                if not 0.0 <= self.costar_ema_decay < 1.0:
+                    raise ValueError("costar_ema_decay must be in [0, 1)")
+                if not 0.0 <= self.costar_center_decay < 1.0:
+                    raise ValueError("costar_center_decay must be in [0, 1)")
+                if self.costar_consistency_tau <= 0.0:
+                    raise ValueError("costar_consistency_tau must be positive")
+                if self.costar_soft_f1_temperature <= 0.0:
+                    raise ValueError(
+                        "costar_soft_f1_temperature must be positive")
+                if self.costar_threshold_perturb < 0.0:
+                    raise ValueError(
+                        "costar_threshold_perturb must be non-negative")
+                if self.costar_platform_tolerance < 0.0:
+                    raise ValueError(
+                        "costar_platform_tolerance must be non-negative")
+                if not 0.0 < self.costar_cvar_fraction <= 1.0:
+                    raise ValueError(
+                        "costar_cvar_fraction must be in (0, 1]")
+                for name in (
+                        'costar_adapter_weight', 'costar_rank_weight',
+                        'costar_safe_weight', 'costar_orth_weight',
+                        'costar_time_weight', 'costar_safe_margin',
+                        'costar_rank_safe_margin'):
+                    if getattr(self, name) < 0.0:
+                        raise ValueError(f"{name} must be non-negative")
+                if self.costar_start_epoch < 0:
+                    raise ValueError("costar_start_epoch must be non-negative")
+                if not 0.0 <= self.costar_fallback_confidence <= 1.0:
+                    raise ValueError(
+                        "costar_fallback_confidence must be in [0, 1]")
+                if self.costar_fallback_delta < 0.0:
+                    raise ValueError(
+                        "costar_fallback_delta must be non-negative")
+
+                # A dedicated no-dropout adapter. The zero output layer gives
+                # exact A2 logits before the adapter receives any updates.
+                self.costar_router = nn.Sequential(
+                    nn.Linear(dim_in + 8, self.costar_router_hidden),
+                    nn.GELU(),
+                    nn.Linear(self.costar_router_hidden, 1),
+                )
+                nn.init.zeros_(self.costar_router[-1].weight)
+                nn.init.zeros_(self.costar_router[-1].bias)
+                self.costar_router_ema = copy.deepcopy(self.costar_router)
+                for parameter in self.costar_router_ema.parameters():
+                    parameter.requires_grad_(False)
+
+                # These train-only EMA moments define the orthogonal center.
+                # They are registered buffers, so evaluation is batch
+                # independent and checkpoint restore includes all state.
+                self.register_buffer(
+                    'costar_center_numerator', torch.zeros(1))
+                self.register_buffer(
+                    'costar_center_denominator', torch.zeros(1))
+                self.register_buffer(
+                    'costar_center_updates', torch.zeros((), dtype=torch.long))
+                self.register_buffer(
+                    'costar_ema_updates', torch.zeros((), dtype=torch.long))
+                self._eg_cur_epoch = 0
+                self._costar_anchor_logits = None
+                self._costar_adapter_loss = None
+                self._costar_diag = None
+                self._costar_log_step = 0
             self._dmprd_log_step = 0
             return
 
@@ -2086,6 +2193,279 @@ class HeteroGNNEdgeHead(nn.Module):
         ).detach()
         route = 1.0 + range_scale * centered
         return route_logits, gate_probability, route
+
+    def _costar_router_features(self, h, z_base, z_anchor,
+                                effective_residual, pos_sim, neg_sim,
+                                proto_margin, ready):
+        base_margin = self._campr_logit_margin(z_base.detach())
+        anchor_margin = self._campr_logit_margin(z_anchor.detach())
+        evidence_margin = self._campr_logit_margin(
+            effective_residual.detach())
+        agreement = torch.tanh(base_margin) * torch.tanh(evidence_margin)
+        features = torch.cat([
+            h.detach(),
+            base_margin,
+            anchor_margin,
+            evidence_margin,
+            pos_sim.detach(),
+            neg_sim.detach(),
+            proto_margin.detach(),
+            ready.detach(),
+            agreement,
+        ], dim=-1)
+        return torch.nan_to_num(features), evidence_margin
+
+    def _costar_router_values(self, features):
+        current_value = torch.tanh(self.costar_router(features))
+        with torch.no_grad():
+            ema_value = torch.tanh(self.costar_router_ema(features))
+        return current_value, ema_value
+
+    def _costar_center(self):
+        denominator = self.costar_center_denominator.clamp(min=1e-8)
+        center = self.costar_center_numerator / denominator
+        initialized = (self.costar_center_updates > 0).to(center.dtype)
+        return center * initialized
+
+    @staticmethod
+    def _costar_add_margin(logits, margin_delta):
+        if logits.ndim == 1:
+            return logits + margin_delta.view(-1)
+        if logits.size(-1) == 1:
+            return logits + margin_delta
+        if logits.size(-1) == 2:
+            half = 0.5 * margin_delta
+            return logits + torch.cat([-half, half], dim=-1)
+        raise ValueError("COSTAR currently supports binary logits only")
+
+    def _costar_route(self, h, z_base, z_anchor, effective_residual,
+                      pos_sim, neg_sim, proto_margin, ready):
+        features, evidence_margin = self._costar_router_features(
+            h, z_base, z_anchor, effective_residual,
+            pos_sim, neg_sim, proto_margin, ready)
+        current_value, ema_value = self._costar_router_values(features)
+        route_disagreement = (current_value - ema_value).abs()
+        consistency = torch.exp(
+            -route_disagreement / self.costar_consistency_tau)
+
+        # Confidence is applied before orthogonal centering, so the final
+        # correction remains orthogonal to the A2 residual-scale direction.
+        consensus_value = consistency * 0.5 * (
+            current_value + ema_value)
+        correction_margin = 0.5 * (
+            consensus_value - self._costar_center()) * evidence_margin
+        final_logits = self._costar_add_margin(
+            z_anchor.detach(), correction_margin)
+
+        with torch.no_grad():
+            inner = (correction_margin * evidence_margin).mean()
+            norm = torch.sqrt(
+                correction_margin.square().mean() *
+                evidence_margin.square().mean()).clamp(min=1e-8)
+            orth_error = (inner.abs() / norm).clamp(max=1e6)
+            fallback = (
+                (consistency < self.costar_fallback_confidence) |
+                (correction_margin.abs() <= self.costar_fallback_delta)
+            ).float().mean()
+
+        return {
+            'logits': final_logits,
+            'features': features,
+            'evidence_margin': evidence_margin,
+            'current_value': current_value,
+            'ema_value': ema_value,
+            'consensus_value': consensus_value,
+            'consistency': consistency,
+            'correction_margin': correction_margin,
+            'orth_error': orth_error,
+            'fallback_ratio': fallback,
+        }
+
+    @torch.no_grad()
+    def _costar_update_center(self, consensus_value, evidence_margin):
+        evidence_square = evidence_margin.detach().square()
+        batch_denominator = evidence_square.mean()
+        if not torch.isfinite(batch_denominator) or batch_denominator <= 1e-12:
+            return
+        batch_numerator = (
+            consensus_value.detach() * evidence_square).mean()
+        if self.costar_center_updates.item() == 0:
+            self.costar_center_numerator.copy_(batch_numerator.view_as(
+                self.costar_center_numerator))
+            self.costar_center_denominator.copy_(batch_denominator.view_as(
+                self.costar_center_denominator))
+        else:
+            decay = self.costar_center_decay
+            self.costar_center_numerator.mul_(decay).add_(
+                batch_numerator, alpha=1.0 - decay)
+            self.costar_center_denominator.mul_(decay).add_(
+                batch_denominator, alpha=1.0 - decay)
+        self.costar_center_updates.add_(1)
+
+    @torch.no_grad()
+    def costar_update_ema(self):
+        decay = self.costar_ema_decay
+        for ema_parameter, parameter in zip(
+                self.costar_router_ema.parameters(),
+                self.costar_router.parameters()):
+            ema_parameter.mul_(decay).add_(parameter, alpha=1.0 - decay)
+        self.costar_ema_updates.add_(1)
+
+    @staticmethod
+    def _costar_stratified_masks(labels):
+        labels = labels.view(-1).long()
+        calibration = torch.zeros_like(labels, dtype=torch.bool)
+        evaluation = torch.zeros_like(labels, dtype=torch.bool)
+        valid = True
+        for class_idx in (0, 1):
+            indices = torch.nonzero(
+                labels == class_idx, as_tuple=False).view(-1)
+            if indices.numel() < 2:
+                valid = False
+                break
+            calibration[indices[::2]] = True
+            evaluation[indices[1::2]] = True
+        if (not valid or not calibration.any() or not evaluation.any() or
+                labels[calibration].unique().numel() < 2 or
+                labels[evaluation].unique().numel() < 2):
+            calibration.fill_(True)
+            evaluation.fill_(True)
+            valid = False
+        return calibration, evaluation, valid
+
+    @staticmethod
+    @torch.no_grad()
+    def _costar_best_f1_threshold(margins, labels):
+        margins = margins.detach().view(-1)
+        labels = labels.detach().view(-1).float()
+        if margins.numel() == 0:
+            return margins.new_zeros(())
+        positive_count = labels.sum()
+        if positive_count <= 0 or positive_count >= labels.numel():
+            return margins.median()
+        order = torch.argsort(margins, descending=True)
+        sorted_labels = labels[order]
+        true_positive = sorted_labels.cumsum(dim=0)
+        false_positive = (
+            torch.ones_like(sorted_labels) - sorted_labels).cumsum(dim=0)
+        false_negative = positive_count - true_positive
+        f1 = 2.0 * true_positive / (
+            2.0 * true_positive + false_positive + false_negative
+        ).clamp(min=1e-8)
+        best_index = int(f1.argmax().item())
+        return margins[order[best_index]]
+
+    def _costar_soft_f1(self, margins, labels, threshold):
+        labels = labels.view(-1).float()
+        probability = torch.sigmoid(
+            (margins.view(-1) - threshold) /
+            self.costar_soft_f1_temperature)
+        true_positive = (labels * probability).sum()
+        return (2.0 * true_positive + 1e-8) / (
+            labels.sum() + probability.sum() + 1e-8)
+
+    @staticmethod
+    def _costar_pairwise_rank_loss(margins, labels):
+        margins = margins.view(-1)
+        labels = labels.view(-1).long()
+        positive = margins[labels == 1]
+        negative = margins[labels == 0]
+        if positive.numel() == 0 or negative.numel() == 0:
+            return margins.sum() * 0.0
+        return F.softplus(
+            -(positive.unsqueeze(1) - negative.unsqueeze(0))).mean()
+
+    def _costar_adapter_objective(self, z_anchor, route, labels):
+        final_margin = self._campr_logit_margin(route['logits'])
+        anchor_margin = self._campr_logit_margin(z_anchor.detach())
+        labels = labels.view(-1).long()
+        calibration, evaluation, split_valid = (
+            self._costar_stratified_masks(labels))
+
+        threshold = self._costar_best_f1_threshold(
+            final_margin[calibration], labels[calibration])
+        threshold_scale = final_margin[calibration].detach().std(
+            unbiased=False).clamp(min=1e-3)
+        perturbation = self.costar_threshold_perturb * threshold_scale
+        offsets = final_margin.new_tensor([-1.0, 0.0, 1.0])
+        thresholds = threshold + offsets * perturbation
+
+        new_f1 = torch.stack([
+            self._costar_soft_f1(
+                final_margin[evaluation], labels[evaluation], item)
+            for item in thresholds
+        ])
+        with torch.no_grad():
+            anchor_f1 = torch.stack([
+                self._costar_soft_f1(
+                    anchor_margin[evaluation], labels[evaluation], item)
+                for item in thresholds
+            ])
+
+        f1_losses = 1.0 - new_f1
+        tail_count = max(
+            1, int(math.ceil(
+                f1_losses.numel() * self.costar_cvar_fraction)))
+        plateau_loss = torch.topk(
+            f1_losses, tail_count, largest=True).values.mean()
+        f1_safe = F.relu(
+            anchor_f1 - new_f1 + self.costar_safe_margin).mean()
+
+        rank_new = self._costar_pairwise_rank_loss(
+            final_margin[evaluation], labels[evaluation])
+        with torch.no_grad():
+            rank_anchor = self._costar_pairwise_rank_loss(
+                anchor_margin[evaluation], labels[evaluation])
+        rank_safe = F.relu(
+            rank_new - rank_anchor + self.costar_rank_safe_margin)
+
+        correction = route['correction_margin']
+        evidence = route['evidence_margin']
+        orth_inner = (correction * evidence).mean()
+        orth_energy = (
+            correction.square().mean() * evidence.square().mean())
+        # Squared cosine form avoids the infinite derivative of sqrt(0) at
+        # the exact zero-router fallback initialization.
+        orth_loss = orth_inner.square() / (orth_energy + 1e-8)
+        time_loss = (
+            route['current_value'] - route['ema_value'].detach()
+        ).square().mean()
+
+        unscaled = (
+            plateau_loss +
+            self.costar_rank_weight * rank_new +
+            self.costar_safe_weight * (f1_safe + rank_safe) +
+            self.costar_orth_weight * orth_loss +
+            self.costar_time_weight * time_loss
+        )
+        if self._eg_cur_epoch < self.costar_start_epoch:
+            total = unscaled * 0.0
+        else:
+            total = self.costar_adapter_weight * unscaled
+
+        with torch.no_grad():
+            best_f1 = new_f1.max()
+            platform_width = (
+                new_f1 >= best_f1 - self.costar_platform_tolerance
+            ).float().mean()
+            self._costar_diag = {
+                'loss': total.detach(),
+                'plateau_loss': plateau_loss.detach(),
+                'platform_width': platform_width.detach(),
+                'worst_soft_f1': new_f1.min().detach(),
+                'f1_safe': f1_safe.detach(),
+                'rank_loss': rank_new.detach(),
+                'rank_safe': rank_safe.detach(),
+                'orth_error': route['orth_error'].detach(),
+                'ema_consistency': route['consistency'].mean().detach(),
+                'fallback_ratio': route['fallback_ratio'].detach(),
+                'correction_rms': correction.square().mean().sqrt().detach(),
+                'threshold': threshold.detach(),
+                'threshold_perturb': perturbation.detach(),
+                'batch_split_valid': final_margin.new_tensor(
+                    float(split_valid)),
+            }
+        return total
 
     def _cosine_feature(self, left_repr, right_repr):
         if left_repr is None or right_repr is None:
@@ -4654,13 +5034,17 @@ class HeteroGNNEdgeHead(nn.Module):
     def _evidence_gate_head(self, batch):
         '''Scale-agnostic evidence decoder: z_base (+) bounded prototype core
         (+) uncertainty-gated higher-order structural evidence.'''
-        if self.eg_gate_v4 or self.use_campr:
+        if self.eg_gate_v4 or self.use_campr or self.use_costar:
             # These tensors belong to one forward pass only. Clearing them here
             # prevents a skipped/failed batch from reusing an old auxiliary loss.
             self._eg_gate_penalty = None
         if self.use_campr:
             self._campr_advantage = None
             self._campr_advantage_target = None
+        if self.use_costar:
+            self._costar_anchor_logits = None
+            self._costar_adapter_loss = None
+            self._costar_diag = None
         if self.eg_gate_v4:
             self._eg_struct_aux_logits = None
             self._eg_struct_aux_labels = None
@@ -4818,9 +5202,10 @@ class HeteroGNNEdgeHead(nn.Module):
                         (1.0 - self.dmprd_reliability_floor) *
                         reliability_signal
                     ).detach()
-                z_core = z_base + (
+                effective_residual = (
                     dmprd_beta * ready * dmprd_reliability_gate *
                     dmprd_delta)
+                z_core = z_base + effective_residual
             else:
                 z_core = z_base + (
                     torch.sigmoid(self.eg_proto_alpha) * ready * z_proto)
@@ -4831,6 +5216,67 @@ class HeteroGNNEdgeHead(nn.Module):
         # residual only. No structural evidence, no gate. Everything else in the
         # forward is identical to v2, so M1 vs v2 differs by exactly this branch.
         if self.eg_proto_only:
+            if self.use_costar:
+                z_anchor = z_core
+                route = self._costar_route(
+                    h, z_base, z_anchor, effective_residual,
+                    pos_sim, neg_sim, proto_margin, ready)
+                z_core = route['logits']
+                if not torch.isfinite(z_core).all():
+                    raise FloatingPointError(
+                        "COSTAR produced non-finite final logits")
+                self._costar_anchor_logits = z_anchor
+                if self.training:
+                    self._costar_adapter_loss = (
+                        self._costar_adapter_objective(
+                            z_anchor, route, labels))
+                    # Current-batch statistics affect only future batches. At
+                    # evaluation this center is frozen and no batch aggregate
+                    # participates in prediction.
+                    self._costar_update_center(
+                        route['consensus_value'],
+                        route['evidence_margin'])
+                else:
+                    self._costar_diag = {
+                        'orth_error': route['orth_error'].detach(),
+                        'ema_consistency': (
+                            route['consistency'].mean().detach()),
+                        'fallback_ratio': (
+                            route['fallback_ratio'].detach()),
+                        'correction_rms': (
+                            route['correction_margin'].square().mean().sqrt(
+                            ).detach()),
+                    }
+
+                self._costar_log_step += 1
+                diagnostic_steps = {
+                    1, 2, 257, 1025, 4097, 16385, 65537,
+                }
+                should_log = (
+                    self.training and
+                    self._costar_log_step in diagnostic_steps
+                ) or (
+                    not self.training and
+                    self._costar_log_step % 64 == 1
+                )
+                if should_log and self._costar_diag is not None:
+                    diag = self._costar_diag
+                    logging.info(
+                        "[costar/%s] loss=%.5f orth=%.5f "
+                        "platform=%.3f ema_consistency=%.4f "
+                        "fallback=%.4f correction_rms=%.5f "
+                        "center=%.5f center_updates=%d ema_updates=%d",
+                        getattr(batch, 'split', '?'),
+                        float(diag.get('loss', z_core.new_zeros(()))),
+                        float(diag['orth_error']),
+                        float(diag.get(
+                            'platform_width', z_core.new_tensor(float('nan')))),
+                        float(diag['ema_consistency']),
+                        float(diag['fallback_ratio']),
+                        float(diag['correction_rms']),
+                        float(self._costar_center()),
+                        int(self.costar_center_updates.item()),
+                        int(self.costar_ema_updates.item()))
             if self.use_dmprd and not self.training:
                 self._dmprd_log_step += 1
                 if self._dmprd_log_step % 64 == 1:
