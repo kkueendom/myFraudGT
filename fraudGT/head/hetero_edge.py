@@ -27,6 +27,8 @@ class HeteroGNNEdgeHead(nn.Module):
         # structural branch helps at all.
         # `dmprd` keeps only a distribution-aware multi-prototype residual. It
         # has no structural expert, sample gate, auxiliary loss, or gate budget.
+        # `campr` adds counterfactual-advantage supervision and mean-preserving
+        # sample routing on top of that same A2 residual.
         # `evidence_gate_v3` is the convex-fusion gate experiment.
         # `evidence_gate_v4_residual` fixes its dead-expert failure mode with a
         # bounded residual structural expert, a nonzero fixed-open warm-up, and
@@ -35,13 +37,14 @@ class HeteroGNNEdgeHead(nn.Module):
         # `evidence_gate_v4_noproto` removes both the prototype residual and
         # every prototype-derived router input.
         self.use_evidence_gate = self.edge_decoding in {
-            'evidence_gate', 'evidence_gate_proto', 'dmprd',
+            'evidence_gate', 'evidence_gate_proto', 'dmprd', 'campr',
             'evidence_gate_v3',
             'evidence_gate_v4_residual', 'evidence_gate_v4_nogate',
             'evidence_gate_v4_noproto'}
-        self.use_dmprd = (self.edge_decoding == 'dmprd')
+        self.use_dmprd = self.edge_decoding in {'dmprd', 'campr'}
+        self.use_campr = (self.edge_decoding == 'campr')
         self.eg_proto_only = self.edge_decoding in {
-            'evidence_gate_proto', 'dmprd'}
+            'evidence_gate_proto', 'dmprd', 'campr'}
         self.eg_gate_v3 = (self.edge_decoding == 'evidence_gate_v3')
         self.eg_gate_v4 = self.edge_decoding in {
             'evidence_gate_v4_residual', 'evidence_gate_v4_nogate',
@@ -1475,6 +1478,33 @@ class HeteroGNNEdgeHead(nn.Module):
             if not 0.0 <= self.dmprd_reliability_floor <= 1.0:
                 raise ValueError(
                     "dmprd_reliability_floor must be between 0 and 1")
+            if self.use_campr:
+                self.campr_aux_weight = float(getattr(
+                    cfg.model, 'campr_aux_weight', 0.20))
+                self.campr_adv_temperature = float(getattr(
+                    cfg.model, 'campr_adv_temperature', 0.10))
+                self.campr_route_min = float(getattr(
+                    cfg.model, 'campr_route_min', 0.50))
+                self.campr_route_max = float(getattr(
+                    cfg.model, 'campr_route_max', 1.50))
+                if self.campr_aux_weight < 0.0:
+                    raise ValueError("campr_aux_weight must be non-negative")
+                if self.campr_adv_temperature <= 0.0:
+                    raise ValueError(
+                        "campr_adv_temperature must be positive")
+                if not 0.0 < self.campr_route_min <= 1.0:
+                    raise ValueError(
+                        "campr_route_min must be in (0, 1]")
+                if self.campr_route_max < 1.0:
+                    raise ValueError("campr_route_max must be at least 1")
+                if self.campr_route_min >= self.campr_route_max:
+                    raise ValueError(
+                        "campr_route_min must be below campr_route_max")
+                self.campr_router = MLP(
+                    10, 1, num_layers=self.head_layers, bias=True)
+                self._eg_gate_penalty = None
+                self._campr_log_step = 0
+                self._campr_train_log_step = 0
             self._dmprd_log_step = 0
             return
 
@@ -1976,6 +2006,81 @@ class HeteroGNNEdgeHead(nn.Module):
             support_reliability * variance_reliability
         ).clamp(min=0.0, max=1.0)
         return weights @ slot_reliability.unsqueeze(-1)
+
+    @staticmethod
+    def _campr_logit_margin(logits):
+        if logits.ndim == 1:
+            return logits.unsqueeze(-1)
+        if logits.size(-1) == 1:
+            return logits
+        if logits.size(-1) == 2:
+            return logits[:, 1:2] - logits[:, 0:1]
+        top_two = logits.topk(2, dim=-1).values
+        return top_two[:, :1] - top_two[:, 1:2]
+
+    @staticmethod
+    def _campr_per_sample_loss(logits, labels):
+        flat_labels = labels.view(-1)
+        if logits.ndim == 1 or logits.size(-1) == 1:
+            return F.binary_cross_entropy_with_logits(
+                logits.view(-1), flat_labels.float(), reduction='none')
+        return F.cross_entropy(
+            logits, flat_labels.long(), reduction='none')
+
+    @staticmethod
+    def _campr_sample_weights(labels):
+        flat_labels = labels.view(-1).long()
+        configured = getattr(cfg.model, 'loss_fun_weight', None)
+        if not configured:
+            return labels.new_ones(flat_labels.size(0), dtype=torch.float)
+        table = torch.as_tensor(
+            configured, device=labels.device, dtype=torch.float)
+        valid = (flat_labels >= 0) & (flat_labels < table.numel())
+        weights = labels.new_ones(flat_labels.size(0), dtype=torch.float)
+        weights[valid] = table[flat_labels[valid]]
+        return weights / weights.mean().clamp(min=1e-6)
+
+    def _campr_route(self, z_base, dmprd_delta, pos_sim, neg_sim,
+                     proto_margin, ready):
+        base_margin = self._campr_logit_margin(z_base.detach())
+        delta_margin = self._campr_logit_margin(dmprd_delta.detach())
+        base_signed = torch.tanh(base_margin)
+        delta_signed = torch.tanh(delta_margin)
+        route_feat = torch.cat([
+            base_signed,
+            base_signed.abs(),
+            pos_sim.detach(),
+            neg_sim.detach(),
+            proto_margin.detach(),
+            proto_margin.detach().abs(),
+            ready.detach(),
+            delta_signed,
+            delta_signed.abs(),
+            base_signed * delta_signed,
+        ], dim=-1)
+        route_logits = self.campr_router(torch.nan_to_num(route_feat))
+        gate_probability = torch.sigmoid(route_logits)
+
+        relative = gate_probability / gate_probability.mean().clamp(min=1e-4)
+        centered = relative - relative.mean()
+        positive_peak = centered.clamp(min=0.0).max()
+        negative_peak = (-centered).clamp(min=0.0).max()
+        upper_scale = (
+            (self.campr_route_max - 1.0) /
+            positive_peak.clamp(min=1e-6)
+        )
+        lower_scale = (
+            (1.0 - self.campr_route_min) /
+            negative_peak.clamp(min=1e-6)
+        )
+        # A single detached scale preserves the ordering learned by the
+        # router while enforcing both bounds without changing the batch mean.
+        range_scale = torch.minimum(
+            torch.ones_like(upper_scale),
+            torch.minimum(upper_scale, lower_scale),
+        ).detach()
+        route = 1.0 + range_scale * centered
+        return route_logits, gate_probability, route
 
     def _cosine_feature(self, left_repr, right_repr):
         if left_repr is None or right_repr is None:
@@ -4544,10 +4649,14 @@ class HeteroGNNEdgeHead(nn.Module):
     def _evidence_gate_head(self, batch):
         '''Scale-agnostic evidence decoder: z_base (+) bounded prototype core
         (+) uncertainty-gated higher-order structural evidence.'''
-        if self.eg_gate_v4:
+        if self.eg_gate_v4 or self.use_campr:
             # These tensors belong to one forward pass only. Clearing them here
             # prevents a skipped/failed batch from reusing an old auxiliary loss.
             self._eg_gate_penalty = None
+        if self.use_campr:
+            self._campr_advantage = None
+            self._campr_advantage_target = None
+        if self.eg_gate_v4:
             self._eg_struct_aux_logits = None
             self._eg_struct_aux_labels = None
             self._eg_struct_aux_scale = 0.0
@@ -4603,7 +4712,53 @@ class HeteroGNNEdgeHead(nn.Module):
                 dmprd_base_uncertainty = torch.ones_like(ready)
                 dmprd_proto_confidence = torch.ones_like(ready)
                 dmprd_reliability_gate = torch.ones_like(ready)
-                if self.dmprd_use_reliability_gate:
+                campr_gate_probability = torch.ones_like(ready)
+                if self.use_campr:
+                    (campr_route_logits, campr_gate_probability,
+                     dmprd_reliability_gate) = self._campr_route(
+                        z_base, dmprd_delta, pos_sim, neg_sim,
+                        proto_margin, ready)
+                    if self.training and self.campr_aux_weight > 0.0:
+                        a2_candidate = (
+                            z_base.detach() + dmprd_beta.detach() *
+                            ready.detach() * dmprd_delta.detach())
+                        base_loss = self._campr_per_sample_loss(
+                            z_base.detach(), labels)
+                        candidate_loss = self._campr_per_sample_loss(
+                            a2_candidate, labels)
+                        advantage = (base_loss - candidate_loss).detach()
+                        advantage_target = torch.sigmoid(
+                            advantage / self.campr_adv_temperature)
+                        sample_weights = self._campr_sample_weights(labels)
+                        route_aux = F.binary_cross_entropy_with_logits(
+                            campr_route_logits.view(-1),
+                            advantage_target,
+                            reduction='none')
+                        route_aux = (route_aux * sample_weights).mean()
+                        self._eg_gate_penalty = (
+                            self.campr_aux_weight * route_aux)
+                        self._campr_advantage = advantage
+                        self._campr_advantage_target = advantage_target
+                        self._campr_train_log_step += 1
+                        diagnostic_steps = {
+                            1, 2, 257, 1025, 4097, 16385, 65537,
+                        }
+                        if self._campr_train_log_step in diagnostic_steps:
+                            with torch.no_grad():
+                                logging.info(
+                                    "[campr/train] route_aux=%.5f | "
+                                    "advantage: mean=%.5f std=%.5f "
+                                    "frac>0=%.3f | target: mean=%.4f "
+                                    "std=%.4f | ready=%.4f",
+                                    route_aux.detach().item(),
+                                    advantage.mean().item(),
+                                    advantage.std(unbiased=False).item(),
+                                    (advantage > 0).float().mean().item(),
+                                    advantage_target.mean().item(),
+                                    advantage_target.std(
+                                        unbiased=False).item(),
+                                    ready.detach().float().mean().item())
+                elif self.dmprd_use_reliability_gate:
                     pos_reliability = self._support_class_proto_reliability(
                         h, 1)
                     neg_reliability = self._support_class_proto_reliability(
@@ -4667,26 +4822,50 @@ class HeteroGNNEdgeHead(nn.Module):
                             dmprd_reliability_gate.detach().float().view(-1))
                         local_reliability_flat = (
                             dmprd_local_reliability.detach().float().view(-1))
-                        logging.info(
-                            "[dmprd/%s] slots=%d distribution=%s beta=%.4f | "
-                            "delta_abs: mean=%.4f p90=%.4f max=%.4f | "
-                            "proto_margin: mean=%.4f std=%.4f | ready=%.4f | "
-                            "reliability: gate=%.4f local=%.4f base_u=%.4f "
-                            "proto_conf=%.4f",
-                            getattr(batch, 'split', '?'),
-                            self.num_class_proto_slots,
-                            self.dmprd_use_distribution_stats,
-                            dmprd_beta.item(),
-                            delta_abs.mean().item(),
-                            torch.quantile(delta_abs, 0.90).item(),
-                            delta_abs.max().item(),
-                            margin.mean().item(),
-                            margin.std(unbiased=False).item(),
-                            ready_flat.mean().item(),
-                            reliability_flat.mean().item(),
-                            local_reliability_flat.mean().item(),
-                            dmprd_base_uncertainty.detach().float().mean().item(),
-                            dmprd_proto_confidence.detach().float().mean().item())
+                        if self.use_campr:
+                            gate_flat = (
+                                campr_gate_probability.detach().float().view(-1))
+                            logging.info(
+                                "[campr/%s] beta=%.4f | gate_prob: "
+                                "mean=%.4f std=%.4f | route: mean=%.4f "
+                                "std=%.4f min=%.4f max=%.4f | delta_abs: "
+                                "mean=%.4f p90=%.4f | proto_margin: "
+                                "mean=%.4f std=%.4f | ready=%.4f",
+                                getattr(batch, 'split', '?'),
+                                dmprd_beta.item(),
+                                gate_flat.mean().item(),
+                                gate_flat.std(unbiased=False).item(),
+                                reliability_flat.mean().item(),
+                                reliability_flat.std(unbiased=False).item(),
+                                reliability_flat.min().item(),
+                                reliability_flat.max().item(),
+                                delta_abs.mean().item(),
+                                torch.quantile(delta_abs, 0.90).item(),
+                                margin.mean().item(),
+                                margin.std(unbiased=False).item(),
+                                ready_flat.mean().item())
+                        else:
+                            logging.info(
+                                "[dmprd/%s] slots=%d distribution=%s "
+                                "beta=%.4f | delta_abs: mean=%.4f p90=%.4f "
+                                "max=%.4f | proto_margin: mean=%.4f "
+                                "std=%.4f | ready=%.4f | reliability: "
+                                "gate=%.4f local=%.4f base_u=%.4f "
+                                "proto_conf=%.4f",
+                                getattr(batch, 'split', '?'),
+                                self.num_class_proto_slots,
+                                self.dmprd_use_distribution_stats,
+                                dmprd_beta.item(),
+                                delta_abs.mean().item(),
+                                torch.quantile(delta_abs, 0.90).item(),
+                                delta_abs.max().item(),
+                                margin.mean().item(),
+                                margin.std(unbiased=False).item(),
+                                ready_flat.mean().item(),
+                                reliability_flat.mean().item(),
+                                local_reliability_flat.mean().item(),
+                                dmprd_base_uncertainty.detach().float().mean().item(),
+                                dmprd_proto_confidence.detach().float().mean().item())
             if self.training:
                 self._update_support_class_prototypes(h, labels)
             return z_core, labels

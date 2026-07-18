@@ -128,3 +128,9 @@ def extended_cfg(cfg):
     cfg.model.dmprd_variance_tau = 0.25
     cfg.model.dmprd_margin_tau = 0.10
     cfg.model.dmprd_reliability_floor = 0.25
+
+    # CAMPR: counterfactual advantage-guided, mean-preserving A2 routing.
+    cfg.model.campr_aux_weight = 0.20
+    cfg.model.campr_adv_temperature = 0.10
+    cfg.model.campr_route_min = 0.50
+    cfg.model.campr_route_max = 1.50
