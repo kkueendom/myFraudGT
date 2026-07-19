@@ -112,7 +112,9 @@ class CadeEditorTest(unittest.TestCase):
 
         holder = Holder()
         old_loss = cfg.model.loss_fun
-        old_weight = cfg.model.loss_fun_weight
+        had_weight = hasattr(cfg.model, 'loss_fun_weight')
+        old_weight = (
+            cfg.model.loss_fun_weight if had_weight else None)
         old_device = cfg.device
         try:
             cfg.model.loss_fun = 'weighted_cross_entropy'
@@ -122,7 +124,10 @@ class CadeEditorTest(unittest.TestCase):
             loss.backward()
         finally:
             cfg.model.loss_fun = old_loss
-            cfg.model.loss_fun_weight = old_weight
+            if had_weight:
+                cfg.model.loss_fun_weight = old_weight
+            else:
+                del cfg.model.loss_fun_weight
             cfg.device = old_device
         self.assertIsNone(holder.anchor.grad)
         self.assertIsNotNone(holder.branch.grad)
