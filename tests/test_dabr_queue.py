@@ -24,12 +24,15 @@ def load_queue(strength):
 
 class DabrQueueTest(unittest.TestCase):
     def test_strength_isolated_namespaces(self):
+        s15 = load_queue(0.15)
         s25 = load_queue(0.25)
         s50 = load_queue(0.50)
+        self.assertEqual(s15.STRENGTH_TAG, "s15")
         self.assertEqual(s25.STRENGTH_TAG, "s25")
         self.assertEqual(s50.STRENGTH_TAG, "s50")
         self.assertIn("DABRs25", s25.run_stem("Small-LI", 42, "deadbeef"))
         self.assertIn("DABRs50", s50.run_stem("Small-LI", 42, "deadbeef"))
+        self.assertIn("DABRs15", s15.run_stem("Small-LI", 42, "deadbeef"))
         self.assertNotEqual(
             s25.run_stem("Small-LI", 42, "deadbeef"),
             s50.run_stem("Small-LI", 42, "deadbeef"))

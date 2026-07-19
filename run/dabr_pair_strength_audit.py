@@ -126,7 +126,7 @@ def main():
         default_a2 = shared_a2
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--strength-tag", choices=("s25", "s50"), default="s25")
+        "--strength-tag", choices=("s15", "s25", "s50"), default="s25")
     parser.add_argument(
         "--dabr", default="")
     parser.add_argument(
