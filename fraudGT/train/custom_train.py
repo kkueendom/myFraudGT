@@ -191,6 +191,110 @@ def _evidence_gate_aux_loss(model):
     return aux_total
 
 
+def _uprc_training_anchor(model):
+    anchors = [
+        anchor for module in model.modules()
+        for anchor in [getattr(module, '_uprc_anchor_logits', None)]
+        if anchor is not None
+    ]
+    if len(anchors) > 1:
+        raise RuntimeError("multiple UPRC heads are not supported")
+    return anchors[0] if anchors else None
+
+
+def _uprc_margin(logits):
+    if logits.ndim == 1:
+        return logits
+    if logits.size(-1) == 1:
+        return logits.view(-1)
+    return logits[:, 1] - logits[:, 0]
+
+
+def _uprc_hard_pair_rank_loss(anchor, candidate, labels, pair_limit,
+                              temperature):
+    """Pair the lowest-scored positives with highest-scored negatives."""
+    labels = labels.view(-1).long()
+    positive = (labels == 1).nonzero(as_tuple=False).view(-1)
+    negative = (labels == 0).nonzero(as_tuple=False).view(-1)
+    if positive.numel() == 0 or negative.numel() == 0:
+        return candidate.sum() * 0.0
+    anchor_score = _uprc_margin(anchor).detach()
+    positive = positive[
+        anchor_score[positive].argsort()[:pair_limit]]
+    negative = negative[
+        anchor_score[negative].argsort(descending=True)[:pair_limit]]
+    score = _uprc_margin(candidate)
+    difference = score[positive].unsqueeze(1) - score[negative].unsqueeze(0)
+    return F.softplus(-difference / temperature).mean()
+
+
+def _uprc_balanced_point_loss(candidate, labels):
+    labels = labels.view(-1).long()
+    score = _uprc_margin(candidate)
+    losses = []
+    positive = labels == 1
+    negative = labels == 0
+    if positive.any():
+        losses.append(F.softplus(-score[positive]).mean())
+    if negative.any():
+        losses.append(F.softplus(score[negative]).mean())
+    return torch.stack(losses).mean() if losses else score.sum() * 0.0
+
+
+def _uprc_aux_loss(model):
+    """Train only UPRC with balanced point and hard-pair ranking losses."""
+    total = 0.0
+    for module in model.modules():
+        anchor = getattr(module, '_uprc_anchor_logits', None)
+        candidate = getattr(module, '_uprc_candidate_logits', None)
+        labels = getattr(module, '_uprc_labels', None)
+        correction = getattr(module, '_uprc_correction', None)
+        if anchor is None or candidate is None or labels is None:
+            continue
+        rank_loss = _uprc_hard_pair_rank_loss(
+            anchor, candidate, labels, int(module.uprc_pair_limit),
+            float(module.uprc_rank_temperature))
+        balanced_loss = _uprc_balanced_point_loss(candidate, labels)
+        center_loss = candidate.new_zeros(())
+        norm_loss = candidate.new_zeros(())
+        if correction is not None:
+            signed = _uprc_margin(correction)
+            center_loss = signed.mean().pow(2)
+            norm_loss = correction.pow(2).sum(dim=-1).mean()
+        total = total + (
+            float(module.uprc_rank_loss_weight) * rank_loss +
+            float(module.uprc_balanced_loss_weight) * balanced_loss +
+            float(module.uprc_center_loss_weight) * center_loss +
+            float(module.uprc_norm_loss_weight) * norm_loss)
+    return total
+
+
+def _uprc_parameters(model):
+    parameters = []
+    for module in model.modules():
+        editor = getattr(module, 'uprc_editor', None)
+        if editor is not None:
+            parameters.extend(
+                parameter for parameter in editor.parameters()
+                if parameter.requires_grad)
+    return parameters
+
+
+def _clip_gradients(model, max_norm, isolate_uprc=False):
+    if not isolate_uprc:
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
+        return
+    branch_parameters = _uprc_parameters(model)
+    branch_ids = {id(parameter) for parameter in branch_parameters}
+    anchor_parameters = [
+        parameter for parameter in model.parameters()
+        if parameter.requires_grad and id(parameter) not in branch_ids]
+    if anchor_parameters:
+        torch.nn.utils.clip_grad_norm_(anchor_parameters, max_norm)
+    if branch_parameters:
+        torch.nn.utils.clip_grad_norm_(branch_parameters, max_norm)
+
+
 def train_epoch(cur_epoch, logger, loader, model, optimizer, scheduler, batch_accumulation):
     pbar = tqdm(total=len(loader), disable=not cfg.train.tqdm)
     pbar.set_description(f'Train epoch')
@@ -264,13 +368,21 @@ def train_epoch(cur_epoch, logger, loader, model, optimizer, scheduler, batch_ac
             runtime_stats_cuda.end_region("forward")
             runtime_stats_cuda.start_region("loss", runtime_stats_cuda.get_last_event())
             if cfg.model.loss_fun == 'curriculum_learning_loss':
-                loss, pred_score = compute_loss(pred, true, cur_epoch)
+                reported_loss, pred_score = compute_loss(pred, true, cur_epoch)
             else:
-                loss, pred_score = compute_loss(pred, true)
+                reported_loss, pred_score = compute_loss(pred, true)
+            uprc_anchor = _uprc_training_anchor(model)
+            if uprc_anchor is None:
+                loss = reported_loss
+            elif cfg.model.loss_fun == 'curriculum_learning_loss':
+                loss, _ = compute_loss(uprc_anchor, true, cur_epoch)
+            else:
+                loss, _ = compute_loss(uprc_anchor, true)
             loss = (
                 loss +
                 _evidence_gate_penalty(model) +
-                _evidence_gate_aux_loss(model)
+                _evidence_gate_aux_loss(model) +
+                _uprc_aux_loss(model)
             )
             _true = true.detach().to('cpu', non_blocking=True)
             _pred = pred_score.detach().to('cpu', non_blocking=True)
@@ -284,8 +396,9 @@ def train_epoch(cur_epoch, logger, loader, model, optimizer, scheduler, batch_ac
             # Parameters update after accumulating gradients for given num. batches.
             if ((it + 1) % batch_accumulation == 0) or (it + 1 == len(loader)):
                 if cfg.optim.clip_grad_norm:
-                    torch.nn.utils.clip_grad_norm_(model.parameters(),
-                                                cfg.optim.clip_grad_norm_value)
+                    _clip_gradients(
+                        model, cfg.optim.clip_grad_norm_value,
+                        isolate_uprc=(uprc_anchor is not None))
                 optimizer.step()
                 optimizer.zero_grad()
             runtime_stats_cuda.end_region("train")

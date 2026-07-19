@@ -12,6 +12,85 @@ from fraudGT.graphgym.config import cfg
 from fraudGT.graphgym.models.layer import MLP
 
 
+class _UPRCMLP(nn.Module):
+    """Deterministic two-layer MLP for the isolated rank corrector."""
+
+    def __init__(self, dim_in, dim_hidden, dim_out):
+        super().__init__()
+        self.input = nn.Linear(dim_in, dim_hidden)
+        self.output = nn.Linear(dim_hidden, dim_out)
+
+    def forward(self, inputs):
+        return self.output(F.gelu(self.input(inputs)))
+
+
+class UPRCEditor(nn.Module):
+    """Uncertainty-localized prototype-conditioned signed correction."""
+
+    def __init__(self, repr_dim, num_outputs, hidden_dim=64,
+                 correction_bound=0.25, locality_floor=0.10):
+        super().__init__()
+        if min(repr_dim, num_outputs, hidden_dim) < 1:
+            raise ValueError("UPRC dimensions must be positive")
+        if correction_bound <= 0.0:
+            raise ValueError("uprc_correction_bound must be positive")
+        if not 0.0 <= locality_floor <= 1.0:
+            raise ValueError("uprc_locality_floor must be in [0, 1]")
+        self.num_outputs = int(num_outputs)
+        self.correction_bound = float(correction_bound)
+        self.locality_floor = float(locality_floor)
+        self.feature_dim = 7 * int(repr_dim) + 8
+        with torch.random.fork_rng(devices=[]):
+            self.direction = _UPRCMLP(
+                self.feature_dim, hidden_dim, self.num_outputs)
+            nn.init.zeros_(self.direction.output.weight)
+            nn.init.zeros_(self.direction.output.bias)
+
+    @staticmethod
+    def _margin(logits):
+        if logits.size(-1) == 1:
+            return logits
+        return logits[:, 1:2] - logits[:, 0:1]
+
+    def _bounded(self, direction):
+        if self.num_outputs > 1:
+            direction = direction - direction.mean(dim=-1, keepdim=True)
+        norm = direction.norm(p=2, dim=-1, keepdim=True)
+        scale = (self.correction_bound /
+                 norm.clamp_min(1e-12)).clamp(max=1.0)
+        return direction * scale
+
+    def forward(self, h, pos_proto, neg_proto, pos_sim, neg_sim,
+                proto_margin, ready, anchor_logits, base_logits):
+        h = h.detach()
+        pos_proto = pos_proto.detach()
+        neg_proto = neg_proto.detach()
+        anchor_margin = self._margin(anchor_logits).detach()
+        base_margin = self._margin(base_logits).detach()
+        probability = torch.sigmoid(anchor_margin)
+        uncertainty = 4.0 * probability * (1.0 - probability)
+        locality = self.locality_floor + (
+            1.0 - self.locality_floor) * uncertainty
+        disagreement = torch.tanh(anchor_margin) * torch.tanh(base_margin)
+        features = torch.cat([
+            h, pos_proto, neg_proto, h * pos_proto, h * neg_proto,
+            (h - pos_proto).abs(), (h - neg_proto).abs(),
+            pos_sim.detach(), neg_sim.detach(), proto_margin.detach(),
+            ready.detach(), anchor_margin, base_margin, uncertainty,
+            disagreement,
+        ], dim=-1)
+        features = torch.nan_to_num(features).detach()
+        raw_direction = self._bounded(self.direction(features))
+        correction = raw_direction * locality * ready.detach()
+        return {
+            'final_logits': anchor_logits + correction,
+            'correction': correction,
+            'raw_direction': raw_direction,
+            'locality': locality,
+            'features': features,
+        }
+
+
 @register_head('hetero_edge')
 class HeteroGNNEdgeHead(nn.Module):
     '''Head of Hetero GNN, edge prediction'''
@@ -35,13 +114,14 @@ class HeteroGNNEdgeHead(nn.Module):
         # `evidence_gate_v4_noproto` removes both the prototype residual and
         # every prototype-derived router input.
         self.use_evidence_gate = self.edge_decoding in {
-            'evidence_gate', 'evidence_gate_proto', 'dmprd',
+            'evidence_gate', 'evidence_gate_proto', 'dmprd', 'uprc',
             'evidence_gate_v3',
             'evidence_gate_v4_residual', 'evidence_gate_v4_nogate',
             'evidence_gate_v4_noproto'}
-        self.use_dmprd = (self.edge_decoding == 'dmprd')
+        self.use_uprc = (self.edge_decoding == 'uprc')
+        self.use_dmprd = self.edge_decoding in {'dmprd', 'uprc'}
         self.eg_proto_only = self.edge_decoding in {
-            'evidence_gate_proto', 'dmprd'}
+            'evidence_gate_proto', 'dmprd', 'uprc'}
         self.eg_gate_v3 = (self.edge_decoding == 'evidence_gate_v3')
         self.eg_gate_v4 = self.edge_decoding in {
             'evidence_gate_v4_residual', 'evidence_gate_v4_nogate',
@@ -1447,6 +1527,8 @@ class HeteroGNNEdgeHead(nn.Module):
             if self.dmprd_beta_max <= 0.0:
                 raise ValueError("dmprd_beta_max must be positive")
             self._dmprd_log_step = 0
+            if self.use_uprc:
+                self._build_uprc(dim_in, dim_out)
             return
 
         # --- higher-order 1-hop structural evidence branch ---
@@ -1523,6 +1605,86 @@ class HeteroGNNEdgeHead(nn.Module):
             self._eg_struct_aux_logits = None
             self._eg_struct_aux_labels = None
             self._eg_struct_aux_scale = 0.0
+
+    def _build_uprc(self, dim_in, dim_out):
+        """Build UPRC after the exact A2 modules without advancing RNG."""
+        hidden_dim = int(getattr(cfg.model, 'uprc_hidden_dim', 64))
+        correction_bound = float(getattr(
+            cfg.model, 'uprc_correction_bound', 0.25))
+        locality_floor = float(getattr(
+            cfg.model, 'uprc_locality_floor', 0.10))
+        self.uprc_rank_loss_weight = float(getattr(
+            cfg.model, 'uprc_rank_loss_weight', 1.0))
+        self.uprc_balanced_loss_weight = float(getattr(
+            cfg.model, 'uprc_balanced_loss_weight', 0.25))
+        self.uprc_center_loss_weight = float(getattr(
+            cfg.model, 'uprc_center_loss_weight', 0.01))
+        self.uprc_norm_loss_weight = float(getattr(
+            cfg.model, 'uprc_norm_loss_weight', 1e-3))
+        self.uprc_rank_temperature = float(getattr(
+            cfg.model, 'uprc_rank_temperature', 0.25))
+        self.uprc_pair_limit = int(getattr(
+            cfg.model, 'uprc_pair_limit', 128))
+        self.uprc_log_interval = int(getattr(
+            cfg.model, 'uprc_log_interval', 128))
+        if min(self.uprc_rank_loss_weight,
+               self.uprc_balanced_loss_weight,
+               self.uprc_center_loss_weight,
+               self.uprc_norm_loss_weight) < 0.0:
+            raise ValueError("UPRC loss weights must be non-negative")
+        if self.uprc_rank_temperature <= 0.0:
+            raise ValueError("uprc_rank_temperature must be positive")
+        if min(self.uprc_pair_limit, self.uprc_log_interval) < 1:
+            raise ValueError("UPRC limits must be at least 1")
+        self.uprc_editor = UPRCEditor(
+            dim_in, dim_out, hidden_dim=hidden_dim,
+            correction_bound=correction_bound,
+            locality_floor=locality_floor)
+        self._uprc_log_step = 0
+        self._clear_uprc_training_cache()
+
+    def _clear_uprc_training_cache(self):
+        self._uprc_anchor_logits = None
+        self._uprc_candidate_logits = None
+        self._uprc_labels = None
+        self._uprc_correction = None
+
+    def _uprc_head(self, h, pos_proto, neg_proto, pos_sim, neg_sim,
+                   proto_margin, ready, z_anchor, z_base, labels, batch):
+        self._clear_uprc_training_cache()
+        result = self.uprc_editor(
+            h, pos_proto, neg_proto, pos_sim, neg_sim, proto_margin, ready,
+            z_anchor, z_base)
+        z_final = result['final_logits']
+        if not torch.isfinite(z_final).all():
+            raise FloatingPointError("UPRC produced non-finite final logits")
+        if self.training:
+            self._uprc_anchor_logits = z_anchor
+            self._uprc_candidate_logits = (
+                z_anchor.detach() + result['correction'])
+            self._uprc_labels = labels
+            self._uprc_correction = result['correction']
+
+        self._uprc_log_step += 1
+        if self._uprc_log_step % self.uprc_log_interval == 1:
+            with torch.no_grad():
+                correction = result['correction'].detach().float()
+                if correction.size(-1) == 1:
+                    signed = correction.view(-1)
+                else:
+                    signed = correction[:, 1] - correction[:, 0]
+                logging.info(
+                    "[uprc/%s] correction: mean=%.4f std=%.4f "
+                    "abs=%.4f pos=%.3f neg=%.3f max_norm=%.4f | "
+                    "locality=%.4f ready=%.4f",
+                    getattr(batch, 'split', '?'),
+                    signed.mean().item(), signed.std(unbiased=False).item(),
+                    signed.abs().mean().item(),
+                    (signed > 0.0).float().mean().item(),
+                    (signed < 0.0).float().mean().item(),
+                    correction.norm(dim=-1).max().item(),
+                    result['locality'].mean().item(), ready.mean().item())
+        return z_final
 
     def _edge_mask(self, batch):
         task = cfg.dataset.task_entity
@@ -4513,6 +4675,14 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.sigmoid(self.eg_proto_alpha) * ready * z_proto)
         if not torch.isfinite(z_core).all():
             raise FloatingPointError("evidence_gate produced non-finite core logits")
+
+        if self.use_uprc:
+            z_final = self._uprc_head(
+                h, pos_proto, neg_proto, pos_sim, neg_sim, proto_margin,
+                ready, z_core, z_base, labels, batch)
+            if self.training:
+                self._update_support_class_prototypes(h, labels)
+            return z_final, labels
 
         # M1 ablation (`evidence_gate_proto`): base decoder + bounded prototype
         # residual only. No structural evidence, no gate. Everything else in the

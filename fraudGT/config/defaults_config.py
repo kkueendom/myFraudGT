@@ -124,3 +124,15 @@ def extended_cfg(cfg):
     cfg.model.dmprd_use_distribution_stats = True
     cfg.model.dmprd_delta_max = 1.0
     cfg.model.dmprd_beta_max = 1.0
+
+    # UPRC: anchor-isolated class-balanced hard-pair rank correction.
+    cfg.model.uprc_hidden_dim = 64
+    cfg.model.uprc_correction_bound = 0.25
+    cfg.model.uprc_locality_floor = 0.10
+    cfg.model.uprc_rank_loss_weight = 1.0
+    cfg.model.uprc_balanced_loss_weight = 0.25
+    cfg.model.uprc_center_loss_weight = 0.01
+    cfg.model.uprc_norm_loss_weight = 1e-3
+    cfg.model.uprc_rank_temperature = 0.25
+    cfg.model.uprc_pair_limit = 128
+    cfg.model.uprc_log_interval = 128

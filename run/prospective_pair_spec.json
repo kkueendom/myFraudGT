@@ -1,16 +1,26 @@
 {
-  "method_tag": "FixedEvalA2",
-  "expected_branch": "protocol/fixed-eval-panel",
+  "method_tag": "UPRC",
+  "expected_branch": "feature/uprc-pairwise-rank-corrector",
   "tasks": [
     ["Small-LI", 42],
     ["Large-LI", 44]
   ],
   "overrides": [
-    "model.edge_decoding", "dmprd",
+    "model.edge_decoding", "uprc",
     "model.dmprd_num_slots", "4",
     "model.dmprd_use_distribution_stats", "False",
     "model.dmprd_delta_max", "1.0",
     "model.dmprd_beta_max", "1.0",
+    "model.uprc_hidden_dim", "64",
+    "model.uprc_correction_bound", "0.25",
+    "model.uprc_locality_floor", "0.10",
+    "model.uprc_rank_loss_weight", "1.0",
+    "model.uprc_balanced_loss_weight", "0.25",
+    "model.uprc_center_loss_weight", "0.01",
+    "model.uprc_norm_loss_weight", "0.001",
+    "model.uprc_rank_temperature", "0.25",
+    "model.uprc_pair_limit", "128",
+    "model.uprc_log_interval", "128",
     "val.fixed_target_panel", "True",
     "val.fixed_panel_seed", "1729"
   ]
