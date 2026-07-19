@@ -191,6 +191,48 @@ def _evidence_gate_aux_loss(model):
     return aux_total
 
 
+def _cpar_training_anchor(model):
+    """Return the one A2 anchor stashed by a CPAR head, if present."""
+    anchors = []
+    for module in model.modules():
+        anchor = getattr(module, '_cpar_anchor_logits', None)
+        if anchor is not None:
+            anchors.append(anchor)
+    if len(anchors) > 1:
+        raise RuntimeError("multiple CPAR heads are not supported")
+    return anchors[0] if anchors else None
+
+
+def _cpar_router_parameters(model):
+    parameters = []
+    for module in model.modules():
+        router = getattr(module, 'cpar_router', None)
+        if router is not None:
+            parameters.extend(
+                parameter for parameter in router.parameters()
+                if parameter.requires_grad)
+    return parameters
+
+
+def _clip_gradients(model, max_norm, separate_cpar=False):
+    if not separate_cpar:
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
+        return
+
+    router_parameters = _cpar_router_parameters(model)
+    router_ids = {id(parameter) for parameter in router_parameters}
+    anchor_parameters = [
+        parameter for parameter in model.parameters()
+        if parameter.requires_grad and id(parameter) not in router_ids
+    ]
+    # Separate clipping is required for a true common-random-number control:
+    # router gradients must not alter the norm of the original A2 update.
+    if anchor_parameters:
+        torch.nn.utils.clip_grad_norm_(anchor_parameters, max_norm)
+    if router_parameters:
+        torch.nn.utils.clip_grad_norm_(router_parameters, max_norm)
+
+
 def train_epoch(cur_epoch, logger, loader, model, optimizer, scheduler, batch_accumulation):
     pbar = tqdm(total=len(loader), disable=not cfg.train.tqdm)
     pbar.set_description(f'Train epoch')
@@ -264,9 +306,17 @@ def train_epoch(cur_epoch, logger, loader, model, optimizer, scheduler, batch_ac
             runtime_stats_cuda.end_region("forward")
             runtime_stats_cuda.start_region("loss", runtime_stats_cuda.get_last_event())
             if cfg.model.loss_fun == 'curriculum_learning_loss':
-                loss, pred_score = compute_loss(pred, true, cur_epoch)
+                reported_loss, pred_score = compute_loss(
+                    pred, true, cur_epoch)
             else:
-                loss, pred_score = compute_loss(pred, true)
+                reported_loss, pred_score = compute_loss(pred, true)
+            cpar_anchor = _cpar_training_anchor(model)
+            if cpar_anchor is None:
+                loss = reported_loss
+            elif cfg.model.loss_fun == 'curriculum_learning_loss':
+                loss, _ = compute_loss(cpar_anchor, true, cur_epoch)
+            else:
+                loss, _ = compute_loss(cpar_anchor, true)
             loss = (
                 loss +
                 _evidence_gate_penalty(model) +
@@ -284,8 +334,9 @@ def train_epoch(cur_epoch, logger, loader, model, optimizer, scheduler, batch_ac
             # Parameters update after accumulating gradients for given num. batches.
             if ((it + 1) % batch_accumulation == 0) or (it + 1 == len(loader)):
                 if cfg.optim.clip_grad_norm:
-                    torch.nn.utils.clip_grad_norm_(model.parameters(),
-                                                cfg.optim.clip_grad_norm_value)
+                    _clip_gradients(
+                        model, cfg.optim.clip_grad_norm_value,
+                        separate_cpar=(cpar_anchor is not None))
                 optimizer.step()
                 optimizer.zero_grad()
             runtime_stats_cuda.end_region("train")

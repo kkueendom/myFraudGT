@@ -1545,17 +1545,14 @@ class HeteroGNNEdgeHead(nn.Module):
                 self.register_buffer(
                     'cpar_action_doses',
                     torch.tensor([0.0, 0.5, 1.0, 1.5]))
-                # h plus nine label-free scalars. This router deliberately does
-                # not inherit cfg.gnn.dropout from the generic GraphGym MLP.
-                self.cpar_router = nn.Sequential(
-                    nn.Linear(dim_in + 9, self.cpar_router_hidden),
-                    nn.GELU(),
-                    nn.Linear(self.cpar_router_hidden, 4),
-                )
-                nn.init.zeros_(self.cpar_router[-1].weight)
-                nn.init.zeros_(self.cpar_router[-1].bias)
+                # Keep the A2 initialization and loader RNG trajectory bitwise
+                # comparable. The router still gets a deterministic random
+                # hidden layer, but constructing it cannot advance global RNG.
+                self.cpar_router = self._cpar_make_router(
+                    dim_in, self.cpar_router_hidden)
                 self._eg_cur_epoch = 0
                 self._eg_gate_penalty = None
+                self._cpar_anchor_logits = None
                 self._cpar_log_step = 0
                 self._cpar_train_log_step = 0
             self._dmprd_log_step = 0
@@ -2134,6 +2131,20 @@ class HeteroGNNEdgeHead(nn.Module):
         ).detach()
         route = 1.0 + range_scale * centered
         return route_logits, gate_probability, route
+
+    @staticmethod
+    def _cpar_make_router(dim_in, hidden):
+        # torch.random.fork_rng restores the caller's CPU RNG state on exit.
+        # Model construction happens on CPU, so no CUDA generator is touched.
+        with torch.random.fork_rng(devices=[]):
+            router = nn.Sequential(
+                nn.Linear(dim_in + 9, hidden),
+                nn.GELU(),
+                nn.Linear(hidden, 4),
+            )
+            nn.init.zeros_(router[-1].weight)
+            nn.init.zeros_(router[-1].bias)
+        return router
 
     def _cpar_route(self, h, z_base, a2_residual, pos_sim, neg_sim,
                     proto_margin, ready):
@@ -4806,6 +4817,7 @@ class HeteroGNNEdgeHead(nn.Module):
             self._campr_advantage = None
             self._campr_advantage_target = None
         if self.use_cpar_k4:
+            self._cpar_anchor_logits = None
             self._cpar_action_losses = None
             self._cpar_oracle_action = None
             self._cpar_action_target = None
@@ -4874,6 +4886,10 @@ class HeteroGNNEdgeHead(nn.Module):
                 a2_residual = (
                     dmprd_beta * ready * dmprd_delta)
                 if self.use_cpar_k4:
+                    # The training loop optimizes this original A2 path. The
+                    # routed logits are used for predictions, while router
+                    # supervision is counterfactual and fully detached from A2.
+                    self._cpar_anchor_logits = z_base + a2_residual
                     (cpar_route_logits, cpar_action_prob,
                      cpar_confidence, cpar_dose) = self._cpar_route(
                         h, z_base, a2_residual, pos_sim, neg_sim,
@@ -4940,7 +4956,7 @@ class HeteroGNNEdgeHead(nn.Module):
                                     action_losses.min(dim=-1).values)
                                 dose_flat = cpar_dose.detach().float().view(-1)
                                 logging.info(
-                                    "[cpar_k4_v2/train] epoch=%d "
+                                    "[cpar_k4_v3/train] epoch=%d "
                                     "aux_active=%s route_aux=%.5f "
                                     "gap_threshold=%.5f | strong=%.3f "
                                     "abstain_neutral=%.3f | strong_action: "
@@ -5118,7 +5134,7 @@ class HeteroGNNEdgeHead(nn.Module):
                             mean_prob = cpar_action_prob.detach().float().mean(
                                 dim=0)
                             logging.info(
-                                "[cpar_k4_v2/%s] beta=%.4f | dose: "
+                                "[cpar_k4_v3/%s] beta=%.4f | dose: "
                                 "mean=%.4f std=%.4f min=%.4f max=%.4f "
                                 "exact_a2=%.3f low=%.3f high=%.3f "
                                 "| confidence: mean=%.4f std=%.4f | "

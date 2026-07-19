@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Two-dataset, 500-epoch formal queue for CPAR-K4 V2.
+"""Two-dataset, 500-epoch formal queue for anchor-decoupled CPAR-K4 V3.
 
 The queue never uses GPU0. By default it may use GPU1-6 and treats processes
 whose command contains ``ocr`` as non-blocking, while retaining a free-memory
-guard. Set CPAR_V2_GPU_ALLOWLIST to pin this pair beside concurrent screens.
+guard. Set CPAR_V3_GPU_ALLOWLIST to pin this pair beside concurrent screens.
 """
 
 import json
@@ -14,27 +14,26 @@ from datetime import datetime
 from pathlib import Path
 
 
-VERSION = "v2"
+VERSION = "v3"
 REPO = Path(os.environ.get(
-    "CPAR_V2_REPO", str(Path(__file__).resolve().parents[1]))).resolve()
+    "CPAR_V3_REPO", str(Path(__file__).resolve().parents[1]))).resolve()
 PYTHON = os.environ.get(
     "FRAUDGT_PYTHON", "/d/miniconda3/envs/fraudGT/bin/python3.9")
-MAX_EPOCH = int(os.environ.get("CPAR_V2_MAX_EPOCH", "500"))
+MAX_EPOCH = int(os.environ.get("CPAR_V3_MAX_EPOCH", "500"))
 DONE_EPOCH = MAX_EPOCH - 1
-POLL_SECONDS = int(os.environ.get("CPAR_V2_POLL_SECONDS", "1200"))
+POLL_SECONDS = int(os.environ.get("CPAR_V3_POLL_SECONDS", "1200"))
 LAUNCH_SETTLE_SECONDS = int(os.environ.get(
-    "CPAR_V2_LAUNCH_SETTLE_SECONDS", "20"))
-MIN_FREE_MIB = int(os.environ.get("CPAR_V2_MIN_FREE_MIB", "9000"))
-MAX_UTIL = int(os.environ.get("CPAR_V2_MAX_UTIL", "15"))
+    "CPAR_V3_LAUNCH_SETTLE_SECONDS", "20"))
+MIN_FREE_MIB = int(os.environ.get("CPAR_V3_MIN_FREE_MIB", "9000"))
+MAX_UTIL = int(os.environ.get("CPAR_V3_MAX_UTIL", "15"))
 GPU_ALLOWLIST = tuple(int(item) for item in os.environ.get(
-    "CPAR_V2_GPU_ALLOWLIST", "1,2,3,4,5,6").split(",") if item.strip())
+    "CPAR_V3_GPU_ALLOWLIST", "1,2,3,4,5,6").split(",") if item.strip())
 IGNORE_PROCESS_PATTERNS = tuple(item.strip().lower() for item in os.environ.get(
-    "CPAR_V2_IGNORE_PROCESS_PATTERNS", "ocr").split(",") if item.strip())
+    "CPAR_V3_IGNORE_PROCESS_PATTERNS", "ocr").split(",") if item.strip())
 EXPECTED_BRANCH = os.environ.get(
-    "CPAR_V2_EXPECTED_BRANCH",
-    "feature/cpar-k4-counterfactual-action-router")
+    "CPAR_V3_EXPECTED_BRANCH", "feature/cpar-k4-crn-safe")
 OUT_BASE = Path(os.environ.get(
-    "CPAR_V2_OUT_BASE", str(REPO / "results"))).resolve()
+    "CPAR_V3_OUT_BASE", str(REPO / "results"))).resolve()
 OUT_DIR = None
 EVENTS = None
 ACTIVE_DIR = None
@@ -70,7 +69,7 @@ def verify_version():
 
 
 def configure_paths(git_sha):
-    """Bind every V2 artifact path to both version and source commit."""
+    """Bind every V3 artifact path to both version and source commit."""
     global OUT_DIR, EVENTS, ACTIVE_DIR, FAILED_DIR
     namespace = f"cpar_k4_{VERSION}_{git_sha}_formal500"
     OUT_DIR = OUT_BASE / namespace
@@ -102,7 +101,7 @@ def rows(path):
 
 def run_stem(dataset, seed, git_sha):
     return (
-        f"AML-{dataset}-CPARK4V2Formal500-full-Seed{seed}-{git_sha}")
+        f"AML-{dataset}-CPARK4V3Formal500-full-Seed{seed}-{git_sha}")
 
 
 def run_dirs(dataset, seed, git_sha):
@@ -267,7 +266,7 @@ def launch(dataset, seed, gpu, git_sha):
         "--cfg", f"configs/evidence_gate_v4/AML-{dataset}.yaml",
         "--repeat", "1", "--gpu", "0",
         "out_dir", str(OUT_DIR),
-        "name_tag", f"CPARK4V2Formal500-full-Seed{seed}-{git_sha}",
+        "name_tag", f"CPARK4V3Formal500-full-Seed{seed}-{git_sha}",
         "seed", str(seed),
         "optim.max_epoch", str(MAX_EPOCH),
         "train.early_stop", "False",
@@ -306,7 +305,7 @@ def main():
     git_sha = verify_version()
     configure_paths(git_sha)
     log(
-        f"CPAR-K4 V2 pair queue start commit={git_sha} "
+        f"CPAR-K4 V3 pair queue start commit={git_sha} "
         f"out={OUT_DIR} max_epoch={MAX_EPOCH} "
         f"tasks={len(TASKS)} gpus={GPU_ALLOWLIST} poll={POLL_SECONDS}s")
     last_wait_state = None
@@ -315,7 +314,7 @@ def main():
         pending = pending_tasks(markers, git_sha)
         if not pending and not markers:
             failures = len(failed_keys(git_sha))
-            log(f"CPAR-K4 V2 pair queue finished failures={failures}")
+            log(f"CPAR-K4 V3 pair queue finished failures={failures}")
             return 1 if failures else 0
 
         launched = False

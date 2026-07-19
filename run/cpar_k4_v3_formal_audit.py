@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit commit-isolated CPAR-K4 V2 runs against matched A2 trajectories."""
+"""Audit anchor-decoupled CPAR-K4 V3 against matched A2 trajectories."""
 
 import argparse
 import json
@@ -78,15 +78,15 @@ def a2_run(root, dataset, seed, epoch_limit):
 def cpar_run(root, dataset, seed, epoch_limit, commit):
     commit_pattern = f"{commit}*" if commit else "*"
     stem = (
-        f"AML-{dataset}-CPARK4V2Formal500-full-Seed{seed}-"
+        f"AML-{dataset}-CPARK4V3Formal500-full-Seed{seed}-"
         f"{commit_pattern}-gpu*")
     # The second pattern permits deliberate OUT_DIR/name-tag overrides while
     # still requiring the V2 method and matched dataset/seed identifiers.
     if commit:
         fallback = (
-            f"AML-{dataset}-*CPARK4V2*full*Seed{seed}*{commit}*-gpu*")
+            f"AML-{dataset}-*CPARK4V3*full*Seed{seed}*{commit}*-gpu*")
     else:
-        fallback = f"AML-{dataset}-*CPARK4V2*full*Seed{seed}*-gpu*"
+        fallback = f"AML-{dataset}-*CPARK4V3*full*Seed{seed}*-gpu*"
     return find_run(root, [stem, fallback], seed, epoch_limit)
 
 
@@ -95,7 +95,7 @@ def current_short_sha(repo):
         ["git", "rev-parse", "--short=8", "HEAD"],
         cwd=str(repo), text=True, capture_output=True, check=False)
     if result.returncode != 0 or not result.stdout.strip():
-        raise RuntimeError("cannot determine CPAR-K4 V2 commit")
+        raise RuntimeError("cannot determine CPAR-K4 V3 commit")
     return result.stdout.strip()
 
 
@@ -118,7 +118,7 @@ def main():
     default_commit = current_short_sha(repo)
     default_cpar = (
         repo / "results" /
-        f"cpar_k4_v2_{default_commit}_formal500")
+        f"cpar_k4_v3_{default_commit}_formal500")
     default_a2 = repo / "results" / "dmprd_formal500"
     shared_a2 = (
         repo.parent / "FraudGT_dmprd_quickcheck" /
@@ -132,7 +132,7 @@ def main():
         "--a2", default=str(default_a2))
     parser.add_argument(
         "--commit", default=default_commit,
-        help="short V2 commit embedded in the result root and run names")
+        help="short V3 commit embedded in the result root and run names")
     parser.add_argument("--epoch-limit", type=int, default=499)
     parser.add_argument("--min-delta", type=float, default=0.005)
     args = parser.parse_args()
@@ -140,10 +140,10 @@ def main():
     cpar_root = Path(args.cpar)
     a2_root = Path(args.a2)
     print(
-        "dataset\tseed\ta2_last\tcpar_v2_last\ta2_val_f1\tcpar_v2_val_f1"
-        "\ta2_selected_test\tcpar_v2_selected_test\tdelta_selected_test"
-        "\ta2_raw_best\tcpar_v2_raw_best\tdelta_raw\ta2_val_epoch"
-        "\tcpar_v2_val_epoch\ta2_raw_epoch\tcpar_v2_raw_epoch")
+        "dataset\tseed\ta2_last\tcpar_v3_last\ta2_val_f1\tcpar_v3_val_f1"
+        "\ta2_selected_test\tcpar_v3_selected_test\tdelta_selected_test"
+        "\ta2_raw_best\tcpar_v3_raw_best\tdelta_raw\ta2_val_epoch"
+        "\tcpar_v3_val_epoch\ta2_raw_epoch\tcpar_v3_raw_epoch")
 
     paired = []
     for dataset, seed in TASKS:
@@ -182,7 +182,7 @@ def main():
             str(cpar["raw_epoch"]) if cpar else "-",
         ]))
 
-    print(f"cpar_k4_v2_pair_go_no_go commit={args.commit}")
+    print(f"cpar_k4_v3_pair_go_no_go commit={args.commit}")
     if paired:
         mean_selected = sum(item[1] for item in paired) / len(paired)
         wins = sum(1 for item in paired if item[1] >= args.min_delta)
@@ -200,11 +200,11 @@ def main():
 
     formal_complete = args.epoch_limit >= 499 and len(paired) == 2
     if not formal_complete:
-        print("cpar_k4_v2_formal_pair_screen=INCOMPLETE")
+        print("cpar_k4_v3_formal_pair_screen=INCOMPLETE")
     elif wins == 2:
-        print("cpar_k4_v2_formal_pair_screen=PASS")
+        print("cpar_k4_v3_formal_pair_screen=PASS")
     else:
-        print("cpar_k4_v2_formal_pair_screen=FAIL")
+        print("cpar_k4_v3_formal_pair_screen=FAIL")
 
 
 if __name__ == "__main__":

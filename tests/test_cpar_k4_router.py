@@ -4,6 +4,10 @@ import torch
 import torch.nn as nn
 
 from fraudGT.head.hetero_edge import HeteroGNNEdgeHead
+from fraudGT.train.custom_train import (
+    _clip_gradients,
+    _cpar_training_anchor,
+)
 
 
 class CparK4RouterTest(unittest.TestCase):
@@ -151,6 +155,35 @@ class CparK4RouterTest(unittest.TestCase):
         self.assertFalse(any(
             isinstance(module, nn.Dropout)
             for module in self.head.cpar_router.modules()))
+
+    def test_router_construction_preserves_global_rng(self):
+        torch.manual_seed(101)
+        expected = torch.rand(8)
+        torch.manual_seed(101)
+        router = HeteroGNNEdgeHead._cpar_make_router(self.dim_in, 8)
+        actual = torch.rand(8)
+        self.assertTrue(torch.equal(actual, expected))
+        self.assertTrue(torch.equal(
+            router[-1].weight, torch.zeros_like(router[-1].weight)))
+
+    def test_anchor_lookup_and_separate_gradient_clipping(self):
+        class DummyModel(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.anchor_weight = nn.Parameter(torch.tensor([3.0]))
+                self.cpar_router = nn.Linear(1, 1, bias=False)
+                self._cpar_anchor_logits = self.anchor_weight.view(1, 1)
+
+        model = DummyModel()
+        self.assertIs(_cpar_training_anchor(model),
+                      model._cpar_anchor_logits)
+        model.anchor_weight.grad = torch.tensor([6.0])
+        model.cpar_router.weight.grad = torch.tensor([[8.0]])
+        _clip_gradients(model, 1.0, separate_cpar=True)
+        self.assertAlmostEqual(
+            model.anchor_weight.grad.norm().item(), 1.0, places=6)
+        self.assertAlmostEqual(
+            model.cpar_router.weight.grad.norm().item(), 1.0, places=6)
 
 
 if __name__ == '__main__':
