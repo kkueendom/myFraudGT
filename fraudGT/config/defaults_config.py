@@ -58,6 +58,10 @@ def extended_cfg(cfg):
     # set, we fixed the evaluation sampling to the same set of batches. So the performance
     # would be evaluated under the same set of data.
     cfg.val.iter_per_epoch = 0
+    # Optional reproducible evaluation panel for sampled AML validation/test.
+    # Disabled by default so historical configs retain their original behavior.
+    cfg.val.fixed_target_panel = False
+    cfg.val.fixed_panel_seed = 1729
 
     # Sampling parameters
     cfg.train.persistent_workers = False

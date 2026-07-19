@@ -1,6 +1,7 @@
 from typing import Callable, List, Optional, Union
 
-import time, copy, random
+import logging
+import time, copy, random, zlib
 import os.path as osp
 import numpy as np
 import torch
@@ -19,13 +20,42 @@ from torch_geometric.loader import (NeighborLoader, GraphSAINTRandomWalkSampler,
 from multiprocessing import Pool
 # from unifiedGT.sampler.hgt_loader import HGTLoader
 
+
+def _fixed_target_panel(mask, panel_size, panel_key, base_seed=1729):
+    """Select a label-independent target panel without advancing global RNG."""
+    target_ids = mask_to_index(mask)
+    panel_size = min(int(panel_size), target_ids.numel())
+    panel_seed = int(base_seed) + zlib.crc32(panel_key.encode('utf-8'))
+    generator = torch.Generator(device='cpu')
+    generator.manual_seed(panel_seed)
+    if panel_size < target_ids.numel():
+        selected = torch.randperm(
+            target_ids.numel(), generator=generator
+        )[:panel_size]
+        target_ids = target_ids[selected.sort().values]
+    panel_mask = torch.zeros_like(mask)
+    panel_mask[target_ids] = True
+    return panel_mask, panel_seed
+
+
 class LoaderWrapper:
-    def __init__(self, dataloader, n_step=-1, split='train'):
+    def __init__(self, dataloader, n_step=-1, split='train',
+                 reset_generator=None):
         self.step = n_step if n_step > 0 else len(dataloader)
         self.idx = 0
         self.loader = dataloader
         self.split = split
-        self.iter_loader = iter(dataloader)
+        self.reset_generator = reset_generator
+        self.reset_generator_state = (
+            reset_generator.get_state().clone()
+            if reset_generator is not None else None
+        )
+        self.iter_loader = self._new_iterator()
+
+    def _new_iterator(self):
+        if self.reset_generator is not None:
+            self.reset_generator.set_state(self.reset_generator_state)
+        return iter(self.loader)
     
     def __iter__(self):
         return self
@@ -41,8 +71,7 @@ class LoaderWrapper:
         if self.idx == self.step or self.idx == len(self.loader):
             self.idx = 0
             if self.split in ['val', 'test']:
-                # Make sure we are always using the same set of data for evaluation
-                self.iter_loader = iter(self.loader)
+                self.iter_loader = self._new_iterator()
             raise StopIteration
         else:
             self.idx += 1
@@ -51,7 +80,7 @@ class LoaderWrapper:
             return next(self.iter_loader)
         except StopIteration:
             # reinstate iter_loader, then continue
-            self.iter_loader = iter(self.loader)
+            self.iter_loader = self._new_iterator()
             return next(self.iter_loader)
     
     def set_step(self, n_step):
@@ -794,6 +823,31 @@ def get_LinkNeighborLoader(dataset, batch_size, shuffle=True, split='train'):
     task = cfg.dataset.task_entity
     data = dataset[split]
     mask = data[task].split_mask
+    reset_generator = None
+    fixed_panel = (
+        split in {'val', 'test'} and
+        bool(getattr(cfg.val, 'fixed_target_panel', False))
+    )
+    if fixed_panel:
+        steps = int(getattr(cfg.val, 'iter_per_epoch', 0))
+        panel_size = int(mask.sum().item())
+        if steps > 0:
+            panel_size = min(panel_size, int(batch_size) * steps)
+        panel_mask, panel_seed = _fixed_target_panel(
+            mask,
+            panel_size,
+            f'{cfg.dataset.name}:{split}',
+            int(getattr(cfg.val, 'fixed_panel_seed', 1729)),
+        )
+        data[task].split_mask = panel_mask
+        mask = panel_mask
+        reset_generator = torch.Generator(device='cpu')
+        reset_generator.manual_seed(panel_seed + 1)
+        logging.info(
+            'Fixed %s panel dataset=%s targets=%d/%d positives=%d seed=%d',
+            split, cfg.dataset.name, int(mask.sum().item()), mask.numel(),
+            int(data[task].y[mask].sum().item()), panel_seed)
+        shuffle = False
     edge_label_index = data[task].edge_index[:, mask]
     edge_label = data[task].y[mask]
     loader_train = \
@@ -807,10 +861,12 @@ def get_LinkNeighborLoader(dataset, batch_size, shuffle=True, split='train'):
                 batch_size=batch_size,
                 num_workers=cfg.num_workers,
                 shuffle=shuffle,
+                generator=reset_generator,
                 transform=AddEgoIdsForLinkNeighbor() if cfg.train.add_ego_id else None
             ),
             getattr(cfg, 'val' if split == 'test' else split).iter_per_epoch,
-            split
+            split,
+            reset_generator=reset_generator,
         )
 
     return loader_train
