@@ -2076,8 +2076,8 @@ class HeteroGNNEdgeHead(nn.Module):
             if valid.any():
                 means = self.td_scar_epoch_sum[valid] / \
                     self.td_scar_epoch_weight[valid].unsqueeze(-1)
-                self.td_scar_recent_bank[valid].copy_(
-                    F.normalize(means, dim=-1, eps=1e-6))
+                self.td_scar_recent_bank[valid] = F.normalize(
+                    means, dim=-1, eps=1e-6)
                 self.td_scar_recent_ready[valid] = 1.0
             self.td_scar_epoch_sum.zero_()
             self.td_scar_epoch_weight.zero_()

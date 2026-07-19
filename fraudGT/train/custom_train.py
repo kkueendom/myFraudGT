@@ -204,6 +204,21 @@ def _td_scar_training_anchor(model):
     return anchors[0] if anchors else None
 
 
+def _td_scar_candidate_loss(logits, labels):
+    """Configured weighted CE with an explicit floating-point weight dtype."""
+    labels = labels.view(-1).long()
+    configured = getattr(cfg.model, 'loss_fun_weight', None)
+    if configured is None or len(configured) == 0:
+        weights = logits.new_ones(max(logits.size(-1), 2))
+    else:
+        weights = logits.new_tensor(configured)
+    if logits.size(-1) == 1:
+        losses = F.binary_cross_entropy_with_logits(
+            logits.view(-1), labels.float(), reduction='none')
+        return (losses * weights[labels]).mean()
+    return F.cross_entropy(logits, labels, weight=weights)
+
+
 def _td_scar_aux_loss(model):
     """Train TD-SCAR experts/router without sending gradients into A2."""
     total = 0.0
@@ -215,8 +230,8 @@ def _td_scar_aux_loss(model):
         route_target = getattr(module, '_td_scar_route_target', None)
         if stable is None or recent is None or labels is None:
             continue
-        stable_loss, _ = compute_loss(stable, labels)
-        recent_loss, _ = compute_loss(recent, labels)
+        stable_loss = _td_scar_candidate_loss(stable, labels)
+        recent_loss = _td_scar_candidate_loss(recent, labels)
         direction_loss = 0.5 * (stable_loss + recent_loss)
         router_loss = direction_loss.new_zeros(())
         if route_logits is not None and route_target is not None:
