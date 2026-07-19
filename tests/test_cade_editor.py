@@ -127,7 +127,7 @@ class CadeEditorTest(unittest.TestCase):
             if had_weight:
                 cfg.model.loss_fun_weight = old_weight
             else:
-                del cfg.model.loss_fun_weight
+                cfg.model.pop('loss_fun_weight', None)
             cfg.device = old_device
         self.assertIsNone(holder.anchor.grad)
         self.assertIsNotNone(holder.branch.grad)
