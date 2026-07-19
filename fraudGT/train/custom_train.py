@@ -191,6 +191,88 @@ def _evidence_gate_aux_loss(model):
     return aux_total
 
 
+def _cade_training_anchor(model):
+    """Return the single A2 anchor stashed by a CADE head."""
+    anchors = [
+        anchor for module in model.modules()
+        for anchor in [getattr(module, '_cade_anchor_logits', None)]
+        if anchor is not None
+    ]
+    if len(anchors) > 1:
+        raise RuntimeError("multiple CADE heads are not supported")
+    return anchors[0] if anchors else None
+
+
+def _cade_aux_loss(model):
+    """Train only CADE direction/quality parameters on detached A2 evidence."""
+    total = 0.0
+    for module in model.modules():
+        aux_logits = getattr(module, '_cade_aux_logits', None)
+        labels = getattr(module, '_cade_aux_labels', None)
+        quality_logit = getattr(module, '_cade_quality_logit', None)
+        quality_target = getattr(module, '_cade_quality_target', None)
+        direction = getattr(module, '_cade_direction', None)
+        if aux_logits is None or labels is None:
+            continue
+
+        direction_loss, _ = compute_loss(aux_logits, labels)
+        quality_loss = direction_loss.new_zeros(())
+        if quality_logit is not None and quality_target is not None:
+            flat_labels = labels.view(-1).long()
+            configured = getattr(cfg.model, 'loss_fun_weight', None)
+            if configured:
+                table = torch.as_tensor(
+                    configured, device=labels.device,
+                    dtype=quality_logit.dtype)
+                sample_weight = table[flat_labels]
+                sample_weight = (
+                    sample_weight / sample_weight.mean().clamp(min=1e-6))
+            else:
+                sample_weight = torch.ones_like(
+                    flat_labels, dtype=quality_logit.dtype)
+            quality_loss = F.binary_cross_entropy_with_logits(
+                quality_logit.view(-1), quality_target.view(-1),
+                reduction='none')
+            quality_loss = (quality_loss * sample_weight).mean()
+
+        norm_loss = direction_loss.new_zeros(())
+        if direction is not None:
+            norm_loss = direction.pow(2).sum(dim=-1).mean()
+        total = total + (
+            float(module.cade_direction_loss_weight) * direction_loss +
+            float(module.cade_quality_loss_weight) * quality_loss +
+            float(module.cade_norm_loss_weight) * norm_loss
+        )
+    return total
+
+
+def _cade_parameters(model):
+    parameters = []
+    for module in model.modules():
+        editor = getattr(module, 'cade_editor', None)
+        if editor is not None:
+            parameters.extend(
+                parameter for parameter in editor.parameters()
+                if parameter.requires_grad)
+    return parameters
+
+
+def _clip_gradients(model, max_norm, isolate_cade=False):
+    if not isolate_cade:
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
+        return
+    branch_parameters = _cade_parameters(model)
+    branch_ids = {id(parameter) for parameter in branch_parameters}
+    anchor_parameters = [
+        parameter for parameter in model.parameters()
+        if parameter.requires_grad and id(parameter) not in branch_ids
+    ]
+    if anchor_parameters:
+        torch.nn.utils.clip_grad_norm_(anchor_parameters, max_norm)
+    if branch_parameters:
+        torch.nn.utils.clip_grad_norm_(branch_parameters, max_norm)
+
+
 def train_epoch(cur_epoch, logger, loader, model, optimizer, scheduler, batch_accumulation):
     pbar = tqdm(total=len(loader), disable=not cfg.train.tqdm)
     pbar.set_description(f'Train epoch')
@@ -264,13 +346,21 @@ def train_epoch(cur_epoch, logger, loader, model, optimizer, scheduler, batch_ac
             runtime_stats_cuda.end_region("forward")
             runtime_stats_cuda.start_region("loss", runtime_stats_cuda.get_last_event())
             if cfg.model.loss_fun == 'curriculum_learning_loss':
-                loss, pred_score = compute_loss(pred, true, cur_epoch)
+                reported_loss, pred_score = compute_loss(pred, true, cur_epoch)
             else:
-                loss, pred_score = compute_loss(pred, true)
+                reported_loss, pred_score = compute_loss(pred, true)
+            cade_anchor = _cade_training_anchor(model)
+            if cade_anchor is None:
+                loss = reported_loss
+            elif cfg.model.loss_fun == 'curriculum_learning_loss':
+                loss, _ = compute_loss(cade_anchor, true, cur_epoch)
+            else:
+                loss, _ = compute_loss(cade_anchor, true)
             loss = (
                 loss +
                 _evidence_gate_penalty(model) +
-                _evidence_gate_aux_loss(model)
+                _evidence_gate_aux_loss(model) +
+                _cade_aux_loss(model)
             )
             _true = true.detach().to('cpu', non_blocking=True)
             _pred = pred_score.detach().to('cpu', non_blocking=True)
@@ -284,8 +374,9 @@ def train_epoch(cur_epoch, logger, loader, model, optimizer, scheduler, batch_ac
             # Parameters update after accumulating gradients for given num. batches.
             if ((it + 1) % batch_accumulation == 0) or (it + 1 == len(loader)):
                 if cfg.optim.clip_grad_norm:
-                    torch.nn.utils.clip_grad_norm_(model.parameters(),
-                                                cfg.optim.clip_grad_norm_value)
+                    _clip_gradients(
+                        model, cfg.optim.clip_grad_norm_value,
+                        isolate_cade=(cade_anchor is not None))
                 optimizer.step()
                 optimizer.zero_grad()
             runtime_stats_cuda.end_region("train")

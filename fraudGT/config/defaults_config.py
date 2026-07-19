@@ -124,3 +124,13 @@ def extended_cfg(cfg):
     cfg.model.dmprd_use_distribution_stats = True
     cfg.model.dmprd_delta_max = 1.0
     cfg.model.dmprd_beta_max = 1.0
+
+    # CADE: isolated signed directional editor on top of the exact A2 anchor.
+    cfg.model.cade_hidden_dim = 64
+    cfg.model.cade_correction_bound = 0.5
+    cfg.model.cade_direction_loss_weight = 0.25
+    cfg.model.cade_quality_loss_weight = 0.10
+    cfg.model.cade_norm_loss_weight = 1e-4
+    cfg.model.cade_advantage_temperature = 0.25
+    cfg.model.cade_advantage_epsilon = 1e-6
+    cfg.model.cade_log_interval = 128

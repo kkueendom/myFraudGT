@@ -12,6 +12,113 @@ from fraudGT.graphgym.config import cfg
 from fraudGT.graphgym.models.layer import MLP
 
 
+class _NoDropoutGELUMLP(nn.Module):
+    """A deterministic two-layer MLP for isolated decoder branches."""
+
+    def __init__(self, dim_in, dim_hidden, dim_out):
+        super().__init__()
+        self.input = nn.Linear(dim_in, dim_hidden)
+        self.output = nn.Linear(dim_hidden, dim_out)
+
+    def forward(self, inputs):
+        return self.output(F.gelu(self.input(inputs)))
+
+
+class CADEEditor(nn.Module):
+    """Counterfactual advantage-guided signed logit editor.
+
+    All evidence inputs are detached inside this module.  The direction and
+    quality networks contain no stochastic layers, and construction restores
+    the caller's RNG state so adding CADE cannot perturb the A2 trajectory.
+    """
+
+    def __init__(self, repr_dim, num_outputs, hidden_dim=64,
+                 correction_bound=0.5):
+        super().__init__()
+        if repr_dim < 1 or num_outputs < 1 or hidden_dim < 1:
+            raise ValueError("CADE dimensions must be positive")
+        if correction_bound <= 0.0:
+            raise ValueError("cade_correction_bound must be positive")
+
+        self.repr_dim = int(repr_dim)
+        self.num_outputs = int(num_outputs)
+        self.correction_bound = float(correction_bound)
+        self.feature_dim = 7 * self.repr_dim + 6
+
+        # CUDA modules are not constructed here, so preserving the CPU stream
+        # is sufficient and avoids eagerly initialising CUDA in data workers.
+        with torch.random.fork_rng(devices=[]):
+            self.direction = _NoDropoutGELUMLP(
+                self.feature_dim, hidden_dim, self.num_outputs)
+            self.quality = _NoDropoutGELUMLP(
+                self.feature_dim + self.num_outputs + 1, hidden_dim, 1)
+            nn.init.zeros_(self.direction.output.weight)
+            nn.init.zeros_(self.direction.output.bias)
+            nn.init.zeros_(self.quality.output.weight)
+            nn.init.zeros_(self.quality.output.bias)
+
+    @staticmethod
+    def _margin(logits):
+        if logits.size(-1) == 1:
+            return logits
+        return logits[:, 1:2] - logits[:, 0:1]
+
+    def evidence_features(self, h, pos_proto, neg_proto, pos_sim, neg_sim,
+                          proto_margin, ready, anchor_logits, base_logits):
+        h = h.detach()
+        pos_proto = pos_proto.detach()
+        neg_proto = neg_proto.detach()
+        scalars = [
+            pos_sim.detach(), neg_sim.detach(), proto_margin.detach(),
+            ready.detach(), self._margin(anchor_logits).detach(),
+            self._margin(base_logits).detach(),
+        ]
+        features = torch.cat([
+            h,
+            pos_proto,
+            neg_proto,
+            h * pos_proto,
+            h * neg_proto,
+            (h - pos_proto).abs(),
+            (h - neg_proto).abs(),
+            *scalars,
+        ], dim=-1)
+        return torch.nan_to_num(features).detach()
+
+    def _bounded_direction(self, features):
+        direction = self.direction(features)
+        # A common shift is unidentifiable for softmax logits.  Removing it
+        # leaves a signed class contrast while preserving the single-logit case.
+        if self.num_outputs > 1:
+            direction = direction - direction.mean(dim=-1, keepdim=True)
+        norm = direction.norm(p=2, dim=-1, keepdim=True)
+        scale = (self.correction_bound /
+                 norm.clamp_min(1e-12)).clamp(max=1.0)
+        return direction * scale
+
+    def forward(self, h, pos_proto, neg_proto, pos_sim, neg_sim,
+                proto_margin, ready, anchor_logits, base_logits):
+        features = self.evidence_features(
+            h, pos_proto, neg_proto, pos_sim, neg_sim, proto_margin, ready,
+            anchor_logits, base_logits)
+        direction = self._bounded_direction(features)
+        direction_norm = direction.norm(p=2, dim=-1, keepdim=True)
+        quality_features = torch.cat([
+            features, direction.detach(), direction_norm.detach()], dim=-1)
+        quality_logit = self.quality(quality_features)
+        quality_probability = torch.sigmoid(quality_logit)
+        quality_weight = F.relu(2.0 * quality_probability - 1.0)
+        final_logits = anchor_logits + quality_weight * direction
+        return {
+            'final_logits': final_logits,
+            'direction': direction,
+            'quality_logit': quality_logit,
+            'quality_probability': quality_probability,
+            'quality_weight': quality_weight,
+            'features': features,
+        }
+
+
 @register_head('hetero_edge')
 class HeteroGNNEdgeHead(nn.Module):
     '''Head of Hetero GNN, edge prediction'''
@@ -34,14 +141,16 @@ class HeteroGNNEdgeHead(nn.Module):
         # diagnostic that applies the same residual expert without a router.
         # `evidence_gate_v4_noproto` removes both the prototype residual and
         # every prototype-derived router input.
+        self.use_cade = (self.edge_decoding == 'cade')
         self.use_evidence_gate = self.edge_decoding in {
             'evidence_gate', 'evidence_gate_proto', 'dmprd',
+            'cade',
             'evidence_gate_v3',
             'evidence_gate_v4_residual', 'evidence_gate_v4_nogate',
             'evidence_gate_v4_noproto'}
-        self.use_dmprd = (self.edge_decoding == 'dmprd')
+        self.use_dmprd = self.edge_decoding in {'dmprd', 'cade'}
         self.eg_proto_only = self.edge_decoding in {
-            'evidence_gate_proto', 'dmprd'}
+            'evidence_gate_proto', 'dmprd', 'cade'}
         self.eg_gate_v3 = (self.edge_decoding == 'evidence_gate_v3')
         self.eg_gate_v4 = self.edge_decoding in {
             'evidence_gate_v4_residual', 'evidence_gate_v4_nogate',
@@ -1447,6 +1556,8 @@ class HeteroGNNEdgeHead(nn.Module):
             if self.dmprd_beta_max <= 0.0:
                 raise ValueError("dmprd_beta_max must be positive")
             self._dmprd_log_step = 0
+            if self.use_cade:
+                self._build_cade(dim_in, dim_out)
             return
 
         # --- higher-order 1-hop structural evidence branch ---
@@ -1523,6 +1634,120 @@ class HeteroGNNEdgeHead(nn.Module):
             self._eg_struct_aux_logits = None
             self._eg_struct_aux_labels = None
             self._eg_struct_aux_scale = 0.0
+
+    def _build_cade(self, dim_in, dim_out):
+        """Build CADE after the complete A2 anchor without advancing RNG."""
+        hidden_dim = int(getattr(cfg.model, 'cade_hidden_dim', 64))
+        correction_bound = float(getattr(
+            cfg.model, 'cade_correction_bound', 0.5))
+        self.cade_direction_loss_weight = float(getattr(
+            cfg.model, 'cade_direction_loss_weight', 0.25))
+        self.cade_quality_loss_weight = float(getattr(
+            cfg.model, 'cade_quality_loss_weight', 0.10))
+        self.cade_norm_loss_weight = float(getattr(
+            cfg.model, 'cade_norm_loss_weight', 1e-4))
+        self.cade_advantage_temperature = float(getattr(
+            cfg.model, 'cade_advantage_temperature', 0.25))
+        self.cade_advantage_epsilon = float(getattr(
+            cfg.model, 'cade_advantage_epsilon', 1e-6))
+        self.cade_log_interval = int(getattr(
+            cfg.model, 'cade_log_interval', 128))
+        if self.cade_direction_loss_weight < 0.0:
+            raise ValueError("cade_direction_loss_weight must be non-negative")
+        if self.cade_quality_loss_weight < 0.0:
+            raise ValueError("cade_quality_loss_weight must be non-negative")
+        if self.cade_norm_loss_weight < 0.0:
+            raise ValueError("cade_norm_loss_weight must be non-negative")
+        if self.cade_advantage_temperature <= 0.0:
+            raise ValueError("cade_advantage_temperature must be positive")
+        if self.cade_advantage_epsilon <= 0.0:
+            raise ValueError("cade_advantage_epsilon must be positive")
+        if self.cade_log_interval < 1:
+            raise ValueError("cade_log_interval must be at least 1")
+
+        # CADEEditor internally uses fork_rng and restores the global CPU RNG.
+        self.cade_editor = CADEEditor(
+            dim_in, dim_out, hidden_dim=hidden_dim,
+            correction_bound=correction_bound)
+        self._cade_log_step = 0
+        self._clear_cade_training_cache()
+
+    def _clear_cade_training_cache(self):
+        self._cade_anchor_logits = None
+        self._cade_aux_logits = None
+        self._cade_aux_labels = None
+        self._cade_quality_logit = None
+        self._cade_quality_target = None
+        self._cade_direction = None
+
+    def _cade_per_sample_loss(self, logits, labels):
+        """Per-example counterpart of the configured weighted CE."""
+        labels = labels.view(-1).long()
+        configured = getattr(cfg.model, 'loss_fun_weight', None)
+        if configured is None or len(configured) == 0:
+            weights = logits.new_ones(max(logits.size(-1), 2))
+        else:
+            weights = logits.new_tensor(configured)
+        if logits.size(-1) == 1:
+            flat_logits = logits.view(-1)
+            losses = F.binary_cross_entropy_with_logits(
+                flat_logits, labels.float(), reduction='none')
+            return losses * weights[labels]
+        return F.cross_entropy(logits, labels, weight=weights,
+                               reduction='none')
+
+    def _cade_head(self, h, pos_proto, neg_proto, pos_sim, neg_sim,
+                   proto_margin, ready, z_anchor, z_base, labels, batch):
+        self._clear_cade_training_cache()
+        result = self.cade_editor(
+            h, pos_proto, neg_proto, pos_sim, neg_sim, proto_margin, ready,
+            z_anchor, z_base)
+        z_final = result['final_logits']
+        if not torch.isfinite(z_final).all():
+            raise FloatingPointError("CADE produced non-finite final logits")
+
+        if self.training:
+            candidate = z_anchor.detach() + result['direction']
+            with torch.no_grad():
+                anchor_loss = self._cade_per_sample_loss(
+                    z_anchor.detach(), labels)
+                candidate_loss = self._cade_per_sample_loss(
+                    candidate.detach(), labels)
+                advantage = (
+                    (anchor_loss - candidate_loss) /
+                    anchor_loss.clamp_min(self.cade_advantage_epsilon))
+                quality_target = torch.sigmoid(
+                    advantage / self.cade_advantage_temperature).unsqueeze(-1)
+            self._cade_anchor_logits = z_anchor
+            self._cade_aux_logits = candidate
+            self._cade_aux_labels = labels
+            self._cade_quality_logit = result['quality_logit']
+            self._cade_quality_target = quality_target.detach()
+            self._cade_direction = result['direction']
+
+        self._cade_log_step += 1
+        if self._cade_log_step % self.cade_log_interval == 1:
+            with torch.no_grad():
+                direction = result['direction'].detach().float()
+                quality = result['quality_weight'].detach().float().view(-1)
+                if direction.size(-1) == 1:
+                    signed = direction.view(-1)
+                else:
+                    signed = direction[:, 1] - direction[:, 0]
+                logging.info(
+                    "[cade/%s] q: mean=%.4f std=%.4f active=%.4f | "
+                    "direction: norm=%.4f pos=%.4f neg=%.4f max=%.4f | "
+                    "ready=%.4f",
+                    getattr(batch, 'split', '?'),
+                    quality.mean().item(),
+                    quality.std(unbiased=False).item(),
+                    (quality > 0.0).float().mean().item(),
+                    direction.norm(p=2, dim=-1).mean().item(),
+                    (signed > 0.0).float().mean().item(),
+                    (signed < 0.0).float().mean().item(),
+                    direction.norm(p=2, dim=-1).max().item(),
+                    ready.detach().float().mean().item())
+        return z_final
 
     def _edge_mask(self, batch):
         task = cfg.dataset.task_entity
@@ -4518,6 +4743,13 @@ class HeteroGNNEdgeHead(nn.Module):
         # residual only. No structural evidence, no gate. Everything else in the
         # forward is identical to v2, so M1 vs v2 differs by exactly this branch.
         if self.eg_proto_only:
+            if self.use_cade:
+                z_final = self._cade_head(
+                    h, pos_proto, neg_proto, pos_sim, neg_sim,
+                    proto_margin, ready, z_core, z_base, labels, batch)
+                if self.training:
+                    self._update_support_class_prototypes(h, labels)
+                return z_final, labels
             if self.use_dmprd and not self.training:
                 self._dmprd_log_step += 1
                 if self._dmprd_log_step % 64 == 1:
