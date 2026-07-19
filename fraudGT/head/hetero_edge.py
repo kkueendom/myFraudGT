@@ -30,7 +30,9 @@ class HeteroGNNEdgeHead(nn.Module):
         # `campr` adds counterfactual-advantage supervision and mean-preserving
         # sample routing on top of that same A2 residual. `cpar_k4` instead
         # predicts one of four counterfactual residual doses and falls back to
-        # the exact A2 dose whenever its action distribution is uniform.
+        # the exact A2 dose whenever its action distribution is uniform. `dabr`
+        # uses the identifiable ternary actions suppress/neutral/amplify while
+        # preserving the same independently optimized A2 anchor.
         # `evidence_gate_v3` is the convex-fusion gate experiment.
         # `evidence_gate_v4_residual` fixes its dead-expert failure mode with a
         # bounded residual structural expert, a nonzero fixed-open warm-up, and
@@ -40,16 +42,17 @@ class HeteroGNNEdgeHead(nn.Module):
         # every prototype-derived router input.
         self.use_evidence_gate = self.edge_decoding in {
             'evidence_gate', 'evidence_gate_proto', 'dmprd', 'campr',
-            'cpar_k4',
+            'cpar_k4', 'dabr',
             'evidence_gate_v3',
             'evidence_gate_v4_residual', 'evidence_gate_v4_nogate',
             'evidence_gate_v4_noproto'}
         self.use_dmprd = self.edge_decoding in {
-            'dmprd', 'campr', 'cpar_k4'}
+            'dmprd', 'campr', 'cpar_k4', 'dabr'}
         self.use_campr = (self.edge_decoding == 'campr')
         self.use_cpar_k4 = (self.edge_decoding == 'cpar_k4')
+        self.use_dabr = (self.edge_decoding == 'dabr')
         self.eg_proto_only = self.edge_decoding in {
-            'evidence_gate_proto', 'dmprd', 'campr', 'cpar_k4'}
+            'evidence_gate_proto', 'dmprd', 'campr', 'cpar_k4', 'dabr'}
         self.eg_gate_v3 = (self.edge_decoding == 'evidence_gate_v3')
         self.eg_gate_v4 = self.edge_decoding in {
             'evidence_gate_v4_residual', 'evidence_gate_v4_nogate',
@@ -1555,6 +1558,52 @@ class HeteroGNNEdgeHead(nn.Module):
                 self._cpar_anchor_logits = None
                 self._cpar_log_step = 0
                 self._cpar_train_log_step = 0
+            if self.use_dabr:
+                self.dabr_aux_weight = float(getattr(
+                    cfg.model, 'dabr_aux_weight', 0.05))
+                self.dabr_aux_start_epoch = int(getattr(
+                    cfg.model, 'dabr_aux_start_epoch', 10))
+                self.dabr_aux_end_epoch = int(getattr(
+                    cfg.model, 'dabr_aux_end_epoch', 150))
+                self.dabr_gap_floor = float(getattr(
+                    cfg.model, 'dabr_gap_floor', 1e-4))
+                self.dabr_gap_threshold = float(getattr(
+                    cfg.model, 'dabr_gap_threshold', 0.005))
+                self.dabr_router_hidden = int(getattr(
+                    cfg.model, 'dabr_router_hidden', 32))
+                self.dabr_route_strength = float(getattr(
+                    cfg.model, 'dabr_route_strength', 0.25))
+                if self.dabr_aux_weight < 0.0:
+                    raise ValueError("dabr_aux_weight must be non-negative")
+                if self.dabr_aux_start_epoch < 0:
+                    raise ValueError(
+                        "dabr_aux_start_epoch must be non-negative")
+                if self.dabr_aux_end_epoch < self.dabr_aux_start_epoch:
+                    raise ValueError(
+                        "dabr_aux_end_epoch must not precede start epoch")
+                if self.dabr_gap_floor <= 0.0:
+                    raise ValueError("dabr_gap_floor must be positive")
+                if self.dabr_gap_threshold <= 0.0:
+                    raise ValueError("dabr_gap_threshold must be positive")
+                if self.dabr_router_hidden < 1:
+                    raise ValueError("dabr_router_hidden must be positive")
+                if not 0.0 < self.dabr_route_strength <= 1.0:
+                    raise ValueError(
+                        "dabr_route_strength must be in (0, 1]")
+                self.register_buffer(
+                    'dabr_action_doses',
+                    torch.tensor([
+                        1.0 - self.dabr_route_strength,
+                        1.0,
+                        1.0 + self.dabr_route_strength,
+                    ]))
+                self.dabr_router = self._dabr_make_router(
+                    dim_in, self.dabr_router_hidden)
+                self._eg_cur_epoch = 0
+                self._eg_gate_penalty = None
+                self._cpar_anchor_logits = None
+                self._dabr_log_step = 0
+                self._dabr_train_log_step = 0
             self._dmprd_log_step = 0
             return
 
@@ -2238,6 +2287,102 @@ class HeteroGNNEdgeHead(nn.Module):
             return torch.ones_like(sample_weights)
         # Each observed group currently sums to one. Renormalizing to mean one
         # preserves equal group totals while keeping auxiliary-loss scale stable.
+        return (
+            balanced / balanced.mean().clamp(min=1e-6)
+        ).detach()
+
+    @staticmethod
+    def _dabr_make_router(dim_in, hidden):
+        with torch.random.fork_rng(devices=[]):
+            router = nn.Sequential(
+                nn.Linear(dim_in + 9, hidden),
+                nn.GELU(),
+                nn.Linear(hidden, 3),
+            )
+            nn.init.zeros_(router[-1].weight)
+            nn.init.zeros_(router[-1].bias)
+        return router
+
+    def _dabr_route(self, h, z_base, a2_residual, pos_sim, neg_sim,
+                    proto_margin, ready):
+        base_margin = self._campr_logit_margin(z_base.detach())
+        residual_margin = self._campr_logit_margin(a2_residual.detach())
+        alignment = torch.sign(base_margin) * torch.sign(residual_margin)
+        route_feat = torch.cat([
+            h.detach(),
+            base_margin,
+            base_margin.abs(),
+            residual_margin,
+            residual_margin.abs(),
+            pos_sim.detach(),
+            neg_sim.detach(),
+            proto_margin.detach(),
+            ready.detach(),
+            alignment,
+        ], dim=-1)
+        route_logits = self.dabr_router(
+            torch.nan_to_num(route_feat).detach())
+        action_prob = F.softmax(route_logits, dim=-1)
+        entropy = -(
+            action_prob * action_prob.clamp(min=1e-8).log()
+        ).sum(dim=-1, keepdim=True)
+        confidence = (
+            1.0 - entropy / math.log(3.0)
+        ).clamp(min=0.0, max=1.0)
+        uniform = torch.full_like(action_prob, 1.0 / 3.0)
+        is_uniform = (action_prob == uniform).all(dim=-1, keepdim=True)
+        confidence = torch.where(
+            is_uniform, torch.zeros_like(confidence), confidence)
+        expected_dose = (
+            action_prob * self.dabr_action_doses.to(action_prob)
+        ).sum(dim=-1, keepdim=True)
+        soft_dose = 1.0 + confidence * (expected_dose - 1.0)
+        neutral_selected = action_prob.argmax(
+            dim=-1, keepdim=True) == 1
+        forward_dose = torch.where(
+            neutral_selected, torch.ones_like(soft_dose), soft_dose)
+        dose = forward_dose.detach() + (soft_dose - soft_dose.detach())
+        return route_logits, action_prob, confidence, dose
+
+    def _dabr_counterfactual_targets(self, z_base, a2_residual, labels):
+        detached_base = z_base.detach()
+        detached_residual = a2_residual.detach()
+        action_losses = torch.stack([
+            self._campr_per_sample_loss(
+                detached_base + action * detached_residual, labels).detach()
+            for action in self.dabr_action_doses.detach()
+        ], dim=-1)
+        sorted_losses, _ = action_losses.sort(dim=-1)
+        best_action = action_losses.argmin(dim=-1).detach()
+        best_gap = (sorted_losses[:, 1] - sorted_losses[:, 0]).detach()
+        loss_scale = action_losses.abs().mean(dim=-1).clamp(
+            min=self.dabr_gap_floor).detach()
+        normalized_gap = (best_gap / loss_scale).detach()
+        strong_mask = (
+            normalized_gap >= self.dabr_gap_threshold).detach()
+        neutral_action = torch.ones_like(best_action)
+        target_action = torch.where(
+            strong_mask, best_action, neutral_action).detach()
+        return (
+            action_losses, best_action, normalized_gap,
+            strong_mask, target_action)
+
+    @staticmethod
+    def _dabr_group_balanced_weights(target_action, sample_weights):
+        target_action = target_action.detach().view(-1).long()
+        sample_weights = sample_weights.detach().view(-1).float()
+        balanced = torch.zeros_like(sample_weights)
+        present_groups = 0
+        for action_idx in range(3):
+            group_mask = target_action == action_idx
+            if not group_mask.any():
+                continue
+            present_groups += 1
+            group_weights = sample_weights[group_mask]
+            balanced[group_mask] = (
+                group_weights / group_weights.sum().clamp(min=1e-6))
+        if present_groups == 0:
+            return torch.ones_like(sample_weights)
         return (
             balanced / balanced.mean().clamp(min=1e-6)
         ).detach()
@@ -4809,7 +4954,8 @@ class HeteroGNNEdgeHead(nn.Module):
     def _evidence_gate_head(self, batch):
         '''Scale-agnostic evidence decoder: z_base (+) bounded prototype core
         (+) uncertainty-gated higher-order structural evidence.'''
-        if self.eg_gate_v4 or self.use_campr or self.use_cpar_k4:
+        if (self.eg_gate_v4 or self.use_campr or self.use_cpar_k4 or
+                self.use_dabr):
             # These tensors belong to one forward pass only. Clearing them here
             # prevents a skipped/failed batch from reusing an old auxiliary loss.
             self._eg_gate_penalty = None
@@ -4823,6 +4969,13 @@ class HeteroGNNEdgeHead(nn.Module):
             self._cpar_action_target = None
             self._cpar_strong_mask = None
             self._cpar_supervision_weight = None
+        if self.use_dabr:
+            self._cpar_anchor_logits = None
+            self._dabr_action_losses = None
+            self._dabr_oracle_action = None
+            self._dabr_action_target = None
+            self._dabr_strong_mask = None
+            self._dabr_supervision_weight = None
         if self.eg_gate_v4:
             self._eg_struct_aux_logits = None
             self._eg_struct_aux_labels = None
@@ -4883,6 +5036,9 @@ class HeteroGNNEdgeHead(nn.Module):
                 cpar_action_prob = None
                 cpar_confidence = torch.zeros_like(ready)
                 cpar_dose = torch.ones_like(ready)
+                dabr_action_prob = None
+                dabr_confidence = torch.zeros_like(ready)
+                dabr_dose = torch.ones_like(ready)
                 a2_residual = (
                     dmprd_beta * ready * dmprd_delta)
                 if self.use_cpar_k4:
@@ -4997,6 +5153,75 @@ class HeteroGNNEdgeHead(nn.Module):
                                     (dose_flat <= 0.05).float().mean().item(),
                                     (dose_flat >= 1.45).float().mean().item(),
                                     ready.detach().float().mean().item())
+                elif self.use_dabr:
+                    self._cpar_anchor_logits = z_base + a2_residual
+                    (dabr_route_logits, dabr_action_prob,
+                     dabr_confidence, dabr_dose) = self._dabr_route(
+                        h, z_base, a2_residual, pos_sim, neg_sim,
+                        proto_margin, ready)
+                    dmprd_reliability_gate = dabr_dose
+                    if self.training:
+                        (action_losses, oracle_action, normalized_gap,
+                         strong_mask, target_action) = (
+                            self._dabr_counterfactual_targets(
+                                z_base, a2_residual, labels))
+                        sample_weights = self._campr_sample_weights(labels)
+                        supervision_weight = (
+                            self._dabr_group_balanced_weights(
+                                target_action, sample_weights))
+                        self._dabr_action_losses = action_losses
+                        self._dabr_oracle_action = oracle_action
+                        self._dabr_action_target = target_action
+                        self._dabr_strong_mask = strong_mask
+                        self._dabr_supervision_weight = supervision_weight
+                        aux_active = (
+                            self.dabr_aux_weight > 0.0 and
+                            self.dabr_aux_start_epoch <= self._eg_cur_epoch <=
+                            self.dabr_aux_end_epoch)
+                        if aux_active:
+                            route_ce = F.cross_entropy(
+                                dabr_route_logits,
+                                target_action,
+                                reduction='none')
+                            route_aux = (
+                                route_ce * supervision_weight).mean()
+                            self._eg_gate_penalty = (
+                                self.dabr_aux_weight * route_aux)
+                        else:
+                            route_aux = dabr_route_logits.new_zeros(())
+                        self._dabr_train_log_step += 1
+                        diagnostic_steps = {
+                            1, 2, 257, 1025, 4097, 16385, 65537,
+                        }
+                        if self._dabr_train_log_step in diagnostic_steps:
+                            with torch.no_grad():
+                                target_fraction = torch.stack([
+                                    (target_action == idx).float().mean()
+                                    for idx in range(3)
+                                ])
+                                dose_flat = dabr_dose.detach().float().view(-1)
+                                logging.info(
+                                    "[dabr/train] epoch=%d aux_active=%s "
+                                    "route_aux=%.5f strength=%.2f "
+                                    "strong=%.3f target=%.3f/%.3f/%.3f "
+                                    "gap_mean=%.5f gap_p90=%.5f "
+                                    "confidence=%.4f dose_mean=%.4f "
+                                    "dose_std=%.4f exact_a2=%.3f",
+                                    self._eg_cur_epoch,
+                                    aux_active,
+                                    route_aux.detach().item(),
+                                    self.dabr_route_strength,
+                                    strong_mask.float().mean().item(),
+                                    target_fraction[0].item(),
+                                    target_fraction[1].item(),
+                                    target_fraction[2].item(),
+                                    normalized_gap.mean().item(),
+                                    torch.quantile(
+                                        normalized_gap, 0.90).item(),
+                                    dabr_confidence.detach().mean().item(),
+                                    dose_flat.mean().item(),
+                                    dose_flat.std(unbiased=False).item(),
+                                    (dose_flat == 1.0).float().mean().item())
                 elif self.use_campr:
                     (campr_route_logits, campr_gate_probability,
                      dmprd_reliability_gate) = self._campr_route(
@@ -5160,6 +5385,48 @@ class HeteroGNNEdgeHead(nn.Module):
                                 action_fraction[3].item(),
                                 mean_prob[0].item(), mean_prob[1].item(),
                                 mean_prob[2].item(), mean_prob[3].item(),
+                                delta_abs.mean().item(),
+                                torch.quantile(delta_abs, 0.90).item(),
+                                margin.mean().item(),
+                                margin.std(unbiased=False).item(),
+                                ready_flat.mean().item())
+                        elif self.use_dabr:
+                            dose_flat = dabr_dose.detach().float().view(-1)
+                            confidence_flat = (
+                                dabr_confidence.detach().float().view(-1))
+                            action_choice = dabr_action_prob.detach().argmax(
+                                dim=-1)
+                            action_fraction = torch.stack([
+                                (action_choice == idx).float().mean()
+                                for idx in range(3)
+                            ])
+                            mean_prob = dabr_action_prob.detach().float().mean(
+                                dim=0)
+                            logging.info(
+                                "[dabr/%s] beta=%.4f strength=%.2f | "
+                                "dose: mean=%.4f std=%.4f min=%.4f "
+                                "max=%.4f exact_a2=%.3f | confidence: "
+                                "mean=%.4f std=%.4f | argmax: "
+                                "suppress=%.3f neutral=%.3f amplify=%.3f "
+                                "| mean_q: %.3f/%.3f/%.3f | "
+                                "delta_abs: mean=%.4f p90=%.4f | "
+                                "proto_margin: mean=%.4f std=%.4f | "
+                                "ready=%.4f",
+                                getattr(batch, 'split', '?'),
+                                dmprd_beta.item(),
+                                self.dabr_route_strength,
+                                dose_flat.mean().item(),
+                                dose_flat.std(unbiased=False).item(),
+                                dose_flat.min().item(),
+                                dose_flat.max().item(),
+                                (dose_flat == 1.0).float().mean().item(),
+                                confidence_flat.mean().item(),
+                                confidence_flat.std(unbiased=False).item(),
+                                action_fraction[0].item(),
+                                action_fraction[1].item(),
+                                action_fraction[2].item(),
+                                mean_prob[0].item(), mean_prob[1].item(),
+                                mean_prob[2].item(),
                                 delta_abs.mean().item(),
                                 torch.quantile(delta_abs, 0.90).item(),
                                 margin.mean().item(),

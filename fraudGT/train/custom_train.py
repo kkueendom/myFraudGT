@@ -206,11 +206,12 @@ def _cpar_training_anchor(model):
 def _cpar_router_parameters(model):
     parameters = []
     for module in model.modules():
-        router = getattr(module, 'cpar_router', None)
-        if router is not None:
-            parameters.extend(
-                parameter for parameter in router.parameters()
-                if parameter.requires_grad)
+        for name in ('cpar_router', 'dabr_router'):
+            router = getattr(module, name, None)
+            if router is not None:
+                parameters.extend(
+                    parameter for parameter in router.parameters()
+                    if parameter.requires_grad)
     return parameters
 
 

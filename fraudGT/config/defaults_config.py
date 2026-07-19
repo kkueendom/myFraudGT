@@ -146,3 +146,12 @@ def extended_cfg(cfg):
     # V2: below this normalized best-vs-second gap, abstain to A2 (dose 1).
     cfg.model.cpar_gap_threshold = 0.005
     cfg.model.cpar_router_hidden = 32
+
+    # DABR: anchor-decoupled ternary suppress/neutral/amplify routing.
+    cfg.model.dabr_aux_weight = 0.05
+    cfg.model.dabr_aux_start_epoch = 10
+    cfg.model.dabr_aux_end_epoch = 150
+    cfg.model.dabr_gap_floor = 1e-4
+    cfg.model.dabr_gap_threshold = 0.005
+    cfg.model.dabr_router_hidden = 32
+    cfg.model.dabr_route_strength = 0.25
