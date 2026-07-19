@@ -124,3 +124,15 @@ def extended_cfg(cfg):
     cfg.model.dmprd_use_distribution_stats = True
     cfg.model.dmprd_delta_max = 1.0
     cfg.model.dmprd_beta_max = 1.0
+
+    # TD-SCAR: isolated stable/recent signed corrections over the exact A2 core.
+    cfg.model.td_scar_hidden_dim = 64
+    cfg.model.td_scar_correction_bound = 0.5
+    cfg.model.td_scar_anchor_bias = 2.0
+    cfg.model.td_scar_direction_loss_weight = 0.25
+    cfg.model.td_scar_router_loss_weight = 0.10
+    cfg.model.td_scar_norm_loss_weight = 1e-4
+    cfg.model.td_scar_advantage_epsilon = 1e-4
+    cfg.model.td_scar_recent_tau_days = 7.0
+    cfg.model.td_scar_evidence_scale = 2.0
+    cfg.model.td_scar_log_interval = 128

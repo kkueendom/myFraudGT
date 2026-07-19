@@ -166,6 +166,8 @@ def _set_evidence_gate_epoch(model, cur_epoch):
     for module in model.modules():
         if hasattr(module, '_eg_cur_epoch'):
             module._eg_cur_epoch = cur_epoch
+        if hasattr(module, '_td_scar_cur_epoch'):
+            module._td_scar_cur_epoch = cur_epoch
 
 
 def _evidence_gate_penalty(model):
@@ -189,6 +191,87 @@ def _evidence_gate_aux_loss(model):
             aux_loss, _ = compute_loss(logits, labels)
             aux_total = aux_total + scale * aux_loss
     return aux_total
+
+
+def _td_scar_training_anchor(model):
+    anchors = [
+        anchor for module in model.modules()
+        for anchor in [getattr(module, '_td_scar_anchor_logits', None)]
+        if anchor is not None
+    ]
+    if len(anchors) > 1:
+        raise RuntimeError("multiple TD-SCAR heads are not supported")
+    return anchors[0] if anchors else None
+
+
+def _td_scar_aux_loss(model):
+    """Train TD-SCAR experts/router without sending gradients into A2."""
+    total = 0.0
+    for module in model.modules():
+        stable = getattr(module, '_td_scar_stable_logits', None)
+        recent = getattr(module, '_td_scar_recent_logits', None)
+        labels = getattr(module, '_td_scar_labels', None)
+        route_logits = getattr(module, '_td_scar_route_logits', None)
+        route_target = getattr(module, '_td_scar_route_target', None)
+        if stable is None or recent is None or labels is None:
+            continue
+        stable_loss, _ = compute_loss(stable, labels)
+        recent_loss, _ = compute_loss(recent, labels)
+        direction_loss = 0.5 * (stable_loss + recent_loss)
+        router_loss = direction_loss.new_zeros(())
+        if route_logits is not None and route_target is not None:
+            flat_labels = labels.view(-1).long()
+            configured = getattr(cfg.model, 'loss_fun_weight', None)
+            if configured:
+                table = torch.as_tensor(
+                    configured, device=labels.device,
+                    dtype=route_logits.dtype)
+                sample_weight = table[flat_labels]
+                sample_weight = (
+                    sample_weight / sample_weight.mean().clamp(min=1e-6))
+            else:
+                sample_weight = torch.ones_like(
+                    flat_labels, dtype=route_logits.dtype)
+            router_loss = F.cross_entropy(
+                route_logits, route_target, reduction='none')
+            router_loss = (router_loss * sample_weight).mean()
+        norm_loss = direction_loss.new_zeros(())
+        for direction in [
+                getattr(module, '_td_scar_stable_direction', None),
+                getattr(module, '_td_scar_recent_direction', None)]:
+            if direction is not None:
+                norm_loss = norm_loss + direction.pow(2).sum(dim=-1).mean()
+        total = total + (
+            float(module.td_scar_direction_loss_weight) * direction_loss +
+            float(module.td_scar_router_loss_weight) * router_loss +
+            float(module.td_scar_norm_loss_weight) * norm_loss)
+    return total
+
+
+def _td_scar_parameters(model):
+    parameters = []
+    for module in model.modules():
+        editor = getattr(module, 'td_scar_editor', None)
+        if editor is not None:
+            parameters.extend(
+                parameter for parameter in editor.parameters()
+                if parameter.requires_grad)
+    return parameters
+
+
+def _clip_gradients(model, max_norm, isolate_td_scar=False):
+    if not isolate_td_scar:
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
+        return
+    branch_parameters = _td_scar_parameters(model)
+    branch_ids = {id(parameter) for parameter in branch_parameters}
+    anchor_parameters = [
+        parameter for parameter in model.parameters()
+        if parameter.requires_grad and id(parameter) not in branch_ids]
+    if anchor_parameters:
+        torch.nn.utils.clip_grad_norm_(anchor_parameters, max_norm)
+    if branch_parameters:
+        torch.nn.utils.clip_grad_norm_(branch_parameters, max_norm)
 
 
 def train_epoch(cur_epoch, logger, loader, model, optimizer, scheduler, batch_accumulation):
@@ -264,13 +347,21 @@ def train_epoch(cur_epoch, logger, loader, model, optimizer, scheduler, batch_ac
             runtime_stats_cuda.end_region("forward")
             runtime_stats_cuda.start_region("loss", runtime_stats_cuda.get_last_event())
             if cfg.model.loss_fun == 'curriculum_learning_loss':
-                loss, pred_score = compute_loss(pred, true, cur_epoch)
+                reported_loss, pred_score = compute_loss(pred, true, cur_epoch)
             else:
-                loss, pred_score = compute_loss(pred, true)
+                reported_loss, pred_score = compute_loss(pred, true)
+            td_scar_anchor = _td_scar_training_anchor(model)
+            if td_scar_anchor is None:
+                loss = reported_loss
+            elif cfg.model.loss_fun == 'curriculum_learning_loss':
+                loss, _ = compute_loss(td_scar_anchor, true, cur_epoch)
+            else:
+                loss, _ = compute_loss(td_scar_anchor, true)
             loss = (
                 loss +
                 _evidence_gate_penalty(model) +
-                _evidence_gate_aux_loss(model)
+                _evidence_gate_aux_loss(model) +
+                _td_scar_aux_loss(model)
             )
             _true = true.detach().to('cpu', non_blocking=True)
             _pred = pred_score.detach().to('cpu', non_blocking=True)
@@ -284,8 +375,9 @@ def train_epoch(cur_epoch, logger, loader, model, optimizer, scheduler, batch_ac
             # Parameters update after accumulating gradients for given num. batches.
             if ((it + 1) % batch_accumulation == 0) or (it + 1 == len(loader)):
                 if cfg.optim.clip_grad_norm:
-                    torch.nn.utils.clip_grad_norm_(model.parameters(),
-                                                cfg.optim.clip_grad_norm_value)
+                    _clip_gradients(
+                        model, cfg.optim.clip_grad_norm_value,
+                        isolate_td_scar=(td_scar_anchor is not None))
                 optimizer.step()
                 optimizer.zero_grad()
             runtime_stats_cuda.end_region("train")

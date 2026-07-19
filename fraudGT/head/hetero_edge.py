@@ -12,6 +12,95 @@ from fraudGT.graphgym.config import cfg
 from fraudGT.graphgym.models.layer import MLP
 
 
+class _TDSCARMLP(nn.Module):
+    """Deterministic two-layer MLP used only by the TD-SCAR branch."""
+
+    def __init__(self, dim_in, dim_hidden, dim_out):
+        super().__init__()
+        self.input = nn.Linear(dim_in, dim_hidden)
+        self.output = nn.Linear(dim_hidden, dim_out)
+
+    def forward(self, inputs):
+        return self.output(F.gelu(self.input(inputs)))
+
+
+class TDSCAREditor(nn.Module):
+    """Signed stable/recent corrections with an anchor-first hard router."""
+
+    def __init__(self, repr_dim, num_outputs, hidden_dim=64,
+                 correction_bound=0.5, anchor_bias=2.0):
+        super().__init__()
+        if min(repr_dim, num_outputs, hidden_dim) < 1:
+            raise ValueError("TD-SCAR dimensions must be positive")
+        if correction_bound <= 0.0:
+            raise ValueError("td_scar_correction_bound must be positive")
+
+        self.num_outputs = int(num_outputs)
+        self.correction_bound = float(correction_bound)
+        self.feature_dim = int(repr_dim) + 7
+        self.router_dim = self.feature_dim + 2 * self.num_outputs + 2
+        with torch.random.fork_rng(devices=[]):
+            self.stable_direction = _TDSCARMLP(
+                self.feature_dim, hidden_dim, self.num_outputs)
+            self.recent_direction = _TDSCARMLP(
+                self.feature_dim, hidden_dim, self.num_outputs)
+            self.router = _TDSCARMLP(self.router_dim, hidden_dim, 3)
+            for expert in [self.stable_direction, self.recent_direction]:
+                nn.init.zeros_(expert.output.weight)
+                nn.init.zeros_(expert.output.bias)
+            nn.init.zeros_(self.router.output.weight)
+            nn.init.zeros_(self.router.output.bias)
+            with torch.no_grad():
+                self.router.output.bias[0] = float(anchor_bias)
+
+    @staticmethod
+    def _margin(logits):
+        if logits.size(-1) == 1:
+            return logits
+        return logits[:, 1:2] - logits[:, 0:1]
+
+    def _bounded(self, direction):
+        if self.num_outputs > 1:
+            direction = direction - direction.mean(dim=-1, keepdim=True)
+        norm = direction.norm(p=2, dim=-1, keepdim=True)
+        scale = (self.correction_bound /
+                 norm.clamp_min(1e-12)).clamp(max=1.0)
+        return direction * scale
+
+    def forward(self, h, stable_evidence, recent_evidence, stable_ready,
+                recent_ready, anchor_logits, base_logits):
+        scalars = [
+            stable_evidence.detach(), recent_evidence.detach(),
+            stable_ready.detach(), recent_ready.detach(),
+            self._margin(anchor_logits).detach(),
+            self._margin(base_logits).detach(),
+            torch.sign(stable_evidence.detach()) *
+            torch.sign(recent_evidence.detach()),
+        ]
+        features = torch.nan_to_num(torch.cat(
+            [h.detach(), *scalars], dim=-1)).detach()
+        stable = self._bounded(self.stable_direction(features)) * stable_ready
+        recent = self._bounded(self.recent_direction(features)) * recent_ready
+        router_features = torch.cat([
+            features, stable.detach(), recent.detach(),
+            stable.norm(p=2, dim=-1, keepdim=True).detach(),
+            recent.norm(p=2, dim=-1, keepdim=True).detach(),
+        ], dim=-1)
+        route_logits = self.router(router_features)
+        route_index = route_logits.argmax(dim=-1)
+        route = F.one_hot(route_index, num_classes=3).to(anchor_logits.dtype)
+        final_logits = (
+            anchor_logits + route[:, 1:2] * stable + route[:, 2:3] * recent)
+        return {
+            'final_logits': final_logits,
+            'stable_direction': stable,
+            'recent_direction': recent,
+            'route_logits': route_logits,
+            'route_index': route_index,
+            'features': features,
+        }
+
+
 @register_head('hetero_edge')
 class HeteroGNNEdgeHead(nn.Module):
     '''Head of Hetero GNN, edge prediction'''
@@ -35,13 +124,14 @@ class HeteroGNNEdgeHead(nn.Module):
         # `evidence_gate_v4_noproto` removes both the prototype residual and
         # every prototype-derived router input.
         self.use_evidence_gate = self.edge_decoding in {
-            'evidence_gate', 'evidence_gate_proto', 'dmprd',
+            'evidence_gate', 'evidence_gate_proto', 'dmprd', 'td_scar',
             'evidence_gate_v3',
             'evidence_gate_v4_residual', 'evidence_gate_v4_nogate',
             'evidence_gate_v4_noproto'}
-        self.use_dmprd = (self.edge_decoding == 'dmprd')
+        self.use_td_scar = (self.edge_decoding == 'td_scar')
+        self.use_dmprd = self.edge_decoding in {'dmprd', 'td_scar'}
         self.eg_proto_only = self.edge_decoding in {
-            'evidence_gate_proto', 'dmprd'}
+            'evidence_gate_proto', 'dmprd', 'td_scar'}
         self.eg_gate_v3 = (self.edge_decoding == 'evidence_gate_v3')
         self.eg_gate_v4 = self.edge_decoding in {
             'evidence_gate_v4_residual', 'evidence_gate_v4_nogate',
@@ -1447,6 +1537,8 @@ class HeteroGNNEdgeHead(nn.Module):
             if self.dmprd_beta_max <= 0.0:
                 raise ValueError("dmprd_beta_max must be positive")
             self._dmprd_log_step = 0
+            if self.use_td_scar:
+                self._build_td_scar(dim_in, dim_out)
             return
 
         # --- higher-order 1-hop structural evidence branch ---
@@ -1523,6 +1615,62 @@ class HeteroGNNEdgeHead(nn.Module):
             self._eg_struct_aux_logits = None
             self._eg_struct_aux_labels = None
             self._eg_struct_aux_scale = 0.0
+
+    def _build_td_scar(self, dim_in, dim_out):
+        """Build the isolated temporal-drift editor after the exact A2 core."""
+        hidden_dim = int(getattr(cfg.model, 'td_scar_hidden_dim', 64))
+        correction_bound = float(getattr(
+            cfg.model, 'td_scar_correction_bound', 0.5))
+        anchor_bias = float(getattr(cfg.model, 'td_scar_anchor_bias', 2.0))
+        self.td_scar_direction_loss_weight = float(getattr(
+            cfg.model, 'td_scar_direction_loss_weight', 0.25))
+        self.td_scar_router_loss_weight = float(getattr(
+            cfg.model, 'td_scar_router_loss_weight', 0.10))
+        self.td_scar_norm_loss_weight = float(getattr(
+            cfg.model, 'td_scar_norm_loss_weight', 1e-4))
+        self.td_scar_advantage_epsilon = float(getattr(
+            cfg.model, 'td_scar_advantage_epsilon', 1e-4))
+        self.td_scar_recent_tau = float(getattr(
+            cfg.model, 'td_scar_recent_tau_days', 7.0)) * 86400.0
+        self.td_scar_evidence_scale = float(getattr(
+            cfg.model, 'td_scar_evidence_scale', 2.0))
+        self.td_scar_log_interval = int(getattr(
+            cfg.model, 'td_scar_log_interval', 128))
+        if min(self.td_scar_direction_loss_weight,
+               self.td_scar_router_loss_weight,
+               self.td_scar_norm_loss_weight) < 0.0:
+            raise ValueError("TD-SCAR loss weights must be non-negative")
+        if min(self.td_scar_recent_tau, self.td_scar_evidence_scale,
+               self.td_scar_advantage_epsilon) <= 0.0:
+            raise ValueError("TD-SCAR scales must be positive")
+        if self.td_scar_log_interval < 1:
+            raise ValueError("td_scar_log_interval must be at least 1")
+
+        self.td_scar_editor = TDSCAREditor(
+            dim_in, dim_out, hidden_dim=hidden_dim,
+            correction_bound=correction_bound, anchor_bias=anchor_bias)
+        self.register_buffer(
+            'td_scar_recent_bank', torch.zeros(2, dim_in))
+        self.register_buffer('td_scar_recent_ready', torch.zeros(2))
+        self.register_buffer(
+            'td_scar_epoch_sum', torch.zeros(2, dim_in))
+        self.register_buffer('td_scar_epoch_weight', torch.zeros(2))
+        self.register_buffer(
+            'td_scar_epoch_max_time', torch.tensor(float('-inf')))
+        self.register_buffer('td_scar_memory_epoch', torch.tensor(-1))
+        self._td_scar_cur_epoch = 0
+        self._td_scar_log_step = 0
+        self._clear_td_scar_training_cache()
+
+    def _clear_td_scar_training_cache(self):
+        self._td_scar_anchor_logits = None
+        self._td_scar_stable_logits = None
+        self._td_scar_recent_logits = None
+        self._td_scar_labels = None
+        self._td_scar_route_logits = None
+        self._td_scar_route_target = None
+        self._td_scar_stable_direction = None
+        self._td_scar_recent_direction = None
 
     def _edge_mask(self, batch):
         task = cfg.dataset.task_entity
@@ -1884,6 +2032,181 @@ class HeteroGNNEdgeHead(nn.Module):
             pos_spread,
             neg_spread,
         )
+
+    def _td_scar_stable_evidence(self, query_repr):
+        """Signed log-mean-exp evidence from A2's four-slot prototype bank."""
+        query = F.normalize(query_repr.detach(), dim=-1, eps=1e-6)
+        scores = []
+        ready_fractions = []
+        temperature = self.support_class_proto_temperature.detach().exp().clamp(
+            min=0.25, max=4.0)
+        for class_idx in [0, 1]:
+            ready_mask = self.support_class_proto_ready[class_idx] > 0
+            count = int(ready_mask.sum().item())
+            ready_fractions.append(
+                query.new_full((query.size(0), 1),
+                               count / float(self.num_class_proto_slots)))
+            if count == 0:
+                scores.append(query.new_zeros((query.size(0), 1)))
+                continue
+            bank = F.normalize(
+                self.support_class_proto_bank[class_idx, ready_mask].detach(),
+                dim=-1, eps=1e-6)
+            similarity = query @ bank.transpose(0, 1)
+            lme = temperature * (
+                torch.logsumexp(similarity / temperature, dim=-1,
+                                keepdim=True) - math.log(float(count)))
+            scores.append(lme)
+        ready = torch.minimum(ready_fractions[0], ready_fractions[1])
+        signed = torch.asinh(
+            self.td_scar_evidence_scale * (scores[1] - scores[0]))
+        return torch.nan_to_num(signed), ready
+
+    def _td_scar_prepare_epoch(self):
+        """Expose only the completed previous epoch to the recent branch."""
+        epoch = int(self._td_scar_cur_epoch)
+        stored = int(self.td_scar_memory_epoch.item())
+        if stored < 0:
+            self.td_scar_memory_epoch.fill_(epoch)
+            return
+        if stored == epoch:
+            return
+        with torch.no_grad():
+            valid = self.td_scar_epoch_weight > 0
+            if valid.any():
+                means = self.td_scar_epoch_sum[valid] / \
+                    self.td_scar_epoch_weight[valid].unsqueeze(-1)
+                self.td_scar_recent_bank[valid].copy_(
+                    F.normalize(means, dim=-1, eps=1e-6))
+                self.td_scar_recent_ready[valid] = 1.0
+            self.td_scar_epoch_sum.zero_()
+            self.td_scar_epoch_weight.zero_()
+            self.td_scar_epoch_max_time.fill_(float('-inf'))
+            self.td_scar_memory_epoch.fill_(epoch)
+
+    def _td_scar_recent_evidence(self, query_repr):
+        query = F.normalize(query_repr.detach(), dim=-1, eps=1e-6)
+        ready = torch.minimum(
+            self.td_scar_recent_ready[0], self.td_scar_recent_ready[1])
+        ready = query.new_full((query.size(0), 1), float(ready.item()))
+        if ready.max().item() == 0.0:
+            return query.new_zeros((query.size(0), 1)), ready
+        bank = F.normalize(self.td_scar_recent_bank.detach(), dim=-1, eps=1e-6)
+        similarity = query @ bank.transpose(0, 1)
+        signed = torch.asinh(
+            self.td_scar_evidence_scale *
+            (similarity[:, 1:2] - similarity[:, 0:1]))
+        return torch.nan_to_num(signed), ready
+
+    def _td_scar_accumulate_recent(self, query_repr, labels, timestamps):
+        """Accumulate a time-decayed class memory after current prediction."""
+        if query_repr.numel() == 0:
+            return
+        with torch.no_grad():
+            representation = F.normalize(
+                query_repr.detach(), dim=-1, eps=1e-6)
+            labels = labels.detach().view(-1).long()
+            if timestamps is None:
+                timestamps = representation.new_zeros(labels.numel())
+            else:
+                timestamps = timestamps.detach().to(
+                    representation.device).float().view(-1)
+            batch_max = timestamps.max()
+            previous_max = self.td_scar_epoch_max_time
+            if torch.isfinite(previous_max) and batch_max > previous_max:
+                rescale = torch.exp(
+                    (previous_max - batch_max) / self.td_scar_recent_tau)
+                self.td_scar_epoch_sum.mul_(rescale)
+                self.td_scar_epoch_weight.mul_(rescale)
+            if not torch.isfinite(previous_max) or batch_max > previous_max:
+                self.td_scar_epoch_max_time.copy_(batch_max)
+            weights = torch.exp(
+                (timestamps - self.td_scar_epoch_max_time) /
+                self.td_scar_recent_tau).clamp(min=1e-6, max=1.0)
+            for class_idx in [0, 1]:
+                mask = labels == class_idx
+                if not mask.any():
+                    continue
+                class_weight = weights[mask]
+                self.td_scar_epoch_sum[class_idx].add_(
+                    (representation[mask] * class_weight.unsqueeze(-1)).sum(0))
+                self.td_scar_epoch_weight[class_idx].add_(class_weight.sum())
+
+    def _td_scar_per_sample_loss(self, logits, labels):
+        labels = labels.view(-1).long()
+        configured = getattr(cfg.model, 'loss_fun_weight', None)
+        if configured is None or len(configured) == 0:
+            weights = logits.new_ones(max(logits.size(-1), 2))
+        else:
+            weights = logits.new_tensor(configured)
+        if logits.size(-1) == 1:
+            losses = F.binary_cross_entropy_with_logits(
+                logits.view(-1), labels.float(), reduction='none')
+            return losses * weights[labels]
+        return F.cross_entropy(
+            logits, labels, weight=weights, reduction='none')
+
+    def _td_scar_head(self, h, z_anchor, z_base, labels, timestamps, batch):
+        self._clear_td_scar_training_cache()
+        if self.training:
+            self._td_scar_prepare_epoch()
+        stable_evidence, stable_ready = self._td_scar_stable_evidence(h)
+        recent_evidence, recent_ready = self._td_scar_recent_evidence(h)
+        result = self.td_scar_editor(
+            h, stable_evidence, recent_evidence, stable_ready, recent_ready,
+            z_anchor, z_base)
+        z_final = result['final_logits']
+        if not torch.isfinite(z_final).all():
+            raise FloatingPointError("TD-SCAR produced non-finite final logits")
+
+        stable_candidate = z_anchor.detach() + result['stable_direction']
+        recent_candidate = z_anchor.detach() + result['recent_direction']
+        if self.training:
+            with torch.no_grad():
+                losses = torch.stack([
+                    self._td_scar_per_sample_loss(z_anchor.detach(), labels),
+                    self._td_scar_per_sample_loss(
+                        stable_candidate.detach(), labels),
+                    self._td_scar_per_sample_loss(
+                        recent_candidate.detach(), labels),
+                ], dim=-1)
+                route_target = losses.argmin(dim=-1)
+                best = losses.gather(1, route_target.unsqueeze(-1)).squeeze(-1)
+                relative_gain = (
+                    (losses[:, 0] - best) /
+                    losses[:, 0].clamp_min(1e-6))
+                route_target = torch.where(
+                    relative_gain >= self.td_scar_advantage_epsilon,
+                    route_target, torch.zeros_like(route_target))
+            self._td_scar_anchor_logits = z_anchor
+            self._td_scar_stable_logits = stable_candidate
+            self._td_scar_recent_logits = recent_candidate
+            self._td_scar_labels = labels
+            self._td_scar_route_logits = result['route_logits']
+            self._td_scar_route_target = route_target
+            self._td_scar_stable_direction = result['stable_direction']
+            self._td_scar_recent_direction = result['recent_direction']
+            self._td_scar_accumulate_recent(h, labels, timestamps)
+
+        self._td_scar_log_step += 1
+        if (not self.training and
+                self._td_scar_log_step % self.td_scar_log_interval == 1):
+            with torch.no_grad():
+                route = result['route_index'].detach()
+                stable = result['stable_direction'].detach()
+                recent = result['recent_direction'].detach()
+                logging.info(
+                    "[td_scar/%s] route anchor=%.3f stable=%.3f recent=%.3f "
+                    "| norm stable=%.4f recent=%.4f | ready stable=%.3f "
+                    "recent=%.3f",
+                    getattr(batch, 'split', '?'),
+                    (route == 0).float().mean().item(),
+                    (route == 1).float().mean().item(),
+                    (route == 2).float().mean().item(),
+                    stable.norm(dim=-1).mean().item(),
+                    recent.norm(dim=-1).mean().item(),
+                    stable_ready.mean().item(), recent_ready.mean().item())
+        return z_final
 
     def _cosine_feature(self, left_repr, right_repr):
         if left_repr is None or right_repr is None:
@@ -4513,6 +4836,16 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.sigmoid(self.eg_proto_alpha) * ready * z_proto)
         if not torch.isfinite(z_core).all():
             raise FloatingPointError("evidence_gate produced non-finite core logits")
+
+        if self.use_td_scar:
+            timestamps = (
+                batch[task].timestamps[mask]
+                if hasattr(batch[task], 'timestamps') else None)
+            z_final = self._td_scar_head(
+                h, z_core, z_base, labels, timestamps, batch)
+            if self.training:
+                self._update_support_class_prototypes(h, labels)
+            return z_final, labels
 
         # M1 ablation (`evidence_gate_proto`): base decoder + bounded prototype
         # residual only. No structural evidence, no gate. Everything else in the
