@@ -46,18 +46,22 @@ zero initialized, making the initial model bit-exact A2.
 
 Within each training batch, UPRC deterministically selects the lowest-scored
 positives and highest-scored negatives under detached A2. For up to 128 examples
-per class, it minimizes a pairwise logistic ranking loss:
+per class, it maximizes the candidate's pairwise margin gain over A2:
 
 \[
 L_{rank}=\frac{1}{|P||N|}\sum_{p\in P,n\in N}
-\operatorname{softplus}\left(-\frac{s_p-s_n}{0.25}\right).
+\operatorname{softplus}\left(
+-\frac{(s_p-s_n)-(s_p^A-s_n^A)}{0.25}\right).
 \]
 
-A class-balanced point loss supplies a stable signal even when only a few hard
-pairs are available. Small center and norm penalties discourage dataset-level
-constant shifts and oversized corrections. Unlike ordinary weighted CE, the
-pairwise gradient simultaneously pushes hard positives upward and hard negatives
-downward, so a one-sign collapse cannot optimize the main branch objective.
+A class-balanced point loss applies the same counterfactual-gain principle per
+example and supplies a stable signal even when only a few hard pairs are
+available. Small center and norm penalties discourage dataset-level constant
+shifts and oversized corrections. Unlike ordinary weighted CE, the pairwise
+gradient simultaneously pushes hard positives upward and hard negatives
+downward, so a one-sign collapse cannot optimize the main branch objective. A
+smooth radial squash bounds the correction while retaining gradient beyond the
+nominal bound.
 
 ## Isolation And Gate
 

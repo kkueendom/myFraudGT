@@ -224,21 +224,28 @@ def _uprc_hard_pair_rank_loss(anchor, candidate, labels, pair_limit,
     negative = negative[
         anchor_score[negative].argsort(descending=True)[:pair_limit]]
     score = _uprc_margin(candidate)
-    difference = score[positive].unsqueeze(1) - score[negative].unsqueeze(0)
-    return F.softplus(-difference / temperature).mean()
+    candidate_gap = (
+        score[positive].unsqueeze(1) - score[negative].unsqueeze(0))
+    anchor_gap = (
+        anchor_score[positive].unsqueeze(1) -
+        anchor_score[negative].unsqueeze(0))
+    rank_gain = candidate_gap - anchor_gap
+    return F.softplus(-rank_gain / temperature).mean()
 
 
-def _uprc_balanced_point_loss(candidate, labels):
+def _uprc_balanced_point_loss(anchor, candidate, labels):
     labels = labels.view(-1).long()
-    score = _uprc_margin(candidate)
+    score_gain = _uprc_margin(candidate) - _uprc_margin(anchor).detach()
     losses = []
     positive = labels == 1
     negative = labels == 0
     if positive.any():
-        losses.append(F.softplus(-score[positive]).mean())
+        losses.append(F.softplus(-score_gain[positive]).mean())
     if negative.any():
-        losses.append(F.softplus(score[negative]).mean())
-    return torch.stack(losses).mean() if losses else score.sum() * 0.0
+        losses.append(F.softplus(score_gain[negative]).mean())
+    return (
+        torch.stack(losses).mean()
+        if losses else score_gain.sum() * 0.0)
 
 
 def _uprc_aux_loss(model):
@@ -254,7 +261,7 @@ def _uprc_aux_loss(model):
         rank_loss = _uprc_hard_pair_rank_loss(
             anchor, candidate, labels, int(module.uprc_pair_limit),
             float(module.uprc_rank_temperature))
-        balanced_loss = _uprc_balanced_point_loss(candidate, labels)
+        balanced_loss = _uprc_balanced_point_loss(anchor, candidate, labels)
         center_loss = candidate.new_zeros(())
         norm_loss = candidate.new_zeros(())
         if correction is not None:

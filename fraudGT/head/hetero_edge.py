@@ -56,8 +56,8 @@ class UPRCEditor(nn.Module):
         if self.num_outputs > 1:
             direction = direction - direction.mean(dim=-1, keepdim=True)
         norm = direction.norm(p=2, dim=-1, keepdim=True)
-        scale = (self.correction_bound /
-                 norm.clamp_min(1e-12)).clamp(max=1.0)
+        # Smooth radial squashing retains gradient beyond the nominal bound.
+        scale = self.correction_bound / (self.correction_bound + norm)
         return direction * scale
 
     def forward(self, h, pos_proto, neg_proto, pos_sim, neg_sim,
@@ -1666,7 +1666,7 @@ class HeteroGNNEdgeHead(nn.Module):
             self._uprc_correction = result['correction']
 
         self._uprc_log_step += 1
-        if self._uprc_log_step % self.uprc_log_interval == 1:
+        if (self._uprc_log_step - 1) % self.uprc_log_interval == 0:
             with torch.no_grad():
                 correction = result['correction'].detach().float()
                 if correction.size(-1) == 1:

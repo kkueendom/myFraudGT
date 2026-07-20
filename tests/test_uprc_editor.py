@@ -56,6 +56,17 @@ class UPRCEditorTest(unittest.TestCase):
         self.assertTrue((negative < 0).all())
         self.assertTrue((negative.norm(dim=-1) <= 0.250001).all())
 
+    def test_smooth_bound_retains_gradient_for_large_direction(self):
+        inputs = list(self.inputs())
+        inputs[-2] = torch.zeros_like(inputs[-2])
+        with torch.no_grad():
+            self.editor.direction.output.bias.fill_(100.0)
+        correction = self.editor(*inputs)['correction']
+        correction.sum().backward()
+        gradient = self.editor.direction.output.bias.grad
+        self.assertIsNotNone(gradient)
+        self.assertGreater(gradient.abs().item(), 0.0)
+
     def test_partition_and_order_do_not_change_outputs(self):
         inputs = self.inputs()
         with torch.no_grad():
