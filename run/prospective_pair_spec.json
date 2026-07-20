@@ -14,6 +14,7 @@
     "model.uprc_hidden_dim", "64",
     "model.uprc_correction_bound", "0.25",
     "model.uprc_locality_floor", "0.10",
+    "model.uprc_evidence_temperature", "0.10",
     "model.uprc_rank_loss_weight", "1.0",
     "model.uprc_balanced_loss_weight", "0.25",
     "model.uprc_center_loss_weight", "0.01",

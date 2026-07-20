@@ -27,8 +27,14 @@ z_i^A=z_i^{base}+r_i^A.
 
 UPRC reads detached edge, positive/negative prototype, similarity, readiness,
 A2/base margin, uncertainty, and A2/base agreement features. A deterministic
-no-dropout expert proposes an L2-bounded direction `d_i`. The correction is
-localized by A2 uncertainty and prototype readiness:
+no-dropout expert proposes an L2-bounded amplitude `a_i`. A signed prototype
+direction prevents the dataset-level one-sign collapse observed in CADE:
+
+\[
+e_i=\tanh\left(\frac{sim_i^{pos}-sim_i^{neg}}{0.1}\right).
+\]
+
+The correction is localized by A2 uncertainty and prototype readiness:
 
 \[
 u_i=4\sigma(m_i^A)(1-\sigma(m_i^A)),\qquad
@@ -36,11 +42,14 @@ u_i=4\sigma(m_i^A)(1-\sigma(m_i^A)),\qquad
 \]
 
 \[
-\boxed{z_i^{final}=z_i^A+\ell_i q_i d_i,\quad \lVert d_i\rVert_2\le0.25.}
+\boxed{z_i^{final}=z_i^A+\ell_i q_i e_i a_i,
+\quad \lVert a_i\rVert_2<0.25.}
 \]
 
-Here `q_i` is prototype readiness, not a learned gate. The direction output is
-zero initialized, making the initial model bit-exact A2.
+Here `q_i` is prototype readiness, not a learned gate. The amplitude output is
+zero initialized, making the initial model bit-exact A2. When positive and
+negative prototype evidence are both present, one constant amplitude cannot
+collapse all corrections to the same sign.
 
 ## Rare-Event Ranking Objective
 

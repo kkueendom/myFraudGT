@@ -28,7 +28,8 @@ class UPRCEditor(nn.Module):
     """Uncertainty-localized prototype-conditioned signed correction."""
 
     def __init__(self, repr_dim, num_outputs, hidden_dim=64,
-                 correction_bound=0.25, locality_floor=0.10):
+                 correction_bound=0.25, locality_floor=0.10,
+                 evidence_temperature=0.10):
         super().__init__()
         if min(repr_dim, num_outputs, hidden_dim) < 1:
             raise ValueError("UPRC dimensions must be positive")
@@ -36,9 +37,12 @@ class UPRCEditor(nn.Module):
             raise ValueError("uprc_correction_bound must be positive")
         if not 0.0 <= locality_floor <= 1.0:
             raise ValueError("uprc_locality_floor must be in [0, 1]")
+        if evidence_temperature <= 0.0:
+            raise ValueError("uprc_evidence_temperature must be positive")
         self.num_outputs = int(num_outputs)
         self.correction_bound = float(correction_bound)
         self.locality_floor = float(locality_floor)
+        self.evidence_temperature = float(evidence_temperature)
         self.feature_dim = 7 * int(repr_dim) + 8
         with torch.random.fork_rng(devices=[]):
             self.direction = _UPRCMLP(
@@ -81,12 +85,16 @@ class UPRCEditor(nn.Module):
         ], dim=-1)
         features = torch.nan_to_num(features).detach()
         raw_direction = self._bounded(self.direction(features))
-        correction = raw_direction * locality * ready.detach()
+        evidence_direction = torch.tanh(
+            proto_margin.detach() / self.evidence_temperature)
+        correction = (
+            raw_direction * locality * ready.detach() * evidence_direction)
         return {
             'final_logits': anchor_logits + correction,
             'correction': correction,
             'raw_direction': raw_direction,
             'locality': locality,
+            'evidence_direction': evidence_direction,
             'features': features,
         }
 
@@ -1613,6 +1621,8 @@ class HeteroGNNEdgeHead(nn.Module):
             cfg.model, 'uprc_correction_bound', 0.25))
         locality_floor = float(getattr(
             cfg.model, 'uprc_locality_floor', 0.10))
+        evidence_temperature = float(getattr(
+            cfg.model, 'uprc_evidence_temperature', 0.10))
         self.uprc_rank_loss_weight = float(getattr(
             cfg.model, 'uprc_rank_loss_weight', 1.0))
         self.uprc_balanced_loss_weight = float(getattr(
@@ -1639,7 +1649,8 @@ class HeteroGNNEdgeHead(nn.Module):
         self.uprc_editor = UPRCEditor(
             dim_in, dim_out, hidden_dim=hidden_dim,
             correction_bound=correction_bound,
-            locality_floor=locality_floor)
+            locality_floor=locality_floor,
+            evidence_temperature=evidence_temperature)
         self._uprc_log_step = 0
         self._clear_uprc_training_cache()
 
@@ -1669,6 +1680,7 @@ class HeteroGNNEdgeHead(nn.Module):
         if (self._uprc_log_step - 1) % self.uprc_log_interval == 0:
             with torch.no_grad():
                 correction = result['correction'].detach().float()
+                evidence = result['evidence_direction'].detach().float().view(-1)
                 if correction.size(-1) == 1:
                     signed = correction.view(-1)
                 else:
@@ -1676,6 +1688,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 logging.info(
                     "[uprc/%s] correction: mean=%.4f std=%.4f "
                     "abs=%.4f pos=%.3f neg=%.3f max_norm=%.4f | "
+                    "evidence_pos=%.3f evidence_neg=%.3f | "
                     "locality=%.4f ready=%.4f",
                     getattr(batch, 'split', '?'),
                     signed.mean().item(), signed.std(unbiased=False).item(),
@@ -1683,6 +1696,8 @@ class HeteroGNNEdgeHead(nn.Module):
                     (signed > 0.0).float().mean().item(),
                     (signed < 0.0).float().mean().item(),
                     correction.norm(dim=-1).max().item(),
+                    (evidence > 0.0).float().mean().item(),
+                    (evidence < 0.0).float().mean().item(),
                     result['locality'].mean().item(), ready.mean().item())
         return z_final
 

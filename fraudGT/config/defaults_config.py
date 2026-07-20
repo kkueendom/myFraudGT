@@ -129,6 +129,7 @@ def extended_cfg(cfg):
     cfg.model.uprc_hidden_dim = 64
     cfg.model.uprc_correction_bound = 0.25
     cfg.model.uprc_locality_floor = 0.10
+    cfg.model.uprc_evidence_temperature = 0.10
     cfg.model.uprc_rank_loss_weight = 1.0
     cfg.model.uprc_balanced_loss_weight = 0.25
     cfg.model.uprc_center_loss_weight = 0.01

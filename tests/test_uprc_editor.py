@@ -44,7 +44,8 @@ class UPRCEditorTest(unittest.TestCase):
             output['correction'], torch.zeros_like(output['correction'])))
 
     def test_signed_correction_is_bounded(self):
-        inputs = self.inputs()
+        inputs = list(self.inputs())
+        inputs[5] = torch.ones_like(inputs[5])
         with torch.no_grad():
             self.editor.direction.output.bias.fill_(3.0)
         positive = self.editor(*inputs)['correction']
@@ -56,9 +57,23 @@ class UPRCEditorTest(unittest.TestCase):
         self.assertTrue((negative < 0).all())
         self.assertTrue((negative.norm(dim=-1) <= 0.250001).all())
 
+    def test_prototype_evidence_structurally_produces_both_signs(self):
+        inputs = list(self.inputs())
+        split = inputs[0].size(0) // 2
+        inputs[5] = torch.cat([
+            torch.ones(split, 1),
+            -torch.ones(inputs[0].size(0) - split, 1),
+        ])
+        with torch.no_grad():
+            self.editor.direction.output.bias.fill_(1.0)
+        correction = self.editor(*inputs)['correction'].view(-1)
+        self.assertTrue((correction[:split] > 0).all())
+        self.assertTrue((correction[split:] < 0).all())
+
     def test_smooth_bound_retains_gradient_for_large_direction(self):
         inputs = list(self.inputs())
         inputs[-2] = torch.zeros_like(inputs[-2])
+        inputs[5] = torch.ones_like(inputs[5])
         with torch.no_grad():
             self.editor.direction.output.bias.fill_(100.0)
         correction = self.editor(*inputs)['correction']
