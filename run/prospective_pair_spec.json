@@ -1,6 +1,6 @@
 {
-  "method_tag": "UPRC",
-  "expected_branch": "feature/uprc-pairwise-rank-corrector",
+  "method_tag": "UPRCGlobal",
+  "expected_branch": "feature/uprc-global-locality",
   "tasks": [
     ["Small-LI", 42],
     ["Large-LI", 44]
@@ -13,7 +13,7 @@
     "model.dmprd_beta_max", "1.0",
     "model.uprc_hidden_dim", "64",
     "model.uprc_correction_bound", "0.25",
-    "model.uprc_locality_floor", "0.10",
+    "model.uprc_locality_floor", "1.00",
     "model.uprc_evidence_temperature", "0.10",
     "model.uprc_rank_loss_weight", "1.0",
     "model.uprc_balanced_loss_weight", "0.25",
