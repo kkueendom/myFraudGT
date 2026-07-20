@@ -21,7 +21,7 @@ class ProspectivePairQueueTest(unittest.TestCase):
         stem = queue.run_stem('Small-LI', 42, 'deadbeef')
         self.assertEqual(
             stem,
-            'AML-Small-LI-UPRCPair500-Seed42-deadbeef')
+            'AML-Small-LI-UPRCMidPair500-Seed42-deadbeef')
 
 
 if __name__ == '__main__':
