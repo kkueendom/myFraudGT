@@ -2,6 +2,7 @@ import unittest
 
 import torch
 
+from fraudGT.graphgym.config import cfg
 from fraudGT.train.custom_train import (
     _epra_hard_pair_rank_loss,
     _epra_proto_alignment_loss,
@@ -9,6 +10,11 @@ from fraudGT.train.custom_train import (
 
 
 class EPRALossTest(unittest.TestCase):
+    def test_epra_config_keys_are_registered(self):
+        self.assertEqual(cfg.model.epra_rank_loss_weight, 0.05)
+        self.assertEqual(cfg.model.epra_rank_margin, 0.50)
+        self.assertEqual(cfg.model.epra_pair_limit, 128)
+
     def test_rank_loss_pushes_hard_pairs_in_correct_direction(self):
         logits = torch.nn.Parameter(torch.zeros(4, 2))
         labels = torch.tensor([1, 1, 0, 0])
