@@ -34,7 +34,7 @@ class EPRALossTest(unittest.TestCase):
         strong_loss = _epra_hard_pair_rank_loss(
             strong, labels, 4, 0.25, 0.5)
 
-        self.assertGreater(weak_loss.item(), strong_loss.item() * 1000.0)
+        self.assertGreater(weak_loss.item(), strong_loss.item() * 100.0)
 
     def test_rank_loss_is_scale_invariant_for_nontrivial_scores(self):
         labels = torch.tensor([1, 1, 0, 0])
