@@ -166,6 +166,8 @@ def _set_evidence_gate_epoch(model, cur_epoch):
     for module in model.modules():
         if hasattr(module, '_eg_cur_epoch'):
             module._eg_cur_epoch = cur_epoch
+        if hasattr(module, '_cfrcr_cur_epoch'):
+            module._cfrcr_cur_epoch = cur_epoch
 
 
 def _evidence_gate_penalty(model):
@@ -189,6 +191,118 @@ def _evidence_gate_aux_loss(model):
             aux_loss, _ = compute_loss(logits, labels)
             aux_total = aux_total + scale * aux_loss
     return aux_total
+
+
+def _cfrcr_pair_regret(base_scores, candidate_scores, labels, pair_limit,
+                       temperature, target_margin, gain_target):
+    """Finite non-inferiority target on the same hard pairs for A2/candidate."""
+    labels = labels.view(-1).long()
+    positive = (labels == 1).nonzero(as_tuple=False).view(-1)
+    negative = (labels == 0).nonzero(as_tuple=False).view(-1)
+    if positive.numel() == 0 or negative.numel() == 0:
+        return candidate_scores.sum() * 0.0, False
+    reference = base_scores.detach()
+    positive = positive[reference[positive].argsort()[:pair_limit]]
+    negative = negative[
+        reference[negative].argsort(descending=True)[:pair_limit]]
+    score_scale = reference.std(unbiased=False).clamp(min=1.0)
+
+    def rank_loss(scores):
+        gaps = (
+            scores[positive].unsqueeze(1) -
+            scores[negative].unsqueeze(0)
+        ) / score_scale
+        return (
+            temperature *
+            F.softplus((target_margin - gaps) / temperature)
+        ).mean()
+
+    base_loss = rank_loss(reference)
+    candidate_loss = rank_loss(candidate_scores)
+    return F.relu(candidate_loss - base_loss + gain_target), True
+
+
+def _cfrcr_aux_loss(model):
+    """Train each residual expert without labels from its held-out time bin."""
+    total = 0.0
+    for module in model.modules():
+        base = getattr(module, '_cfrcr_base_margin', None)
+        corrections = getattr(module, '_cfrcr_corrections', None)
+        labels = getattr(module, '_cfrcr_labels', None)
+        env_ids = getattr(module, '_cfrcr_env_ids', None)
+        if any(item is None for item in (base, corrections, labels, env_ids)):
+            continue
+        epoch = int(getattr(module, '_cfrcr_cur_epoch', 0))
+        warmup = int(module.cfrcr_warmup_epochs)
+        if epoch < warmup:
+            scale = 0.0
+        else:
+            scale = min(
+                1.0,
+                float(epoch - warmup + 1) /
+                float(module.cfrcr_ramp_epochs))
+
+        expert_losses = []
+        active_groups = 0
+        regret_sum = base.new_zeros(())
+        for expert_idx in range(module.cfrcr_num_experts):
+            included = (env_ids != expert_idx)
+            candidate = base + corrections[:, expert_idx]
+            global_regret, valid = _cfrcr_pair_regret(
+                base[included], candidate[included], labels[included],
+                int(module.cfrcr_pair_limit),
+                float(module.cfrcr_rank_temperature),
+                float(module.cfrcr_rank_margin),
+                float(module.cfrcr_gain_target))
+            group_regrets = []
+            for env_idx in range(module.cfrcr_num_experts):
+                if env_idx == expert_idx:
+                    continue
+                group = (env_ids == env_idx)
+                group_regret, group_valid = _cfrcr_pair_regret(
+                    base[group], candidate[group], labels[group],
+                    int(module.cfrcr_pair_limit),
+                    float(module.cfrcr_rank_temperature),
+                    float(module.cfrcr_rank_margin),
+                    float(module.cfrcr_gain_target))
+                if group_valid:
+                    group_regrets.append(group_regret)
+                    active_groups += 1
+            if not valid:
+                expert_losses.append(corrections[:, expert_idx].sum() * 0.0)
+                continue
+            worst_group = (
+                torch.stack(group_regrets).max()
+                if group_regrets else global_regret.new_zeros(()))
+            l2 = corrections[included, expert_idx].square().mean()
+            expert_loss = (
+                global_regret +
+                float(module.cfrcr_worst_group_weight) * worst_group +
+                float(module.cfrcr_l2_weight) * l2)
+            expert_losses.append(expert_loss)
+            regret_sum = regret_sum + global_regret.detach()
+
+        if expert_losses:
+            committee_loss = torch.stack(expert_losses).mean()
+            total = total + (
+                scale * float(module.cfrcr_aux_weight) * committee_loss)
+        else:
+            committee_loss = base.sum() * 0.0
+
+        module._cfrcr_log_step += 1
+        if (module._cfrcr_log_step - 1) % module.cfrcr_log_interval == 0:
+            with torch.no_grad():
+                active_experts = sum(
+                    bool((env_ids != idx).any().item())
+                    for idx in range(module.cfrcr_num_experts))
+                logging.info(
+                    "[cfrcr/train] epoch=%d scale=%.3f loss=%.5f "
+                    "global_regret_sum=%.5f active_experts=%d "
+                    "active_groups=%d correction_abs=%.5f",
+                    epoch, scale, committee_loss.item(), regret_sum.item(),
+                    active_experts, active_groups,
+                    corrections.detach().abs().mean().item())
+    return total
 
 
 def train_epoch(cur_epoch, logger, loader, model, optimizer, scheduler, batch_accumulation):
@@ -270,7 +384,8 @@ def train_epoch(cur_epoch, logger, loader, model, optimizer, scheduler, batch_ac
             loss = (
                 loss +
                 _evidence_gate_penalty(model) +
-                _evidence_gate_aux_loss(model)
+                _evidence_gate_aux_loss(model) +
+                _cfrcr_aux_loss(model)
             )
             _true = true.detach().to('cpu', non_blocking=True)
             _pred = pred_score.detach().to('cpu', non_blocking=True)

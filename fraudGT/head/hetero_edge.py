@@ -12,6 +12,35 @@ from fraudGT.graphgym.config import cfg
 from fraudGT.graphgym.models.layer import MLP
 
 
+def _binary_margin(logits):
+    if logits.ndim == 1:
+        return logits
+    if logits.size(-1) == 1:
+        return logits.view(-1)
+    return logits[:, 1] - logits[:, 0]
+
+
+def _add_margin_correction(logits, correction):
+    correction = correction.view(-1)
+    if logits.ndim == 1:
+        return logits + correction
+    if logits.size(-1) == 1:
+        return logits + correction.unsqueeze(-1)
+    output = logits.clone()
+    half = 0.5 * correction
+    output[:, 0] = output[:, 0] - half
+    output[:, 1] = output[:, 1] + half
+    return output
+
+
+def _risk_controlled_committee(corrections, kappa, deadzone):
+    """Commit only the lower-confidence part shared by residual experts."""
+    mean = corrections.mean(dim=-1)
+    disagreement = corrections.std(dim=-1, unbiased=False)
+    magnitude = torch.relu(mean.abs() - kappa * disagreement - deadzone)
+    return mean.sign() * magnitude, mean, disagreement
+
+
 @register_head('hetero_edge')
 class HeteroGNNEdgeHead(nn.Module):
     '''Head of Hetero GNN, edge prediction'''
@@ -35,13 +64,14 @@ class HeteroGNNEdgeHead(nn.Module):
         # `evidence_gate_v4_noproto` removes both the prototype residual and
         # every prototype-derived router input.
         self.use_evidence_gate = self.edge_decoding in {
-            'evidence_gate', 'evidence_gate_proto', 'dmprd',
+            'evidence_gate', 'evidence_gate_proto', 'dmprd', 'cfrcr',
             'evidence_gate_v3',
             'evidence_gate_v4_residual', 'evidence_gate_v4_nogate',
             'evidence_gate_v4_noproto'}
-        self.use_dmprd = (self.edge_decoding == 'dmprd')
+        self.use_dmprd = self.edge_decoding in {'dmprd', 'cfrcr'}
+        self.use_cfrcr = (self.edge_decoding == 'cfrcr')
         self.eg_proto_only = self.edge_decoding in {
-            'evidence_gate_proto', 'dmprd'}
+            'evidence_gate_proto', 'dmprd', 'cfrcr'}
         self.eg_gate_v3 = (self.edge_decoding == 'evidence_gate_v3')
         self.eg_gate_v4 = self.edge_decoding in {
             'evidence_gate_v4_residual', 'evidence_gate_v4_nogate',
@@ -1391,6 +1421,100 @@ class HeteroGNNEdgeHead(nn.Module):
             if self.use_evidence_gate:
                 self._build_evidence_gate(dim_in, dim_out)
 
+    def _build_cfrcr(self, dim_in):
+        """Leave-one-time-environment-out residual committee on top of A2."""
+        self.cfrcr_num_experts = 3
+        self.cfrcr_hidden_dim = int(getattr(
+            cfg.model, 'cfrcr_hidden_dim', 32))
+        self.cfrcr_correction_bound = float(getattr(
+            cfg.model, 'cfrcr_correction_bound', 0.50))
+        self.cfrcr_kappa = float(getattr(cfg.model, 'cfrcr_kappa', 0.50))
+        self.cfrcr_deadzone = float(getattr(
+            cfg.model, 'cfrcr_deadzone', 0.01))
+        self.cfrcr_aux_weight = float(getattr(
+            cfg.model, 'cfrcr_aux_weight', 0.50))
+        self.cfrcr_rank_temperature = float(getattr(
+            cfg.model, 'cfrcr_rank_temperature', 0.25))
+        self.cfrcr_rank_margin = float(getattr(
+            cfg.model, 'cfrcr_rank_margin', 0.50))
+        self.cfrcr_gain_target = float(getattr(
+            cfg.model, 'cfrcr_gain_target', 0.01))
+        self.cfrcr_worst_group_weight = float(getattr(
+            cfg.model, 'cfrcr_worst_group_weight', 0.50))
+        self.cfrcr_l2_weight = float(getattr(
+            cfg.model, 'cfrcr_l2_weight', 0.01))
+        self.cfrcr_pair_limit = int(getattr(
+            cfg.model, 'cfrcr_pair_limit', 128))
+        self.cfrcr_warmup_epochs = int(getattr(
+            cfg.model, 'cfrcr_warmup_epochs', 5))
+        self.cfrcr_ramp_epochs = int(getattr(
+            cfg.model, 'cfrcr_ramp_epochs', 25))
+        self.cfrcr_log_interval = int(getattr(
+            cfg.model, 'cfrcr_log_interval', 128))
+        if min(self.cfrcr_hidden_dim, self.cfrcr_pair_limit,
+               self.cfrcr_ramp_epochs, self.cfrcr_log_interval) < 1:
+            raise ValueError("CF-RCR integer settings must be at least 1")
+        if self.cfrcr_warmup_epochs < 0:
+            raise ValueError("cfrcr_warmup_epochs must be non-negative")
+        if min(self.cfrcr_correction_bound, self.cfrcr_rank_temperature,
+               self.cfrcr_rank_margin) <= 0.0:
+            raise ValueError("CF-RCR bounds and rank settings must be positive")
+        if min(self.cfrcr_kappa, self.cfrcr_deadzone,
+               self.cfrcr_aux_weight, self.cfrcr_gain_target,
+               self.cfrcr_worst_group_weight,
+               self.cfrcr_l2_weight) < 0.0:
+            raise ValueError("CF-RCR weights must be non-negative")
+
+        sorted_train = self.train_inds.detach().sort().values
+        if sorted_train.numel() < self.cfrcr_num_experts:
+            raise ValueError("CF-RCR requires at least three training edges")
+        boundary_positions = [
+            sorted_train.numel() // 3,
+            (2 * sorted_train.numel()) // 3,
+        ]
+        self.register_buffer(
+            'cfrcr_env_boundaries',
+            sorted_train[boundary_positions].clone())
+
+        # Inputs are normalized A2 representations, eight prototype signals,
+        # and bounded base/core margins. Each head has disjoint parameters.
+        expert_dim = dim_in + 10
+        self.cfrcr_experts = nn.ModuleList([
+            MLP(expert_dim, 1, dim_inner=self.cfrcr_hidden_dim,
+                num_layers=2, bias=False)
+            for _ in range(self.cfrcr_num_experts)
+        ])
+        for expert in self.cfrcr_experts:
+            final_linear = None
+            for module in expert.modules():
+                if isinstance(module, nn.Linear):
+                    final_linear = module
+            if final_linear is None:
+                raise RuntimeError("CF-RCR expert has no linear output")
+            nn.init.zeros_(final_linear.weight)
+
+        self._cfrcr_cur_epoch = 0
+        self._cfrcr_log_step = 0
+        self._clear_cfrcr_cache()
+
+    def _clear_cfrcr_cache(self):
+        self._cfrcr_base_margin = None
+        self._cfrcr_corrections = None
+        self._cfrcr_labels = None
+        self._cfrcr_env_ids = None
+
+    def _cfrcr_environment_ids(self, edge_ids):
+        return torch.bucketize(edge_ids, self.cfrcr_env_boundaries)
+
+    def _stash_cfrcr_cache(self, base_margin, corrections, labels, edge_ids):
+        self._clear_cfrcr_cache()
+        if not self.training:
+            return
+        self._cfrcr_base_margin = base_margin.detach()
+        self._cfrcr_corrections = corrections
+        self._cfrcr_labels = labels
+        self._cfrcr_env_ids = self._cfrcr_environment_ids(edge_ids)
+
     def _build_evidence_gate(self, dim_in, dim_out):
         '''Modules for the scale-agnostic, uncertainty-gated evidence decoder.
 
@@ -1447,6 +1571,8 @@ class HeteroGNNEdgeHead(nn.Module):
             if self.dmprd_beta_max <= 0.0:
                 raise ValueError("dmprd_beta_max must be positive")
             self._dmprd_log_step = 0
+            if self.use_cfrcr:
+                self._build_cfrcr(dim_in)
             return
 
         # --- higher-order 1-hop structural evidence branch ---
@@ -4452,6 +4578,8 @@ class HeteroGNNEdgeHead(nn.Module):
     def _evidence_gate_head(self, batch):
         '''Scale-agnostic evidence decoder: z_base (+) bounded prototype core
         (+) uncertainty-gated higher-order structural evidence.'''
+        if self.use_cfrcr:
+            self._clear_cfrcr_cache()
         if self.eg_gate_v4:
             # These tensors belong to one forward pass only. Clearing them here
             # prevents a skipped/failed batch from reusing an old auxiliary loss.
@@ -4514,10 +4642,58 @@ class HeteroGNNEdgeHead(nn.Module):
         if not torch.isfinite(z_core).all():
             raise FloatingPointError("evidence_gate produced non-finite core logits")
 
+        if self.use_cfrcr:
+            base_margin = _binary_margin(z_base)
+            a2_margin = _binary_margin(z_core)
+            margin_scale = a2_margin.detach().std(unbiased=False).clamp(min=1.0)
+            expert_input = torch.cat([
+                F.normalize(h, dim=-1, eps=1e-6),
+                torch.nan_to_num(proto_feat),
+                torch.tanh((base_margin / margin_scale).unsqueeze(-1)),
+                torch.tanh((a2_margin / margin_scale).unsqueeze(-1)),
+            ], dim=-1).detach()
+            expert_corrections = torch.stack([
+                self.cfrcr_correction_bound * torch.tanh(expert(expert_input))
+                for expert in self.cfrcr_experts
+            ], dim=-1).squeeze(1)
+            if not torch.isfinite(expert_corrections).all():
+                raise FloatingPointError(
+                    "CF-RCR produced non-finite expert corrections")
+            if self.training:
+                self._stash_cfrcr_cache(
+                    a2_margin, expert_corrections, labels,
+                    batch[task].e_id[mask])
+                cfrcr_correction = a2_margin.new_zeros(a2_margin.shape)
+                cfrcr_mean = cfrcr_correction
+                cfrcr_disagreement = cfrcr_correction
+            else:
+                (cfrcr_correction, cfrcr_mean,
+                 cfrcr_disagreement) = _risk_controlled_committee(
+                    expert_corrections, self.cfrcr_kappa,
+                    self.cfrcr_deadzone)
+                z_core = _add_margin_correction(z_core, cfrcr_correction)
+                if not torch.isfinite(z_core).all():
+                    raise FloatingPointError(
+                        "CF-RCR produced non-finite corrected logits")
+
         # M1 ablation (`evidence_gate_proto`): base decoder + bounded prototype
         # residual only. No structural evidence, no gate. Everything else in the
         # forward is identical to v2, so M1 vs v2 differs by exactly this branch.
         if self.eg_proto_only:
+            if self.use_cfrcr and not self.training:
+                self._cfrcr_log_step += 1
+                if self._cfrcr_log_step % self.cfrcr_log_interval == 1:
+                    with torch.no_grad():
+                        commit_rate = (
+                            cfrcr_correction.abs() > 0.0).float().mean()
+                        logging.info(
+                            "[cfrcr/%s] correction_abs=%.5f mean_abs=%.5f "
+                            "disagreement=%.5f commit_rate=%.3f",
+                            getattr(batch, 'split', '?'),
+                            cfrcr_correction.abs().mean().item(),
+                            cfrcr_mean.abs().mean().item(),
+                            cfrcr_disagreement.mean().item(),
+                            commit_rate.item())
             if self.use_dmprd and not self.training:
                 self._dmprd_log_step += 1
                 if self._dmprd_log_step % 64 == 1:
