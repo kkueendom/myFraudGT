@@ -223,6 +223,99 @@ def _epra_hard_pair_rank_loss(logits, labels, pair_limit, temperature,
     ).mean()
 
 
+def _tmra_pair_loss(positive_scores, negative_scores, pair_limit,
+                    temperature, target_margin):
+    if positive_scores.numel() == 0 or negative_scores.numel() == 0:
+        return None
+    positive_scores = positive_scores[
+        positive_scores.detach().argsort()[:pair_limit]]
+    negative_scores = negative_scores[
+        negative_scores.detach().argsort(descending=True)[:pair_limit]]
+    gaps = (
+        positive_scores.unsqueeze(1) - negative_scores.unsqueeze(0))
+    return (
+        temperature * F.softplus((target_margin - gaps) / temperature)
+    ).mean()
+
+
+def _tmra_append_memory(previous, values, capacity):
+    values = values.detach().view(-1)
+    if values.numel() == 0:
+        return previous
+    combined = values if previous is None else torch.cat((previous, values))
+    return combined[-capacity:].detach()
+
+
+def _tmra_memory_rank_loss(module, logits, labels, env_ids):
+    """Temporal cross-batch rank loss with gradients only through this batch."""
+    labels = labels.view(-1).long()
+    scores = _epra_margin(logits)
+    center = scores.detach().median()
+    scale = scores.detach().std(unbiased=False).clamp(min=1.0)
+    scores = (scores - center) / scale
+
+    positive_memory = [
+        item for item in module._tmra_pos_memory if item is not None]
+    negative_memory = [
+        item for item in module._tmra_neg_memory if item is not None]
+    global_positive = (
+        torch.cat(positive_memory) if positive_memory else None)
+    global_negative = (
+        torch.cat(negative_memory) if negative_memory else None)
+
+    losses = []
+    active_directions = 0
+    for env_idx in range(module.tmra_num_environments):
+        env_mask = (env_ids == env_idx)
+        current_positive = scores[env_mask & (labels == 1)]
+        current_negative = scores[env_mask & (labels == 0)]
+        positive_anchor = module._tmra_pos_memory[env_idx]
+        negative_anchor = module._tmra_neg_memory[env_idx]
+        if positive_anchor is None:
+            positive_anchor = global_positive
+        if negative_anchor is None:
+            negative_anchor = global_negative
+
+        candidates = [
+            _tmra_pair_loss(
+                current_positive, current_negative,
+                int(module.epra_pair_limit),
+                float(module.epra_rank_temperature),
+                float(module.epra_rank_margin)),
+        ]
+        if negative_anchor is not None:
+            candidates.append(_tmra_pair_loss(
+                current_positive, negative_anchor,
+                int(module.epra_pair_limit),
+                float(module.epra_rank_temperature),
+                float(module.epra_rank_margin)))
+        if positive_anchor is not None:
+            candidates.append(_tmra_pair_loss(
+                positive_anchor, current_negative,
+                int(module.epra_pair_limit),
+                float(module.epra_rank_temperature),
+                float(module.epra_rank_margin)))
+        for candidate in candidates:
+            if candidate is not None:
+                losses.append(candidate)
+                active_directions += 1
+
+    capacity = int(module.tmra_memory_size)
+    for env_idx in range(module.tmra_num_environments):
+        env_mask = (env_ids == env_idx)
+        module._tmra_pos_memory[env_idx] = _tmra_append_memory(
+            module._tmra_pos_memory[env_idx],
+            scores[env_mask & (labels == 1)], capacity)
+        module._tmra_neg_memory[env_idx] = _tmra_append_memory(
+            module._tmra_neg_memory[env_idx],
+            scores[env_mask & (labels == 0)], capacity)
+
+    loss = (
+        torch.stack(losses).mean()
+        if losses else scores.sum() * 0.0)
+    return loss, active_directions
+
+
 def _epra_proto_alignment_loss(edge_repr, pos_proto, neg_proto, ready,
                                labels, temperature):
     """Align representations to past-batch class prototypes without leakage."""
@@ -263,6 +356,7 @@ def _epra_aux_loss(model):
         pos_proto = getattr(module, '_epra_pos_proto', None)
         neg_proto = getattr(module, '_epra_neg_proto', None)
         ready = getattr(module, '_epra_ready', None)
+        env_ids = getattr(module, '_epra_env_ids', None)
         if any(item is None for item in (
                 logits, labels, edge_repr, pos_proto, neg_proto, ready)):
             continue
@@ -281,9 +375,18 @@ def _epra_aux_loss(model):
         proto_loss = _epra_proto_alignment_loss(
             edge_repr, pos_proto, neg_proto, ready, labels,
             float(module.epra_proto_temperature))
+        if getattr(module, 'use_tmra', False) and env_ids is not None:
+            memory_loss, active_directions = _tmra_memory_rank_loss(
+                module, logits, labels, env_ids)
+            memory_weight = float(module.tmra_memory_loss_weight)
+        else:
+            memory_loss = rank_loss.new_zeros(())
+            active_directions = 0
+            memory_weight = 0.0
         total = total + scale * (
             float(module.epra_rank_loss_weight) * rank_loss +
-            float(module.epra_proto_loss_weight) * proto_loss)
+            float(module.epra_proto_loss_weight) * proto_loss +
+            memory_weight * memory_loss)
 
         module._epra_log_step += 1
         if (module._epra_log_step - 1) % int(module.epra_log_interval) == 0:
@@ -297,9 +400,10 @@ def _epra_aux_loss(model):
                     if pos.numel() and neg.numel() else scores.new_zeros(()))
                 logging.info(
                     "[epra/train] epoch=%d scale=%.3f rank=%.5f "
-                    "proto=%.5f mean_gap=%.5f positives=%d negatives=%d "
-                    "ready=%.3f",
+                    "proto=%.5f memory=%.5f memory_dirs=%d "
+                    "mean_gap=%.5f positives=%d negatives=%d ready=%.3f",
                     epoch, scale, rank_loss.item(), proto_loss.item(),
+                    memory_loss.item(), active_directions,
                     rank_gap.item(), pos.numel(), neg.numel(),
                     ready.float().mean().item())
     return total
