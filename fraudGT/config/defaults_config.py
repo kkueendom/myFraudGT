@@ -123,3 +123,20 @@ def extended_cfg(cfg):
     cfg.model.dmprd_use_distribution_stats = True
     cfg.model.dmprd_delta_max = 1.0
     cfg.model.dmprd_beta_max = 1.0
+
+    # CF-RCR: leave-one-time-environment-out residual experts with an
+    # uncertainty lower-confidence-bound fallback to the unchanged A2 margin.
+    cfg.model.cfrcr_hidden_dim = 32
+    cfg.model.cfrcr_correction_bound = 0.50
+    cfg.model.cfrcr_kappa = 0.50
+    cfg.model.cfrcr_deadzone = 0.01
+    cfg.model.cfrcr_aux_weight = 0.50
+    cfg.model.cfrcr_rank_temperature = 0.25
+    cfg.model.cfrcr_rank_margin = 0.50
+    cfg.model.cfrcr_gain_target = 0.01
+    cfg.model.cfrcr_worst_group_weight = 0.50
+    cfg.model.cfrcr_l2_weight = 0.01
+    cfg.model.cfrcr_pair_limit = 128
+    cfg.model.cfrcr_warmup_epochs = 5
+    cfg.model.cfrcr_ramp_epochs = 25
+    cfg.model.cfrcr_log_interval = 128
