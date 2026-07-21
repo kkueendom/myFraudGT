@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -84,7 +85,9 @@ def subtract(left, right):
 
 def main():
     repo = Path(__file__).resolve().parents[1]
-    spec = json.loads((repo / "run" / "prospective_pair_spec.json").read_text())
+    spec_path = Path(os.environ.get(
+        "PAIR_SPEC", str(repo / "run" / "prospective_pair_spec.json")))
+    spec = json.loads(spec_path.read_text())
     current_tag = str(spec["method_tag"])
     current_commit = git_sha(repo)
     default_root = (
