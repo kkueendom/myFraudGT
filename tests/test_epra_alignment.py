@@ -36,6 +36,16 @@ class EPRALossTest(unittest.TestCase):
 
         self.assertGreater(weak_loss.item(), strong_loss.item() * 1000.0)
 
+    def test_rank_loss_is_scale_invariant_for_nontrivial_scores(self):
+        labels = torch.tensor([1, 1, 0, 0])
+        logits = torch.tensor([[0.0, 4.0], [0.0, 2.0],
+                               [0.0, -2.0], [0.0, -4.0]])
+        base = _epra_hard_pair_rank_loss(
+            logits, labels, 4, 0.25, 0.5)
+        scaled = _epra_hard_pair_rank_loss(
+            logits * 10.0, labels, 4, 0.25, 0.5)
+        self.assertAlmostEqual(base.item(), scaled.item(), places=6)
+
     def test_single_class_batch_adds_no_auxiliary_gradient(self):
         logits = torch.nn.Parameter(torch.zeros(4, 2))
         labels = torch.zeros(4, dtype=torch.long)

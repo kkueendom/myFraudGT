@@ -27,13 +27,15 @@ The deployed decoder and parameter count are exactly A2.
 
 Let `m_i` be the binary margin produced by A2. In each mixed-class training
 microbatch, EPRA selects at most 128 lowest-scored positives and 128
-highest-scored negatives using detached scores. It applies a finite-margin
+highest-scored negatives using detached scores. The pair gap is divided by the
+detached within-batch margin standard deviation `sigma_m` (lower bounded by
+one), making the target invariant to logit scale. EPRA applies a finite-margin
 ranking loss:
 
 \[
 L_{rank}=\frac{1}{|P||N|}\sum_{p,n}
 \tau_r\operatorname{softplus}
-\left(\frac{\gamma-(m_p-m_n)}{\tau_r}\right).
+\left(\frac{\gamma-(m_p-m_n)/\operatorname{sg}(\sigma_m)}{\tau_r}\right).
 \]
 
 Unlike UPRC's counterfactual gain loss, this objective acts on A2 itself and

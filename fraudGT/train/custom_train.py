@@ -214,7 +214,10 @@ def _epra_hard_pair_rank_loss(logits, labels, pair_limit, temperature,
     positive = positive[detached[positive].argsort()[:pair_limit]]
     negative = negative[
         detached[negative].argsort(descending=True)[:pair_limit]]
-    gaps = scores[positive].unsqueeze(1) - scores[negative].unsqueeze(0)
+    score_scale = detached.std(unbiased=False).clamp(min=1.0)
+    gaps = (
+        scores[positive].unsqueeze(1) - scores[negative].unsqueeze(0)
+    ) / score_scale
     return (
         temperature * F.softplus((target_margin - gaps) / temperature)
     ).mean()
