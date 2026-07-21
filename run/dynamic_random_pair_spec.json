@@ -1,0 +1,24 @@
+{
+  "sampling_protocol": "dynamic_random",
+  "method_tag": "EPRA",
+  "variant": "EPRA-Low",
+  "expected_branch": "feature/epra-dynamic-random",
+  "tasks": [["Small-LI", 42], ["Large-LI", 44]],
+  "overrides": [
+    "model.edge_decoding", "epra",
+    "model.dmprd_num_slots", "4",
+    "model.dmprd_use_distribution_stats", "False",
+    "model.dmprd_delta_max", "1.0",
+    "model.dmprd_beta_max", "1.0",
+    "model.epra_rank_loss_weight", "0.05",
+    "model.epra_proto_loss_weight", "0.02",
+    "model.epra_rank_temperature", "0.25",
+    "model.epra_rank_margin", "0.50",
+    "model.epra_proto_temperature", "0.20",
+    "model.epra_pair_limit", "128",
+    "model.epra_warmup_epochs", "5",
+    "model.epra_ramp_epochs", "25",
+    "model.epra_log_interval", "128",
+    "val.fixed_target_panel", "False"
+  ]
+}
