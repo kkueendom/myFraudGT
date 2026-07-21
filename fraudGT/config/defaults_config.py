@@ -123,3 +123,19 @@ def extended_cfg(cfg):
     cfg.model.dmprd_use_distribution_stats = True
     cfg.model.dmprd_delta_max = 1.0
     cfg.model.dmprd_beta_max = 1.0
+
+    # EPRA: training-only end-to-end prototype and hard-pair alignment.
+    cfg.model.epra_rank_loss_weight = 0.05
+    cfg.model.epra_proto_loss_weight = 0.02
+    cfg.model.epra_rank_temperature = 0.25
+    cfg.model.epra_rank_margin = 0.50
+    cfg.model.epra_proto_temperature = 0.20
+    cfg.model.epra_pair_limit = 128
+    cfg.model.epra_warmup_epochs = 5
+    cfg.model.epra_ramp_epochs = 25
+    cfg.model.epra_log_interval = 128
+
+    # TMRA: temporal, class-balanced FIFO memories keep ranking active when a
+    # rare-class microbatch contains only one class. Training-only, no new head.
+    cfg.model.tmra_memory_loss_weight = 0.05
+    cfg.model.tmra_memory_size = 256

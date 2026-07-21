@@ -35,13 +35,15 @@ class HeteroGNNEdgeHead(nn.Module):
         # `evidence_gate_v4_noproto` removes both the prototype residual and
         # every prototype-derived router input.
         self.use_evidence_gate = self.edge_decoding in {
-            'evidence_gate', 'evidence_gate_proto', 'dmprd',
+            'evidence_gate', 'evidence_gate_proto', 'dmprd', 'epra', 'tmra',
             'evidence_gate_v3',
             'evidence_gate_v4_residual', 'evidence_gate_v4_nogate',
             'evidence_gate_v4_noproto'}
-        self.use_dmprd = (self.edge_decoding == 'dmprd')
+        self.use_dmprd = self.edge_decoding in {'dmprd', 'epra', 'tmra'}
+        self.use_epra = self.edge_decoding in {'epra', 'tmra'}
+        self.use_tmra = (self.edge_decoding == 'tmra')
         self.eg_proto_only = self.edge_decoding in {
-            'evidence_gate_proto', 'dmprd'}
+            'evidence_gate_proto', 'dmprd', 'epra', 'tmra'}
         self.eg_gate_v3 = (self.edge_decoding == 'evidence_gate_v3')
         self.eg_gate_v4 = self.edge_decoding in {
             'evidence_gate_v4_residual', 'evidence_gate_v4_nogate',
@@ -1391,6 +1393,91 @@ class HeteroGNNEdgeHead(nn.Module):
             if self.use_evidence_gate:
                 self._build_evidence_gate(dim_in, dim_out)
 
+    def _build_epra(self):
+        """Configure training-only end-to-end prototype rank alignment."""
+        self.epra_rank_loss_weight = float(getattr(
+            cfg.model, 'epra_rank_loss_weight', 0.05))
+        self.epra_proto_loss_weight = float(getattr(
+            cfg.model, 'epra_proto_loss_weight', 0.02))
+        self.epra_rank_temperature = float(getattr(
+            cfg.model, 'epra_rank_temperature', 0.25))
+        self.epra_rank_margin = float(getattr(
+            cfg.model, 'epra_rank_margin', 0.50))
+        self.epra_proto_temperature = float(getattr(
+            cfg.model, 'epra_proto_temperature', 0.20))
+        self.epra_pair_limit = int(getattr(
+            cfg.model, 'epra_pair_limit', 128))
+        self.epra_warmup_epochs = int(getattr(
+            cfg.model, 'epra_warmup_epochs', 5))
+        self.epra_ramp_epochs = int(getattr(
+            cfg.model, 'epra_ramp_epochs', 25))
+        self.epra_log_interval = int(getattr(
+            cfg.model, 'epra_log_interval', 128))
+        if self.use_tmra:
+            self.tmra_memory_loss_weight = float(getattr(
+                cfg.model, 'tmra_memory_loss_weight', 0.05))
+            self.tmra_memory_size = int(getattr(
+                cfg.model, 'tmra_memory_size', 256))
+            self.tmra_num_environments = 3
+        if min(self.epra_rank_loss_weight,
+               self.epra_proto_loss_weight) < 0.0:
+            raise ValueError("EPRA loss weights must be non-negative")
+        if min(self.epra_rank_temperature, self.epra_rank_margin,
+               self.epra_proto_temperature) <= 0.0:
+            raise ValueError("EPRA temperatures and margin must be positive")
+        if min(self.epra_pair_limit, self.epra_ramp_epochs,
+               self.epra_log_interval) < 1:
+            raise ValueError("EPRA limits must be at least 1")
+        if self.epra_warmup_epochs < 0:
+            raise ValueError("epra_warmup_epochs must be non-negative")
+        if self.use_tmra:
+            if self.tmra_memory_loss_weight < 0.0:
+                raise ValueError(
+                    "tmra_memory_loss_weight must be non-negative")
+            if self.tmra_memory_size < 1:
+                raise ValueError("tmra_memory_size must be at least 1")
+            sorted_train = self.train_inds.detach().sort().values
+            if sorted_train.numel() < self.tmra_num_environments:
+                raise ValueError("TMRA requires at least three training edges")
+            boundary_positions = [
+                sorted_train.numel() // 3,
+                (2 * sorted_train.numel()) // 3,
+            ]
+            self.register_buffer(
+                'tmra_env_boundaries',
+                sorted_train[boundary_positions].clone())
+            self._tmra_pos_memory = [
+                None for _ in range(self.tmra_num_environments)]
+            self._tmra_neg_memory = [
+                None for _ in range(self.tmra_num_environments)]
+        self._epra_cur_epoch = 0
+        self._epra_log_step = 0
+        self._clear_epra_cache()
+
+    def _clear_epra_cache(self):
+        self._epra_logits = None
+        self._epra_labels = None
+        self._epra_repr = None
+        self._epra_pos_proto = None
+        self._epra_neg_proto = None
+        self._epra_ready = None
+        self._epra_env_ids = None
+
+    def _stash_epra_cache(self, logits, labels, edge_repr, pos_proto,
+                          neg_proto, ready, edge_ids):
+        self._clear_epra_cache()
+        if not self.training:
+            return
+        self._epra_logits = logits
+        self._epra_labels = labels
+        self._epra_repr = edge_repr
+        self._epra_pos_proto = pos_proto
+        self._epra_neg_proto = neg_proto
+        self._epra_ready = ready
+        if self.use_tmra:
+            self._epra_env_ids = torch.bucketize(
+                edge_ids, self.tmra_env_boundaries)
+
     def _build_evidence_gate(self, dim_in, dim_out):
         '''Modules for the scale-agnostic, uncertainty-gated evidence decoder.
 
@@ -1447,6 +1534,8 @@ class HeteroGNNEdgeHead(nn.Module):
             if self.dmprd_beta_max <= 0.0:
                 raise ValueError("dmprd_beta_max must be positive")
             self._dmprd_log_step = 0
+            if self.use_epra:
+                self._build_epra()
             return
 
         # --- higher-order 1-hop structural evidence branch ---
@@ -4452,6 +4541,8 @@ class HeteroGNNEdgeHead(nn.Module):
     def _evidence_gate_head(self, batch):
         '''Scale-agnostic evidence decoder: z_base (+) bounded prototype core
         (+) uncertainty-gated higher-order structural evidence.'''
+        if self.use_epra:
+            self._clear_epra_cache()
         if self.eg_gate_v4:
             # These tensors belong to one forward pass only. Clearing them here
             # prevents a skipped/failed batch from reusing an old auxiliary loss.
@@ -4513,6 +4604,11 @@ class HeteroGNNEdgeHead(nn.Module):
                     torch.sigmoid(self.eg_proto_alpha) * ready * z_proto)
         if not torch.isfinite(z_core).all():
             raise FloatingPointError("evidence_gate produced non-finite core logits")
+
+        if self.use_epra:
+            self._stash_epra_cache(
+                z_core, labels, h, pos_proto, neg_proto, ready,
+                batch[task].e_id[mask])
 
         # M1 ablation (`evidence_gate_proto`): base decoder + bounded prototype
         # residual only. No structural evidence, no gate. Everything else in the
