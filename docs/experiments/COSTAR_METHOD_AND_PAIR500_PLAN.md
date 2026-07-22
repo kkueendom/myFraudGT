@@ -3,7 +3,7 @@
 ## Status
 
 - Decoder: `costar`
-- Branch: `feature/costar-orthogonal-f1-router`
+- Branch: `feature/costar-dynamic-random`
 - Scope: matched Small-LI seed 42 and Large-LI seed 44, 500 epochs
 - Primary metric: validation-selected Test F1
 - Training labels: used only by the original A2 loss and the COSTAR adapter
@@ -168,6 +168,11 @@ rank loss, selected training threshold, perturbation size, and whether the
 batch stratified split was valid in `_costar_diag`.
 
 ## Pair-500 protocol
+
+All splits use FraudGT's original dynamic-random sampling with
+`LinkNeighborLoader(shuffle=True)`. No target panel, independent evaluation
+generator, or sampler RNG restoration is used. The comparison baseline is the
+initial A2 table in `run/dynamic_random_a2_baseline.json`.
 
 | Dataset | Seed | Matched A2 selected Test F1 |
 |---|---:|---:|

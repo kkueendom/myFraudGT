@@ -1,0 +1,11 @@
+{
+  "sampling_protocol": "dynamic_random",
+  "method_tag": "COSTAR",
+  "variant": "COSTAR",
+  "expected_branch": "feature/costar-dynamic-random",
+  "config_template": "configs/costar/AML-{dataset}.yaml",
+  "tasks": [["Small-LI", 42], ["Large-LI", 44]],
+  "overrides": [
+    "val.fixed_target_panel", "False"
+  ]
+}

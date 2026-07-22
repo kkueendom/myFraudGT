@@ -58,6 +58,8 @@ def extended_cfg(cfg):
     # set, we fixed the evaluation sampling to the same set of batches. So the performance
     # would be evaluated under the same set of data.
     cfg.val.iter_per_epoch = 0
+    # Explicit experiment contract; the historical sampler has no panel logic.
+    cfg.val.fixed_target_panel = False
 
     # Sampling parameters
     cfg.train.persistent_workers = False

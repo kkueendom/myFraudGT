@@ -39,6 +39,7 @@ val:
   sampler: link_neighbor
   iter_per_epoch: 256
   tqdm: False
+  fixed_target_panel: False
 model:
   type: GTModel
   loss_fun: weighted_cross_entropy
