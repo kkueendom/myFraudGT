@@ -122,12 +122,12 @@ def main():
             root, tag, args.commit, dataset, int(seed), args.epoch_limit)
         base = baseline[dataset]
         if result:
+            is_complete = result["last_epoch"] >= args.epoch_limit
             delta_val = (
                 result["val_selected_test_f1"] -
                 base["val_selected_test_f1"])
             delta_raw = (
                 result["raw_best_test_f1"] - base["raw_best_test_f1"])
-            completed.append((delta_val, delta_raw))
             manifest = {
                 "dataset": dataset,
                 "model": tag,
@@ -145,7 +145,11 @@ def main():
                 "sampling_protocol": "dynamic_random",
                 "run_dir": result["run_dir"],
             }
-            manifests.append(manifest)
+            # Partial rows remain visible for progress checks, but only a full
+            # epoch-limited run is eligible for formal summaries/manifests.
+            if is_complete:
+                completed.append((delta_val, delta_raw))
+                manifests.append(manifest)
             values = [
                 dataset, manifest["variant"], str(seed),
                 str(result["last_epoch"]), str(result["selected_epoch"]),
