@@ -1,11 +1,12 @@
 {
   "sampling_protocol": "dynamic_random",
-  "method_tag": "COSTAR",
-  "variant": "COSTAR",
-  "expected_branch": "feature/costar-dynamic-random",
+  "method_tag": "COSTARLow",
+  "variant": "COSTAR-Low",
+  "expected_branch": "feature/costar-conservative-screen",
   "config_template": "configs/costar/AML-{dataset}.yaml",
   "tasks": [["Small-LI", 42], ["Large-LI", 44]],
   "overrides": [
-    "val.fixed_target_panel", "False"
+    "val.fixed_target_panel", "False",
+    "model.costar_adapter_weight", "0.02"
   ]
 }

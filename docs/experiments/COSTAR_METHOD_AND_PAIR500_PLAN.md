@@ -174,6 +174,14 @@ All splits use FraudGT's original dynamic-random sampling with
 generator, or sampler RNG restoration is used. The comparison baseline is the
 initial A2 table in `run/dynamic_random_a2_baseline.json`.
 
+### Conservative strength screen
+
+Branch `feature/costar-conservative-screen` pre-registers one additional
+strength, `COSTAR-Low`, with `costar_adapter_weight=0.02` instead of `0.05`.
+It tests whether the orthogonal threshold-transfer objective needs a smaller
+update budget under dynamic sampling. Small-LI and Large-LI use the identical
+setting, and selection remains the same paired A2 gate.
+
 | Dataset | Seed | Matched A2 selected Test F1 |
 |---|---:|---:|
 | Small-LI | 42 | 0.46247 |
