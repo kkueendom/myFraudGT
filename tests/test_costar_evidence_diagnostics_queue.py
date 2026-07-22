@@ -26,6 +26,14 @@ class CostarEvidenceDiagnosticsQueueTest(unittest.TestCase):
         self.assertIn('costar_evidence_diagnostics.py', source)
         self.assertNotIn('fraudGT.main', source)
         self.assertNotIn('optim.max_epoch', source)
+        self.assertIn(
+            'item.get("diagnostic_commit") == diagnostic_commit', source)
+
+    def test_diagnostic_entrypoint_adds_repo_to_python_path(self):
+        source = (
+            self.repo / "run" / "costar_evidence_diagnostics.py"
+        ).read_text()
+        self.assertIn("sys.path.insert(0, str(REPO_ROOT))", source)
 
 
 if __name__ == "__main__":

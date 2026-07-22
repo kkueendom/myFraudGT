@@ -275,7 +275,8 @@ def main():
                    if not task_done(task, diagnostic_commit)]
         failed = {(item["dataset"], int(item["seed"]))
                   for path in FAILED_ROOT.glob("*.json")
-                  for item in [json.loads(path.read_text())]}
+                  for item in [json.loads(path.read_text())]
+                  if item.get("diagnostic_commit") == diagnostic_commit}
         pending = [task for task in pending
                    if (task["dataset"], int(task["seed"])) not in failed]
         if not active and not pending:
