@@ -192,26 +192,33 @@ def _evidence_gate_aux_loss(model):
 
 
 def _costar_training_terms(model):
-    """Return the detached-adapter terms stashed by one COSTAR head."""
+    """Return detached-adapter terms stashed by one COSTAR/CPTR head."""
     terms = []
     for module in model.modules():
-        anchor = getattr(module, '_costar_anchor_logits', None)
-        adapter_loss = getattr(module, '_costar_adapter_loss', None)
-        if anchor is not None:
-            if adapter_loss is None:
-                raise RuntimeError(
-                    "COSTAR anchor logits exist without an adapter loss")
-            terms.append((anchor, adapter_loss))
+        for prefix in ('costar', 'cptr'):
+            anchor = getattr(module, f'_{prefix}_anchor_logits', None)
+            adapter_loss = getattr(module, f'_{prefix}_adapter_loss', None)
+            if anchor is not None:
+                if adapter_loss is None:
+                    raise RuntimeError(
+                        f"{prefix.upper()} anchor logits exist without an "
+                        "adapter loss")
+                terms.append((anchor, adapter_loss))
     if len(terms) > 1:
-        raise RuntimeError("multiple COSTAR heads are not supported")
+        raise RuntimeError("multiple detached adapter heads are not supported")
     return terms[0] if terms else None
 
 
 def _costar_adapter_parameters(model):
     parameters = []
     for module in model.modules():
-        router = getattr(module, 'costar_router', None)
-        if router is not None:
+        adapters = [
+            getattr(module, 'costar_router', None),
+            getattr(module, 'cptr_adapter', None),
+        ]
+        for router in adapters:
+            if router is None:
+                continue
             parameters.extend(
                 parameter for parameter in router.parameters()
                 if parameter.requires_grad)

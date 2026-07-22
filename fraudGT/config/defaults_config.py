@@ -159,3 +159,20 @@ def extended_cfg(cfg):
     cfg.model.costar_start_epoch = 10
     cfg.model.costar_fallback_confidence = 0.25
     cfg.model.costar_fallback_delta = 1e-4
+
+    # CPTR: train-only bidirectional threshold transfer with conservative
+    # temporal-environment uplift deployment.
+    cfg.model.cptr_router_hidden = 32
+    cfg.model.cptr_max_correction = 0.10
+    cfg.model.cptr_boundary_temperature = 0.10
+    cfg.model.cptr_soft_f1_temperature = 0.10
+    cfg.model.cptr_adapter_weight = 0.05
+    cfg.model.cptr_safe_weight = 1.0
+    cfg.model.cptr_safe_margin = 0.0
+    cfg.model.cptr_threshold_decay = 0.99
+    cfg.model.cptr_uplift_decay = 0.95
+    cfg.model.cptr_uplift_lcb_z = 1.0
+    cfg.model.cptr_gate_scale = 0.01
+    cfg.model.cptr_min_env_count = 8
+    cfg.model.cptr_min_threshold_count = 8
+    cfg.model.cptr_start_epoch = 10

@@ -31,7 +31,9 @@ class HeteroGNNEdgeHead(nn.Module):
         # `campr` adds counterfactual-advantage supervision and mean-preserving
         # sample routing on top of that same A2 residual. `costar` keeps A2 as
         # an optimization anchor and learns a detached, orthogonal local
-        # correction with train-only threshold-robust supervision.
+        # correction with train-only threshold-robust supervision. `cptr`
+        # localizes a bounded adapter at a train-calibrated A2 threshold and
+        # deploys it only when train-environment uplift has a positive LCB.
         # `evidence_gate_v3` is the convex-fusion gate experiment.
         # `evidence_gate_v4_residual` fixes its dead-expert failure mode with a
         # bounded residual structural expert, a nonzero fixed-open warm-up, and
@@ -41,14 +43,17 @@ class HeteroGNNEdgeHead(nn.Module):
         # every prototype-derived router input.
         self.use_evidence_gate = self.edge_decoding in {
             'evidence_gate', 'evidence_gate_proto', 'dmprd', 'campr', 'costar',
+            'cptr',
             'evidence_gate_v3',
             'evidence_gate_v4_residual', 'evidence_gate_v4_nogate',
             'evidence_gate_v4_noproto'}
-        self.use_dmprd = self.edge_decoding in {'dmprd', 'campr', 'costar'}
+        self.use_dmprd = self.edge_decoding in {
+            'dmprd', 'campr', 'costar', 'cptr'}
         self.use_campr = (self.edge_decoding == 'campr')
         self.use_costar = (self.edge_decoding == 'costar')
+        self.use_cptr = (self.edge_decoding == 'cptr')
         self.eg_proto_only = self.edge_decoding in {
-            'evidence_gate_proto', 'dmprd', 'campr', 'costar'}
+            'evidence_gate_proto', 'dmprd', 'campr', 'costar', 'cptr'}
         self.eg_gate_v3 = (self.edge_decoding == 'evidence_gate_v3')
         self.eg_gate_v4 = self.edge_decoding in {
             'evidence_gate_v4_residual', 'evidence_gate_v4_nogate',
@@ -1617,6 +1622,89 @@ class HeteroGNNEdgeHead(nn.Module):
                 self._costar_adapter_loss = None
                 self._costar_diag = None
                 self._costar_log_step = 0
+            if self.use_cptr:
+                self.cptr_router_hidden = int(getattr(
+                    cfg.model, 'cptr_router_hidden', 32))
+                self.cptr_max_correction = float(getattr(
+                    cfg.model, 'cptr_max_correction', 0.10))
+                self.cptr_boundary_temperature = float(getattr(
+                    cfg.model, 'cptr_boundary_temperature', 0.10))
+                self.cptr_soft_f1_temperature = float(getattr(
+                    cfg.model, 'cptr_soft_f1_temperature', 0.10))
+                self.cptr_adapter_weight = float(getattr(
+                    cfg.model, 'cptr_adapter_weight', 0.05))
+                self.cptr_safe_weight = float(getattr(
+                    cfg.model, 'cptr_safe_weight', 1.0))
+                self.cptr_safe_margin = float(getattr(
+                    cfg.model, 'cptr_safe_margin', 0.0))
+                self.cptr_threshold_decay = float(getattr(
+                    cfg.model, 'cptr_threshold_decay', 0.99))
+                self.cptr_uplift_decay = float(getattr(
+                    cfg.model, 'cptr_uplift_decay', 0.95))
+                self.cptr_uplift_lcb_z = float(getattr(
+                    cfg.model, 'cptr_uplift_lcb_z', 1.0))
+                self.cptr_gate_scale = float(getattr(
+                    cfg.model, 'cptr_gate_scale', 0.01))
+                self.cptr_min_env_count = int(getattr(
+                    cfg.model, 'cptr_min_env_count', 8))
+                self.cptr_min_threshold_count = int(getattr(
+                    cfg.model, 'cptr_min_threshold_count', 8))
+                self.cptr_start_epoch = int(getattr(
+                    cfg.model, 'cptr_start_epoch', 10))
+
+                if min(self.cptr_router_hidden, self.cptr_min_env_count,
+                       self.cptr_min_threshold_count) < 1:
+                    raise ValueError("CPTR integer settings must be positive")
+                if min(self.cptr_max_correction,
+                       self.cptr_boundary_temperature,
+                       self.cptr_soft_f1_temperature,
+                       self.cptr_gate_scale) <= 0.0:
+                    raise ValueError("CPTR scales and bounds must be positive")
+                if self.cptr_max_correction > 0.10:
+                    raise ValueError(
+                        "cptr_max_correction must not exceed 0.10")
+                if min(self.cptr_adapter_weight, self.cptr_safe_weight,
+                       self.cptr_safe_margin, self.cptr_uplift_lcb_z) < 0.0:
+                    raise ValueError("CPTR weights must be non-negative")
+                if not 0.0 <= self.cptr_threshold_decay < 1.0:
+                    raise ValueError(
+                        "cptr_threshold_decay must be in [0, 1)")
+                if not 0.0 <= self.cptr_uplift_decay < 1.0:
+                    raise ValueError(
+                        "cptr_uplift_decay must be in [0, 1)")
+                if self.cptr_start_epoch < 0:
+                    raise ValueError("cptr_start_epoch must be non-negative")
+
+                self.cptr_adapter = nn.Sequential(
+                    nn.Linear(dim_in + 8, self.cptr_router_hidden),
+                    nn.GELU(),
+                    nn.Linear(self.cptr_router_hidden, 1),
+                )
+                nn.init.zeros_(self.cptr_adapter[-1].weight)
+                nn.init.zeros_(self.cptr_adapter[-1].bias)
+
+                sorted_train = self.train_inds.detach().sort().values
+                if sorted_train.numel() < 3:
+                    raise ValueError("CPTR requires at least three train edges")
+                boundary_positions = [
+                    sorted_train.numel() // 3,
+                    (2 * sorted_train.numel()) // 3,
+                ]
+                self.register_buffer(
+                    'cptr_env_boundaries',
+                    sorted_train[boundary_positions].clone())
+                self.register_buffer('cptr_threshold_ema', torch.zeros(1))
+                self.register_buffer(
+                    'cptr_threshold_count', torch.zeros((), dtype=torch.long))
+                self.register_buffer('cptr_uplift_ema', torch.zeros(3))
+                self.register_buffer('cptr_uplift_variance', torch.zeros(3))
+                self.register_buffer(
+                    'cptr_uplift_count', torch.zeros(3, dtype=torch.long))
+                self._eg_cur_epoch = 0
+                self._cptr_anchor_logits = None
+                self._cptr_adapter_loss = None
+                self._cptr_diag = None
+                self._cptr_log_step = 0
             self._dmprd_log_step = 0
             return
 
@@ -2464,6 +2552,219 @@ class HeteroGNNEdgeHead(nn.Module):
                 'threshold_perturb': perturbation.detach(),
                 'batch_split_valid': final_margin.new_tensor(
                     float(split_valid)),
+            }
+        return total
+
+    def _cptr_environment_ids(self, edge_ids):
+        return torch.bucketize(
+            edge_ids.detach().long(), self.cptr_env_boundaries)
+
+    @staticmethod
+    def _cptr_stratified_masks(labels, edge_ids):
+        labels = labels.view(-1).long()
+        edge_ids = edge_ids.view(-1).long()
+        split_a = torch.zeros_like(labels, dtype=torch.bool)
+        split_b = torch.zeros_like(labels, dtype=torch.bool)
+        for class_idx in (0, 1):
+            indices = torch.nonzero(
+                labels == class_idx, as_tuple=False).view(-1)
+            if indices.numel() < 2:
+                return split_a, split_b, False
+            order = torch.argsort(edge_ids[indices])
+            ordered = indices[order]
+            split_a[ordered[::2]] = True
+            split_b[ordered[1::2]] = True
+        valid = (
+            labels[split_a].unique().numel() == 2 and
+            labels[split_b].unique().numel() == 2)
+        return split_a, split_b, bool(valid)
+
+    def _cptr_boundary_weight(self, margins, threshold):
+        u = torch.sigmoid(
+            (margins.view(-1, 1) - threshold) /
+            self.cptr_boundary_temperature)
+        return 4.0 * u * (1.0 - u)
+
+    def _cptr_soft_f1(self, margins, labels, threshold):
+        labels = labels.view(-1).float()
+        probability = torch.sigmoid(
+            (margins.view(-1) - threshold) /
+            self.cptr_soft_f1_temperature)
+        true_positive = (labels * probability).sum()
+        return (2.0 * true_positive + 1e-8) / (
+            labels.sum() + probability.sum() + 1e-8)
+
+    def _cptr_uplift_lcb(self):
+        counts = self.cptr_uplift_count.to(
+            self.cptr_uplift_ema.dtype).clamp(min=1.0)
+        standard_error = torch.sqrt(
+            self.cptr_uplift_variance.clamp(min=0.0) / counts)
+        return self.cptr_uplift_ema - (
+            self.cptr_uplift_lcb_z * standard_error)
+
+    def _cptr_deploy_gate(self, edge_ids):
+        env_ids = self._cptr_environment_ids(edge_ids)
+        lcb = self._cptr_uplift_lcb().detach()[env_ids]
+        env_ready = (
+            self.cptr_uplift_count[env_ids] >= self.cptr_min_env_count)
+        threshold_ready = (
+            self.cptr_threshold_count >= self.cptr_min_threshold_count)
+        ready = env_ready & threshold_ready
+        positive_lcb = F.relu(lcb)
+        gate = torch.where(
+            ready & (lcb > 0.0),
+            (positive_lcb / self.cptr_gate_scale).clamp(max=1.0),
+            torch.zeros_like(positive_lcb),
+        )
+        return gate.view(-1, 1), lcb.view(-1, 1), ready.view(-1, 1)
+
+    def _cptr_route(self, features, z_anchor, edge_ids):
+        anchor_margin = self._campr_logit_margin(z_anchor.detach())
+        raw_correction = self.cptr_max_correction * torch.tanh(
+            self.cptr_adapter(features))
+        threshold = self.cptr_threshold_ema.detach().view(())
+        boundary = self._cptr_boundary_weight(anchor_margin, threshold)
+        gate, lcb, ready = self._cptr_deploy_gate(edge_ids)
+        correction = raw_correction * boundary * gate
+        logits = self._costar_add_margin(z_anchor.detach(), correction)
+        return {
+            'logits': logits,
+            'anchor_margin': anchor_margin,
+            'raw_correction': raw_correction,
+            'boundary': boundary,
+            'gate': gate,
+            'lcb': lcb,
+            'ready': ready,
+            'correction_margin': correction,
+        }
+
+    def _cptr_direction_objective(self, route, labels, env_ids,
+                                  calibration, evaluation):
+        anchor_margin = route['anchor_margin']
+        raw_correction = route['raw_correction']
+        threshold = self._costar_best_f1_threshold(
+            anchor_margin[calibration], labels[calibration])
+        boundary = self._cptr_boundary_weight(
+            anchor_margin[evaluation], threshold)
+        candidate_margin = (
+            anchor_margin[evaluation] +
+            raw_correction[evaluation] * boundary)
+        new_f1 = self._cptr_soft_f1(
+            candidate_margin, labels[evaluation], threshold)
+        with torch.no_grad():
+            anchor_f1 = self._cptr_soft_f1(
+                anchor_margin[evaluation], labels[evaluation], threshold)
+        safe_loss = F.relu(
+            anchor_f1 - new_f1 + self.cptr_safe_margin)
+        loss = 1.0 - new_f1 + self.cptr_safe_weight * safe_loss
+
+        uplift_updates = []
+        for env_idx in range(3):
+            env_mask = evaluation & (env_ids == env_idx)
+            env_labels = labels[env_mask]
+            if (env_labels.numel() < 2 or
+                    env_labels.unique().numel() < 2):
+                continue
+            env_boundary = self._cptr_boundary_weight(
+                anchor_margin[env_mask], threshold)
+            env_candidate = (
+                anchor_margin[env_mask] +
+                raw_correction[env_mask] * env_boundary)
+            with torch.no_grad():
+                candidate_f1 = self._cptr_soft_f1(
+                    env_candidate.detach(), env_labels, threshold)
+                base_f1 = self._cptr_soft_f1(
+                    anchor_margin[env_mask], env_labels, threshold)
+                uplift_updates.append((env_idx, candidate_f1 - base_f1))
+        return loss, threshold.detach(), new_f1.detach(), uplift_updates
+
+    @torch.no_grad()
+    def _cptr_update_train_buffers(self, thresholds, uplift_updates):
+        if not self.training:
+            return
+        for threshold in thresholds:
+            threshold = threshold.detach().view_as(self.cptr_threshold_ema)
+            if not torch.isfinite(threshold).all():
+                continue
+            if self.cptr_threshold_count.item() == 0:
+                self.cptr_threshold_ema.copy_(threshold)
+            else:
+                decay = self.cptr_threshold_decay
+                self.cptr_threshold_ema.mul_(decay).add_(
+                    threshold, alpha=1.0 - decay)
+            self.cptr_threshold_count.add_(1)
+
+        for env_idx, uplift in uplift_updates:
+            uplift = uplift.detach().view(())
+            if not torch.isfinite(uplift):
+                continue
+            count = int(self.cptr_uplift_count[env_idx].item())
+            if count == 0:
+                self.cptr_uplift_ema[env_idx].copy_(uplift)
+                self.cptr_uplift_variance[env_idx].zero_()
+            else:
+                decay = self.cptr_uplift_decay
+                old_mean = self.cptr_uplift_ema[env_idx].clone()
+                new_mean = decay * old_mean + (1.0 - decay) * uplift
+                variance = (
+                    decay * self.cptr_uplift_variance[env_idx] +
+                    (1.0 - decay) *
+                    (uplift - old_mean) * (uplift - new_mean))
+                self.cptr_uplift_ema[env_idx].copy_(new_mean)
+                self.cptr_uplift_variance[env_idx].copy_(
+                    variance.clamp(min=0.0))
+            self.cptr_uplift_count[env_idx].add_(1)
+
+    def _cptr_adapter_objective(self, route, labels, edge_ids):
+        labels = labels.view(-1).long()
+        edge_ids = edge_ids.view(-1).long()
+        split_a, split_b, split_valid = self._cptr_stratified_masks(
+            labels, edge_ids)
+        if not split_valid:
+            self._cptr_diag = {
+                'loss': route['raw_correction'].sum().detach() * 0.0,
+                'batch_split_valid': labels.new_zeros((), dtype=torch.float),
+                'gate_mean': route['gate'].mean().detach(),
+                'fallback_ratio': (route['gate'] == 0).float().mean().detach(),
+            }
+            return route['raw_correction'].sum() * 0.0
+
+        env_ids = self._cptr_environment_ids(edge_ids)
+        losses = []
+        thresholds = []
+        soft_f1_values = []
+        uplift_updates = []
+        for calibration, evaluation in (
+                (split_a, split_b), (split_b, split_a)):
+            loss, threshold, soft_f1, updates = (
+                self._cptr_direction_objective(
+                    route, labels, env_ids, calibration, evaluation))
+            losses.append(loss)
+            thresholds.append(threshold)
+            soft_f1_values.append(soft_f1)
+            uplift_updates.extend(updates)
+
+        unscaled = torch.stack(losses).mean()
+        active = self._eg_cur_epoch >= self.cptr_start_epoch
+        total = (
+            self.cptr_adapter_weight * unscaled
+            if active else unscaled * 0.0)
+        if active:
+            self._cptr_update_train_buffers(thresholds, uplift_updates)
+
+        with torch.no_grad():
+            lcb = self._cptr_uplift_lcb()
+            self._cptr_diag = {
+                'loss': total.detach(),
+                'batch_split_valid': labels.new_ones((), dtype=torch.float),
+                'soft_f1': torch.stack(soft_f1_values).mean(),
+                'threshold': torch.stack(thresholds).mean(),
+                'boundary_mean': route['boundary'].mean().detach(),
+                'gate_mean': route['gate'].mean().detach(),
+                'fallback_ratio': (route['gate'] == 0).float().mean().detach(),
+                'correction_rms': route['correction_margin'].square(
+                    ).mean().sqrt().detach(),
+                'lcb_min': lcb.min().detach(),
             }
         return total
 
@@ -5045,6 +5346,10 @@ class HeteroGNNEdgeHead(nn.Module):
             self._costar_anchor_logits = None
             self._costar_adapter_loss = None
             self._costar_diag = None
+        if self.use_cptr:
+            self._cptr_anchor_logits = None
+            self._cptr_adapter_loss = None
+            self._cptr_diag = None
         if self.eg_gate_v4:
             self._eg_struct_aux_logits = None
             self._eg_struct_aux_labels = None
@@ -5277,6 +5582,61 @@ class HeteroGNNEdgeHead(nn.Module):
                         float(self._costar_center()),
                         int(self.costar_center_updates.item()),
                         int(self.costar_ema_updates.item()))
+            if self.use_cptr:
+                z_anchor = z_core
+                edge_ids = batch[task].e_id[mask].detach()
+                features, _ = self._costar_router_features(
+                    h, z_base, z_anchor, effective_residual,
+                    pos_sim, neg_sim, proto_margin, ready)
+                route = self._cptr_route(features, z_anchor, edge_ids)
+                z_core = route['logits']
+                if not torch.isfinite(z_core).all():
+                    raise FloatingPointError(
+                        "CPTR produced non-finite final logits")
+                self._cptr_anchor_logits = z_anchor
+                if self.training:
+                    self._cptr_adapter_loss = (
+                        self._cptr_adapter_objective(
+                            route, labels, edge_ids))
+                else:
+                    self._cptr_diag = {
+                        'boundary_mean': route['boundary'].mean().detach(),
+                        'gate_mean': route['gate'].mean().detach(),
+                        'fallback_ratio': (
+                            (route['gate'] == 0).float().mean().detach()),
+                        'correction_rms': (
+                            route['correction_margin'].square().mean().sqrt(
+                            ).detach()),
+                        'lcb_min': route['lcb'].min().detach(),
+                    }
+
+                self._cptr_log_step += 1
+                diagnostic_steps = {
+                    1, 2, 257, 1025, 4097, 16385, 65537,
+                }
+                should_log = (
+                    self.training and
+                    self._cptr_log_step in diagnostic_steps
+                ) or (
+                    not self.training and
+                    self._cptr_log_step % 64 == 1
+                )
+                if should_log and self._cptr_diag is not None:
+                    diag = self._cptr_diag
+                    logging.info(
+                        "[cptr/%s] loss=%.5f boundary=%.4f gate=%.4f "
+                        "fallback=%.4f correction_rms=%.5f lcb_min=%.5f "
+                        "threshold=%.5f threshold_count=%d env_count=%s",
+                        getattr(batch, 'split', '?'),
+                        float(diag.get('loss', z_core.new_zeros(()))),
+                        float(diag['boundary_mean']),
+                        float(diag['gate_mean']),
+                        float(diag['fallback_ratio']),
+                        float(diag['correction_rms']),
+                        float(diag['lcb_min']),
+                        float(self.cptr_threshold_ema),
+                        int(self.cptr_threshold_count.item()),
+                        self.cptr_uplift_count.detach().cpu().tolist())
             if self.use_dmprd and not self.training:
                 self._dmprd_log_step += 1
                 if self._dmprd_log_step % 64 == 1:
