@@ -1616,6 +1616,7 @@ class HeteroGNNEdgeHead(nn.Module):
                 self._costar_anchor_logits = None
                 self._costar_adapter_loss = None
                 self._costar_diag = None
+                self._costar_analysis = None
                 self._costar_log_step = 0
             self._dmprd_log_step = 0
             return
@@ -2252,8 +2253,9 @@ class HeteroGNNEdgeHead(nn.Module):
         # correction remains orthogonal to the A2 residual-scale direction.
         consensus_value = consistency * 0.5 * (
             current_value + ema_value)
-        correction_margin = 0.5 * (
-            consensus_value - self._costar_center()) * evidence_margin
+        center = self._costar_center()
+        residual_weight = 0.5 * (consensus_value - center)
+        correction_margin = residual_weight * evidence_margin
         final_logits = self._costar_add_margin(
             z_anchor.detach(), correction_margin)
 
@@ -2263,10 +2265,11 @@ class HeteroGNNEdgeHead(nn.Module):
                 correction_margin.square().mean() *
                 evidence_margin.square().mean()).clamp(min=1e-8)
             orth_error = (inner.abs() / norm).clamp(max=1e6)
-            fallback = (
+            fallback_mask = (
                 (consistency < self.costar_fallback_confidence) |
                 (correction_margin.abs() <= self.costar_fallback_delta)
-            ).float().mean()
+            )
+            fallback = fallback_mask.float().mean()
 
         return {
             'logits': final_logits,
@@ -2276,7 +2279,10 @@ class HeteroGNNEdgeHead(nn.Module):
             'ema_value': ema_value,
             'consensus_value': consensus_value,
             'consistency': consistency,
+            'center': center,
+            'residual_weight': residual_weight,
             'correction_margin': correction_margin,
+            'fallback_mask': fallback_mask,
             'orth_error': orth_error,
             'fallback_ratio': fallback,
         }
@@ -5045,6 +5051,7 @@ class HeteroGNNEdgeHead(nn.Module):
             self._costar_anchor_logits = None
             self._costar_adapter_loss = None
             self._costar_diag = None
+            self._costar_analysis = None
         if self.eg_gate_v4:
             self._eg_struct_aux_logits = None
             self._eg_struct_aux_labels = None
@@ -5226,6 +5233,33 @@ class HeteroGNNEdgeHead(nn.Module):
                     raise FloatingPointError(
                         "COSTAR produced non-finite final logits")
                 self._costar_anchor_logits = z_anchor
+                base_margin = self._campr_logit_margin(z_base.detach())
+                anchor_margin = self._campr_logit_margin(z_anchor.detach())
+                final_margin = self._campr_logit_margin(z_core.detach())
+                self._costar_analysis = {
+                    'edge_id': batch[task].e_id[mask].detach(),
+                    'labels': labels.detach(),
+                    'base_margin': base_margin,
+                    'anchor_margin': anchor_margin,
+                    'final_margin': final_margin,
+                    'prototype_margin_delta': (
+                        anchor_margin - base_margin),
+                    'costar_margin_delta': route[
+                        'correction_margin'].detach(),
+                    'total_evidence_margin_delta': (
+                        final_margin - base_margin),
+                    'prototype_alpha': dmprd_beta.detach().expand_as(ready),
+                    'prototype_ready': ready.detach(),
+                    'prototype_reliability': (
+                        dmprd_reliability_gate.detach()),
+                    'prototype_support_margin': proto_margin.detach(),
+                    'router_current': route['current_value'].detach(),
+                    'router_ema': route['ema_value'].detach(),
+                    'router_consensus': route['consensus_value'].detach(),
+                    'router_consistency': route['consistency'].detach(),
+                    'residual_weight': route['residual_weight'].detach(),
+                    'fallback_mask': route['fallback_mask'].detach(),
+                }
                 if self.training:
                     self._costar_adapter_loss = (
                         self._costar_adapter_objective(

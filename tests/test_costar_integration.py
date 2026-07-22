@@ -135,6 +135,18 @@ class CostarIntegrationTest(unittest.TestCase):
         second_pred, labels = head(batch)
         self.assertTrue(torch.equal(
             second_pred, head._costar_anchor_logits.detach()))
+        analysis = head._costar_analysis
+        self.assertIsNotNone(analysis)
+        self.assertTrue(torch.allclose(
+            analysis['final_margin'] - analysis['base_margin'],
+            analysis['total_evidence_margin_delta']))
+        self.assertTrue(torch.allclose(
+            analysis['anchor_margin'] - analysis['base_margin'],
+            analysis['prototype_margin_delta']))
+        self.assertTrue(torch.allclose(
+            analysis['final_margin'] - analysis['anchor_margin'],
+            analysis['costar_margin_delta']))
+        self.assertEqual(analysis['edge_id'].numel(), edge_count)
         self.assertTrue(torch.isfinite(head._costar_adapter_loss))
         self.assertIsNotNone(head._costar_diag)
         self.assertIn('platform_width', head._costar_diag)

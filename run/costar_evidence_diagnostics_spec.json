@@ -1,0 +1,22 @@
+{
+  "sampling_protocol": "dynamic_random",
+  "model": "COSTAR",
+  "variant": "COSTAR-evidence-diagnostics",
+  "model_commit": "4abe58c6",
+  "expected_branch": "analysis/costar-evidence-diagnostics",
+  "required_last_epoch": 499,
+  "tasks": [
+    {
+      "dataset": "Small-LI",
+      "seed": 42,
+      "config": "configs/costar/AML-Small-LI.yaml",
+      "run_name": "AML-Small-LI-COSTARDynamic500-Seed42-4abe58c6-gpu0"
+    },
+    {
+      "dataset": "Large-LI",
+      "seed": 44,
+      "config": "configs/costar/AML-Large-LI.yaml",
+      "run_name": "AML-Large-LI-COSTARDynamic500-Seed44-4abe58c6-gpu0"
+    }
+  ]
+}

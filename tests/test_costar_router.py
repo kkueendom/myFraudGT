@@ -87,6 +87,10 @@ class CostarRouterTest(unittest.TestCase):
             route['correction_margin'],
             torch.zeros_like(route['correction_margin'])))
         self.assertEqual(route['fallback_ratio'].item(), 1.0)
+        self.assertTrue(route['fallback_mask'].all())
+        self.assertTrue(torch.equal(
+            route['correction_margin'],
+            route['residual_weight'] * route['evidence_margin']))
         self.assertFalse(any(
             isinstance(module, nn.Dropout)
             for module in self.head.costar_router.modules()))
@@ -106,7 +110,7 @@ class CostarRouterTest(unittest.TestCase):
         left = self.route(tuple(item[:split] for item in inputs))
         right = self.route(tuple(item[split:] for item in inputs))
         for key in ('logits', 'current_value', 'ema_value', 'consistency',
-                    'correction_margin'):
+                    'residual_weight', 'correction_margin'):
             partitioned = torch.cat([left[key], right[key]], dim=0)
             self.assertTrue(torch.allclose(
                 full[key], partitioned, atol=1e-7, rtol=1e-6), key)
@@ -115,10 +119,16 @@ class CostarRouterTest(unittest.TestCase):
         inverse = torch.argsort(permutation)
         permuted = self.route(tuple(item[permutation] for item in inputs))
         for key in ('logits', 'current_value', 'ema_value', 'consistency',
-                    'correction_margin'):
+                    'residual_weight', 'correction_margin'):
             self.assertTrue(torch.allclose(
                 full[key], permuted[key][inverse],
                 atol=1e-7, rtol=1e-6), key)
+        self.assertTrue(torch.equal(
+            full['fallback_mask'],
+            torch.cat([
+                left['fallback_mask'], right['fallback_mask']], dim=0)))
+        self.assertTrue(torch.equal(
+            full['fallback_mask'], permuted['fallback_mask'][inverse]))
 
     def test_adapter_loss_does_not_update_a2_inputs(self):
         self.randomize_routers()
