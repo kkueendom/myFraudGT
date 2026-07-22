@@ -202,7 +202,7 @@ def _epra_margin(logits):
 
 
 def _epra_hard_pair_rank_loss(logits, labels, pair_limit, temperature,
-                              target_margin):
+                              target_margin, finite_hinge=False):
     """Optimize absolute rare-positive ordering on the hardest train pairs."""
     labels = labels.view(-1).long()
     scores = _epra_margin(logits)
@@ -218,16 +218,19 @@ def _epra_hard_pair_rank_loss(logits, labels, pair_limit, temperature,
     gaps = (
         scores[positive].unsqueeze(1) - scores[negative].unsqueeze(0)
     ) / score_scale
+    if finite_hinge:
+        return F.relu(target_margin - gaps).mean()
     return (
         temperature * F.softplus((target_margin - gaps) / temperature)
     ).mean()
 
 
 def _epra_proto_alignment_loss(edge_repr, pos_proto, neg_proto, ready,
-                               labels, temperature):
+                               labels, temperature, allow_single_class=False):
     """Align representations to past-batch class prototypes without leakage."""
     labels = labels.view(-1).long()
-    if not (labels == 0).any() or not (labels == 1).any():
+    if (not allow_single_class and
+            (not (labels == 0).any() or not (labels == 1).any())):
         return edge_repr.sum() * 0.0
     ready = ready.view(-1).clamp(min=0.0, max=1.0)
     if ready.numel() == 1:
@@ -277,10 +280,12 @@ def _epra_aux_loss(model):
         rank_loss = _epra_hard_pair_rank_loss(
             logits, labels, int(module.epra_pair_limit),
             float(module.epra_rank_temperature),
-            float(module.epra_rank_margin))
+            float(module.epra_rank_margin),
+            finite_hinge=bool(getattr(module, 'use_bpra', False)))
         proto_loss = _epra_proto_alignment_loss(
             edge_repr, pos_proto, neg_proto, ready, labels,
-            float(module.epra_proto_temperature))
+            float(module.epra_proto_temperature),
+            allow_single_class=bool(getattr(module, 'use_bpra', False)))
         total = total + scale * (
             float(module.epra_rank_loss_weight) * rank_loss +
             float(module.epra_proto_loss_weight) * proto_loss)
@@ -296,9 +301,10 @@ def _epra_aux_loss(model):
                     pos.mean() - neg.mean()
                     if pos.numel() and neg.numel() else scores.new_zeros(()))
                 logging.info(
-                    "[epra/train] epoch=%d scale=%.3f rank=%.5f "
+                    "[%s/train] epoch=%d scale=%.3f rank=%.5f "
                     "proto=%.5f mean_gap=%.5f positives=%d negatives=%d "
                     "ready=%.3f",
+                    'bpra' if getattr(module, 'use_bpra', False) else 'epra',
                     epoch, scale, rank_loss.item(), proto_loss.item(),
                     rank_gap.item(), pos.numel(), neg.numel(),
                     ready.float().mean().item())

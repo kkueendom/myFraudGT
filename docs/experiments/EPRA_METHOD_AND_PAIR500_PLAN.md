@@ -1,5 +1,14 @@
 # EPRA: End-to-End Prototype Rank Alignment
 
+## BPRA follow-up
+
+Branch `feature/bpra-balanced-prototype-rank` keeps the exact A2 inference path
+but replaces EPRA's asymptotic softplus rank objective with an exact finite
+hinge. Its prototype alignment remains active for a one-class microbatch once
+both historical class prototypes are ready. This directly targets the two
+observed EPRA weaknesses: nonzero pressure after the desired margin is reached
+and inactive rare-class supervision on positive-sparse Large-LI batches.
+
 ## Material Passport
 
 - Branch: `feature/epra-dynamic-random`

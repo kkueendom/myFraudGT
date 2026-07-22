@@ -35,14 +35,15 @@ class HeteroGNNEdgeHead(nn.Module):
         # `evidence_gate_v4_noproto` removes both the prototype residual and
         # every prototype-derived router input.
         self.use_evidence_gate = self.edge_decoding in {
-            'evidence_gate', 'evidence_gate_proto', 'dmprd', 'epra',
+            'evidence_gate', 'evidence_gate_proto', 'dmprd', 'epra', 'bpra',
             'evidence_gate_v3',
             'evidence_gate_v4_residual', 'evidence_gate_v4_nogate',
             'evidence_gate_v4_noproto'}
-        self.use_dmprd = self.edge_decoding in {'dmprd', 'epra'}
-        self.use_epra = (self.edge_decoding == 'epra')
+        self.use_dmprd = self.edge_decoding in {'dmprd', 'epra', 'bpra'}
+        self.use_epra = self.edge_decoding in {'epra', 'bpra'}
+        self.use_bpra = (self.edge_decoding == 'bpra')
         self.eg_proto_only = self.edge_decoding in {
-            'evidence_gate_proto', 'dmprd', 'epra'}
+            'evidence_gate_proto', 'dmprd', 'epra', 'bpra'}
         self.eg_gate_v3 = (self.edge_decoding == 'evidence_gate_v3')
         self.eg_gate_v4 = self.edge_decoding in {
             'evidence_gate_v4_residual', 'evidence_gate_v4_nogate',
