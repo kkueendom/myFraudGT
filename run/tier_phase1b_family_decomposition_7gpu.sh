@@ -20,7 +20,7 @@ run_worker() {
     for job in "$@"; do
       local spec="${job%%:*}"
       local task_index="${job##*:}"
-      CUDA_VISIBLE_DEVICES="$gpu" "$python_bin" \
+      PYTHONDONTWRITEBYTECODE=1 CUDA_VISIBLE_DEVICES="$gpu" "$python_bin" \
         run/tier_phase1_evidence_qualification.py \
         --spec "run/$spec" \
         --task-index "$task_index" \
