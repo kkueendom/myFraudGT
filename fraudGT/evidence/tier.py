@@ -539,12 +539,23 @@ class TemporalIncidentIndex:
         target_edge_ids: torch.Tensor,
         max_tokens: int,
         time_window: Optional[int] = None,
+        selection: str = "recent",
+        selection_pool_factor: int = 3,
     ) -> EvidenceBatch:
         self._validate_query(target_edge_ids, max_tokens, time_window)
+        if selection not in {"recent", "role_motif"}:
+            raise ValueError("selection must be recent or role_motif")
+        if selection_pool_factor < 1:
+            raise ValueError("selection_pool_factor must be positive")
         output_device = target_edge_ids.device
         target_ids = target_edge_ids.detach().cpu()
+        candidate_tokens = (
+            max_tokens
+            if selection == "recent"
+            else max_tokens * selection_pool_factor
+        )
         context_ids, mask = self._recent_context_ids(
-            target_ids, max_tokens, time_window)
+            target_ids, candidate_tokens, time_window)
         batch_size = int(target_ids.numel())
         if not batch_size:
             return EvidenceBatch(
@@ -563,6 +574,36 @@ class TemporalIncidentIndex:
                 support=torch.empty(
                     (0, self.SUPPORT_DIM), device=output_device),
             )
+
+        if selection == "role_motif":
+            safe_candidates = context_ids.clamp_min(0)
+            candidate_edges = self.edge_index[:, safe_candidates]
+            candidate_src, candidate_dst = candidate_edges
+            target_edges = self.edge_index[:, target_ids]
+            target_src, target_dst = target_edges
+            candidate_motif = self._vectorized_motif_flags(
+                candidate_src,
+                candidate_dst,
+                mask,
+                target_src,
+                target_dst,
+            )
+            candidate_reverse = (
+                mask
+                & (candidate_src == target_dst.view(-1, 1))
+                & (candidate_dst == target_src.view(-1, 1))
+            )
+            priority = (
+                8 * candidate_motif[:, :, 2].long()
+                + 4 * candidate_motif[:, :, 1].long()
+                + 2 * candidate_motif[:, :, 0].long()
+                + candidate_reverse.long()
+            )
+            key = priority * (self.num_edges + 1) + context_ids
+            key = key.masked_fill(~mask, -1)
+            order = torch.argsort(key, dim=1, descending=True)
+            context_ids = context_ids.gather(1, order)[:, :max_tokens]
+            mask = context_ids >= 0
 
         safe_ids = context_ids.clamp_min(0)
         context_edges = self.edge_index[:, safe_ids]

@@ -190,6 +190,29 @@ class TemporalIncidentIndexTest(unittest.TestCase):
                     self.assertTrue(torch.equal(
                         actual.support, expected.support))
 
+    def test_role_motif_selection_can_retain_older_reciprocal_edge(self):
+        edge_index = torch.tensor([
+            [1, 0, 0, 0, 0, 0],
+            [0, 2, 3, 4, 5, 1],
+        ])
+        timestamps = torch.arange(6)
+        raw = torch.zeros((6, 4))
+        raw[:, 0] = timestamps
+        index = TemporalIncidentIndex(edge_index, timestamps, raw)
+
+        recent = index.query(
+            torch.tensor([5]), max_tokens=2, selection="recent")
+        selected = index.query(
+            torch.tensor([5]),
+            max_tokens=2,
+            selection="role_motif",
+            selection_pool_factor=3,
+        )
+
+        self.assertNotIn(0, recent.context_edge_ids[0].tolist())
+        self.assertIn(0, selected.context_edge_ids[0].tolist())
+        self.assertGreater(selected.tokens[0, :, -3].sum().item(), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
