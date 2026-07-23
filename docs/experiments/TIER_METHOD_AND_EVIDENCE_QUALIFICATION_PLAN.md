@@ -347,9 +347,11 @@ normal/shuffled/off comparisons. `HeteroRawEdgeEncoder` may replace
 
 - Phase 0 passed on Small-LI and Large-LI at commit `1d37669c`; see
   `TIER_PHASE0_COVERAGE_RESULTS.md`.
-- The reference Python query is retained as a correctness oracle but must be
-  vectorized before repeated training because Large-LI achieved only about
-  87 targets/s in Phase 0.
+- The vectorized query passed exact-equivalence and temporal-invariant tests at
+  commit `0a005d87`. Large-LI query throughput improved from about 87 to
+  66,493 targets/s, and end-to-end audit time improved by 10.90x; see
+  `TIER_VECTORIZED_QUERY_BENCHMARK_RESULTS.md`.
+- The reference Python query remains a correctness oracle.
 - train only EvidenceEncoder and `C_evi`;
 - 80 to 120 epochs initially;
 - structure, temporal, flow/role and all masks;

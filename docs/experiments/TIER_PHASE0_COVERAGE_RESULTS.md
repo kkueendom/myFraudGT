@@ -81,15 +81,15 @@ implementation requirement, not an evidence failure:
 3. benchmark Small-LI and Large-LI throughput;
 4. retain the reference implementation as an audit oracle.
 
-## Continue / Stop Rule
+## Vectorization Follow-up
 
-Continue to Phase 1 only after the vectorized query:
+The vectorized query passed the continuation gate at commit `0a005d87`.
+Large-LI query throughput increased from about 87 to 66,493 targets/s
+(approximately 760x), while end-to-end audit time decreased from 1268.04 to
+116.31 seconds (10.90x). Exact-equivalence and dynamic-sampling invariant tests
+passed.
 
-- matches reference context IDs, masks, tokens, support and motif flags;
-- preserves all temporal invariants;
-- achieves at least 10x Large-LI query throughput or makes a registered
-  evidence-only run feasible within the available compute window.
-
-After that, run evidence-only normal/shuffled/off qualification. CrossFusion
-and ErrorRouter remain out of scope until evidence-only passes the preregistered
+See `TIER_VECTORIZED_QUERY_BENCHMARK_RESULTS.md` for the complete audit.
+Phase 1 evidence-only qualification is now authorized. CrossFusion and
+ErrorRouter remain out of scope until evidence-only passes the preregistered
 predictive and correction gates.
