@@ -18,6 +18,29 @@ SPEC.loader.exec_module(runner)
 
 
 class TierPhaseOneMetricTest(unittest.TestCase):
+    def test_aligns_a2_values_by_global_edge_id(self):
+        target_ids = torch.tensor([30, 10, 20])
+        source_ids = torch.tensor([20, 30, 10])
+        scores = torch.tensor([2.0, 3.0, 1.0])
+        labels = torch.tensor([0, 1, 1])
+        aligned_scores, aligned_labels = runner.align_values_by_edge_id(
+            target_ids, source_ids, scores, labels
+        )
+        self.assertTrue(torch.equal(
+            aligned_scores, torch.tensor([3.0, 1.0, 2.0])
+        ))
+        self.assertTrue(torch.equal(
+            aligned_labels, torch.tensor([1, 1, 0])
+        ))
+
+    def test_rejects_mismatched_paired_edge_sets(self):
+        with self.assertRaises(AssertionError):
+            runner.align_values_by_edge_id(
+                torch.tensor([1, 2]),
+                torch.tensor([1, 3]),
+                torch.tensor([0.1, 0.2]),
+            )
+
     def test_threshold_does_not_split_equal_scores(self):
         labels = torch.tensor([1, 0, 1, 0])
         scores = torch.tensor([0.9, 0.8, 0.8, 0.1])

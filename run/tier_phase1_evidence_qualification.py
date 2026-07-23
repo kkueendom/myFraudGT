@@ -292,6 +292,35 @@ def aggregate_unique(target_ids, labels, scores):
     return unique_ids, (label_sums > 0).long(), score_sums / counts
 
 
+def align_values_by_edge_id(
+    target_edge_ids,
+    source_edge_ids,
+    *source_values,
+):
+    target_edge_ids = target_edge_ids.long().view(-1)
+    source_edge_ids = source_edge_ids.long().view(-1)
+    if (
+        torch.unique(target_edge_ids).numel() != target_edge_ids.numel()
+        or torch.unique(source_edge_ids).numel() != source_edge_ids.numel()
+    ):
+        raise AssertionError("paired edge IDs must be unique within a batch")
+    target_order = torch.argsort(target_edge_ids)
+    source_order = torch.argsort(source_edge_ids)
+    if not torch.equal(
+        target_edge_ids[target_order],
+        source_edge_ids[source_order],
+    ):
+        raise AssertionError("A2 and evidence target edge sets differ")
+    aligned_values = []
+    for values in source_values:
+        if values.size(0) != source_edge_ids.numel():
+            raise ValueError("one source value is not edge aligned")
+        aligned = torch.empty_like(values)
+        aligned[target_order] = values[source_order]
+        aligned_values.append(aligned)
+    return tuple(aligned_values)
+
+
 def tensor_distribution(values):
     values = values.float().view(-1)
     if not values.numel():
@@ -566,13 +595,21 @@ def paired_scores(
         batch.to(device)
         a2_logits, a2_labels = a2_model(batch)
         a2_logits = a2_logits.squeeze(-1)
-        a2_labels = a2_labels.detach().cpu().long().view(-1)
+        target_ids_device = target_ids.to(device)
+        a2_target_mask = torch.isin(batch[TASK].e_id, target_ids_device)
+        a2_target_ids = batch[TASK].e_id[a2_target_mask].detach().cpu()
+        a2_logits, a2_labels = align_values_by_edge_id(
+            target_ids,
+            a2_target_ids,
+            a2_logits.detach().cpu(),
+            a2_labels.detach().cpu().long().view(-1),
+        )
         if not torch.equal(labels, a2_labels):
             raise AssertionError("A2 and evidence labels are not aligned")
         target_ids_all.append(target_ids)
         labels_all.append(labels)
         evidence_all.append(torch.sigmoid(evidence_logits).cpu())
-        a2_all.append(torch.sigmoid(a2_logits).cpu())
+        a2_all.append(torch.sigmoid(a2_logits))
         if step_cap and len(labels_all) >= step_cap:
             break
     return {
