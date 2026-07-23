@@ -321,6 +321,41 @@ def align_values_by_edge_id(
     return tuple(aligned_values)
 
 
+def select_values_by_edge_id(
+    requested_edge_ids,
+    source_edge_ids,
+    *source_values,
+):
+    requested_edge_ids = requested_edge_ids.long().view(-1)
+    source_edge_ids = source_edge_ids.long().view(-1)
+    if (
+        torch.unique(requested_edge_ids).numel()
+        != requested_edge_ids.numel()
+        or torch.unique(source_edge_ids).numel()
+        != source_edge_ids.numel()
+    ):
+        raise AssertionError("paired edge IDs must be unique within a batch")
+    source_order = torch.argsort(source_edge_ids)
+    sorted_source = source_edge_ids[source_order]
+    positions = torch.searchsorted(sorted_source, requested_edge_ids)
+    safe_positions = positions.clamp_max(max(sorted_source.numel() - 1, 0))
+    if (
+        not sorted_source.numel()
+        or (positions >= sorted_source.numel()).any()
+        or not torch.equal(
+            sorted_source[safe_positions], requested_edge_ids
+        )
+    ):
+        raise AssertionError("requested paired edge is absent from source")
+    selected_positions = source_order[positions]
+    selected_values = []
+    for values in source_values:
+        if values.size(0) != source_edge_ids.numel():
+            raise ValueError("one source value is not edge aligned")
+        selected_values.append(values[selected_positions])
+    return tuple(selected_values)
+
+
 def tensor_distribution(values):
     values = values.float().view(-1)
     if not values.numel():
@@ -586,6 +621,8 @@ def paired_scores(
     labels_all = []
     evidence_all = []
     a2_all = []
+    requested_count = 0
+    paired_count = 0
     for batch in loader:
         target_ids, labels, evidence, target_raw, _, _ = query_batch(
             index, batch, spec, selection, device
@@ -598,18 +635,27 @@ def paired_scores(
         target_ids_device = target_ids.to(device)
         a2_target_mask = torch.isin(batch[TASK].e_id, target_ids_device)
         a2_target_ids = batch[TASK].e_id[a2_target_mask].detach().cpu()
-        a2_logits, a2_labels = align_values_by_edge_id(
-            target_ids,
+        a2_logits = a2_logits.detach().cpu()
+        a2_labels = a2_labels.detach().cpu().long().view(-1)
+        if (
+            a2_target_ids.numel() != a2_logits.numel()
+            or a2_target_ids.numel() != a2_labels.numel()
+        ):
+            raise AssertionError("A2 output is not aligned to sampled edge IDs")
+        evidence_logits, labels = select_values_by_edge_id(
             a2_target_ids,
-            a2_logits.detach().cpu(),
-            a2_labels.detach().cpu().long().view(-1),
+            target_ids,
+            evidence_logits.detach().cpu(),
+            labels,
         )
         if not torch.equal(labels, a2_labels):
             raise AssertionError("A2 and evidence labels are not aligned")
-        target_ids_all.append(target_ids)
+        target_ids_all.append(a2_target_ids)
         labels_all.append(labels)
-        evidence_all.append(torch.sigmoid(evidence_logits).cpu())
+        evidence_all.append(torch.sigmoid(evidence_logits))
         a2_all.append(torch.sigmoid(a2_logits))
+        requested_count += int(target_ids.numel())
+        paired_count += int(a2_target_ids.numel())
         if step_cap and len(labels_all) >= step_cap:
             break
     return {
@@ -617,6 +663,9 @@ def paired_scores(
         "labels": torch.cat(labels_all),
         "evidence": torch.cat(evidence_all),
         "a2": torch.cat(a2_all),
+        "requested_samples": requested_count,
+        "paired_samples": paired_count,
+        "paired_retention_rate": paired_count / max(requested_count, 1),
     }
 
 
@@ -732,6 +781,12 @@ def correction_diagnostic(
         "a2_checkpoint_epoch": 499,
         "evidence_val_threshold": evidence_threshold,
         "a2_val_threshold": a2_threshold,
+        "val_requested_samples": val["requested_samples"],
+        "val_paired_samples": val["paired_samples"],
+        "val_paired_retention_rate": val["paired_retention_rate"],
+        "test_requested_samples": test["requested_samples"],
+        "test_paired_samples": test["paired_samples"],
+        "test_paired_retention_rate": test["paired_retention_rate"],
         "sampled_instances": sampled,
         "unique_edges": unique,
     }

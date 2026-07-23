@@ -41,6 +41,31 @@ class TierPhaseOneMetricTest(unittest.TestCase):
                 torch.tensor([0.1, 0.2]),
             )
 
+    def test_selects_a2_scored_subset_in_a2_order(self):
+        requested_ids = torch.tensor([20, 30])
+        source_ids = torch.tensor([30, 10, 20])
+        scores = torch.tensor([3.0, 1.0, 2.0])
+        labels = torch.tensor([1, 0, 1])
+        selected_scores, selected_labels = (
+            runner.select_values_by_edge_id(
+                requested_ids, source_ids, scores, labels
+            )
+        )
+        self.assertTrue(torch.equal(
+            selected_scores, torch.tensor([2.0, 3.0])
+        ))
+        self.assertTrue(torch.equal(
+            selected_labels, torch.tensor([1, 1])
+        ))
+
+    def test_rejects_absent_subset_edge(self):
+        with self.assertRaises(AssertionError):
+            runner.select_values_by_edge_id(
+                torch.tensor([20, 40]),
+                torch.tensor([10, 20, 30]),
+                torch.tensor([1.0, 2.0, 3.0]),
+            )
+
     def test_threshold_does_not_split_equal_scores(self):
         labels = torch.tensor([1, 0, 1, 0])
         scores = torch.tensor([0.9, 0.8, 0.8, 0.1])
