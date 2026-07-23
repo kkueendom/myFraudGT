@@ -141,6 +141,55 @@ class TemporalIncidentIndexTest(unittest.TestCase):
         self.assertEqual(empty.tokens.shape, (0, 3, self.index.token_dim))
         self.assertEqual(empty.support.shape, (0, self.index.SUPPORT_DIM))
 
+    def test_vectorized_query_matches_reference(self):
+        targets = torch.arange(self.edge_index.size(1))
+        for max_tokens in (1, 3, 8):
+            for time_window in (None, 0, 1, 10):
+                expected = self.index.query_reference(
+                    targets, max_tokens=max_tokens,
+                    time_window=time_window)
+                actual = self.index.query(
+                    targets, max_tokens=max_tokens,
+                    time_window=time_window)
+                self.assertTrue(torch.equal(
+                    actual.context_edge_ids, expected.context_edge_ids))
+                self.assertTrue(torch.equal(actual.mask, expected.mask))
+                self.assertTrue(torch.equal(actual.tokens, expected.tokens))
+                self.assertTrue(torch.equal(actual.support, expected.support))
+
+    def test_vectorized_query_matches_reference_on_random_graphs(self):
+        generator = torch.Generator().manual_seed(20260723)
+        for _ in range(12):
+            num_nodes = 8
+            num_edges = 40
+            edge_index = torch.randint(
+                num_nodes, (2, num_edges), generator=generator)
+            timestamps = torch.randint(
+                0, 8, (num_edges,), generator=generator).sort().values
+            raw = torch.randn(
+                (num_edges, 4), generator=generator)
+            raw[:, 0] = timestamps.float()
+            index = TemporalIncidentIndex(
+                edge_index, timestamps, raw)
+            targets = torch.randint(
+                num_edges, (17,), generator=generator)
+            for max_tokens in (1, 4, 9):
+                for time_window in (None, 0, 2):
+                    expected = index.query_reference(
+                        targets, max_tokens, time_window)
+                    actual = index.query(
+                        targets, max_tokens, time_window)
+                    self.assertTrue(torch.equal(
+                        actual.context_edge_ids,
+                        expected.context_edge_ids,
+                    ))
+                    self.assertTrue(torch.equal(
+                        actual.mask, expected.mask))
+                    self.assertTrue(torch.equal(
+                        actual.tokens, expected.tokens))
+                    self.assertTrue(torch.equal(
+                        actual.support, expected.support))
+
 
 if __name__ == "__main__":
     unittest.main()

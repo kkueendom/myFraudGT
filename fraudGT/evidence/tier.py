@@ -221,10 +221,22 @@ class TemporalIncidentIndex:
             key = incident_nodes * (num_edges + 1) + incident_edges
             order = torch.argsort(key)
             self.incident_edge_ids = incident_edges[order]
+            position_dtype = (
+                torch.int32
+                if incident_edges.numel() <= torch.iinfo(torch.int32).max
+                else torch.int64
+            )
+            positions = torch.empty(
+                incident_edges.numel(), dtype=position_dtype)
+            positions[order] = torch.arange(
+                incident_edges.numel(), dtype=position_dtype)
+            self.edge_incident_positions = positions.view(2, num_edges)
             counts = torch.bincount(
                 incident_nodes[order], minlength=self.num_nodes)
         else:
             self.incident_edge_ids = torch.empty(0, dtype=torch.long)
+            self.edge_incident_positions = torch.empty(
+                (2, 0), dtype=torch.int32)
             counts = torch.empty(0, dtype=torch.long)
         self.offsets = torch.zeros(self.num_nodes + 1, dtype=torch.long)
         if counts.numel():
@@ -376,12 +388,12 @@ class TemporalIncidentIndex:
         )
         return tokens, mask, padded_ids, support
 
-    def query(
+    def _validate_query(
         self,
         target_edge_ids: torch.Tensor,
         max_tokens: int,
         time_window: Optional[int] = None,
-    ) -> EvidenceBatch:
+    ) -> None:
         if target_edge_ids.dim() != 1:
             raise ValueError("target_edge_ids must be one-dimensional")
         if target_edge_ids.dtype != torch.long:
@@ -395,6 +407,13 @@ class TemporalIncidentIndex:
                 (target_edge_ids >= self.num_edges).any()):
             raise IndexError("target edge ID is out of range")
 
+    def query_reference(
+        self,
+        target_edge_ids: torch.Tensor,
+        max_tokens: int,
+        time_window: Optional[int] = None,
+    ) -> EvidenceBatch:
+        self._validate_query(target_edge_ids, max_tokens, time_window)
         output_device = target_edge_ids.device
         target_ids_cpu = target_edge_ids.detach().cpu()
         rows = [
@@ -422,4 +441,184 @@ class TemporalIncidentIndex:
             mask=batch.mask.to(output_device),
             context_edge_ids=batch.context_edge_ids.to(output_device),
             support=batch.support.to(output_device),
+        )
+
+    def _recent_context_ids(
+        self,
+        target_ids: torch.Tensor,
+        max_tokens: int,
+        time_window: Optional[int],
+    ):
+        batch_size = int(target_ids.numel())
+        if not batch_size:
+            return (
+                torch.empty((0, max_tokens), dtype=torch.long),
+                torch.empty((0, max_tokens), dtype=torch.bool),
+            )
+
+        target_nodes = self.edge_index[:, target_ids].t()
+        endpoint_positions = torch.stack(
+            (
+                self.edge_incident_positions[0, target_ids],
+                self.edge_incident_positions[1, target_ids],
+            ),
+            dim=1,
+        ).long()
+        endpoint_starts = self.offsets[target_nodes]
+        steps = torch.arange(1, max_tokens + 1, dtype=torch.long)
+        candidate_positions = (
+            endpoint_positions.unsqueeze(-1) - steps.view(1, 1, -1))
+        candidate_valid = (
+            candidate_positions >= endpoint_starts.unsqueeze(-1))
+        safe_positions = candidate_positions.clamp_min(0)
+        candidate_ids = self.incident_edge_ids[safe_positions]
+        candidate_valid &= candidate_ids < target_ids.view(-1, 1, 1)
+        if time_window is not None:
+            target_times = self.timestamps[target_ids].view(-1, 1, 1)
+            candidate_times = self.timestamps[candidate_ids.clamp_min(0)]
+            candidate_valid &= (
+                target_times - candidate_times <= time_window)
+
+        candidate_ids = candidate_ids.masked_fill(~candidate_valid, -1)
+        candidate_ids = candidate_ids.view(batch_size, -1)
+        sorted_ids = torch.sort(
+            candidate_ids, dim=1, descending=True).values
+        sorted_valid = sorted_ids >= 0
+        unique = sorted_valid.clone()
+        if sorted_ids.size(1) > 1:
+            unique[:, 1:] &= sorted_ids[:, 1:] != sorted_ids[:, :-1]
+        ranks = unique.long().cumsum(dim=1) - 1
+        selected = unique & (ranks < max_tokens)
+
+        context_ids = torch.full(
+            (batch_size, max_tokens), -1, dtype=torch.long)
+        row_ids = torch.arange(batch_size).view(-1, 1).expand_as(sorted_ids)
+        context_ids[
+            row_ids[selected], ranks[selected]] = sorted_ids[selected]
+        return context_ids, context_ids >= 0
+
+    def _vectorized_motif_flags(
+        self,
+        context_src: torch.Tensor,
+        context_dst: torch.Tensor,
+        valid: torch.Tensor,
+        target_src: torch.Tensor,
+        target_dst: torch.Tensor,
+    ) -> torch.Tensor:
+        target_src = target_src.view(-1, 1)
+        target_dst = target_dst.view(-1, 1)
+        reciprocal = (
+            valid
+            & (context_src == target_dst)
+            & (context_dst == target_src)
+        )
+
+        pair_valid = valid.unsqueeze(2) & valid.unsqueeze(1)
+        connected = context_dst.unsqueeze(2) == context_src.unsqueeze(1)
+        relay_pairs = (
+            pair_valid
+            & connected
+            & (context_src == target_src).unsqueeze(2)
+            & (context_dst == target_dst).unsqueeze(1)
+        )
+        cycle_pairs = (
+            pair_valid
+            & connected
+            & (context_src == target_dst).unsqueeze(2)
+            & (context_dst == target_src).unsqueeze(1)
+        )
+        relay = relay_pairs.any(dim=2) | relay_pairs.any(dim=1)
+        cycle = cycle_pairs.any(dim=2) | cycle_pairs.any(dim=1)
+        return torch.stack((reciprocal, relay, cycle), dim=-1).float()
+
+    def query(
+        self,
+        target_edge_ids: torch.Tensor,
+        max_tokens: int,
+        time_window: Optional[int] = None,
+    ) -> EvidenceBatch:
+        self._validate_query(target_edge_ids, max_tokens, time_window)
+        output_device = target_edge_ids.device
+        target_ids = target_edge_ids.detach().cpu()
+        context_ids, mask = self._recent_context_ids(
+            target_ids, max_tokens, time_window)
+        batch_size = int(target_ids.numel())
+        if not batch_size:
+            return EvidenceBatch(
+                tokens=torch.empty(
+                    (0, max_tokens, self.token_dim),
+                    device=output_device,
+                ),
+                mask=torch.empty(
+                    (0, max_tokens), dtype=torch.bool,
+                    device=output_device,
+                ),
+                context_edge_ids=torch.empty(
+                    (0, max_tokens), dtype=torch.long,
+                    device=output_device,
+                ),
+                support=torch.empty(
+                    (0, self.SUPPORT_DIM), device=output_device),
+            )
+
+        safe_ids = context_ids.clamp_min(0)
+        context_edges = self.edge_index[:, safe_ids]
+        context_src, context_dst = context_edges
+        target_edges = self.edge_index[:, target_ids]
+        target_src, target_dst = target_edges
+        roles = torch.stack(
+            (
+                context_dst == target_src.view(-1, 1),
+                context_src == target_src.view(-1, 1),
+                context_dst == target_dst.view(-1, 1),
+                context_src == target_dst.view(-1, 1),
+                (context_src == target_dst.view(-1, 1))
+                & (context_dst == target_src.view(-1, 1)),
+            ),
+            dim=-1,
+        ).float()
+        roles *= mask.unsqueeze(-1)
+        motif = self._vectorized_motif_flags(
+            context_src, context_dst, mask, target_src, target_dst)
+
+        target_times = self.timestamps[target_ids].view(-1, 1)
+        context_times = self.timestamps[safe_ids]
+        deltas = (target_times - context_times).float()
+        delta_feature = torch.log1p(
+            deltas.clamp_min(0)).unsqueeze(-1)
+        tokens = torch.cat(
+            (
+                self.raw_edge_attr[safe_ids],
+                delta_feature,
+                roles,
+                motif,
+            ),
+            dim=-1,
+        )
+        tokens *= mask.unsqueeze(-1)
+
+        counts = mask.sum(dim=1)
+        role_coverage = roles[:, :, :4].bool().any(dim=1).sum(dim=1)
+        maximum = torch.iinfo(context_times.dtype).max
+        minimum = torch.iinfo(context_times.dtype).min
+        min_time = context_times.masked_fill(~mask, maximum).min(dim=1).values
+        max_time = context_times.masked_fill(~mask, minimum).max(dim=1).values
+        time_span = torch.where(
+            counts > 0, max_time - min_time, torch.zeros_like(max_time))
+        support = torch.stack(
+            (
+                counts.float(),
+                role_coverage.float(),
+                torch.log1p(time_span.float()),
+                motif[:, :, 0].sum(dim=1),
+                motif[:, :, 1].sum(dim=1) / 2.0,
+                motif[:, :, 2].sum(dim=1) / 2.0,
+            ),
+            dim=-1,
+        )
+        return EvidenceBatch(
+            tokens=tokens.to(output_device),
+            mask=mask.to(output_device),
+            context_edge_ids=context_ids.to(output_device),
+            support=support.to(output_device),
         )
