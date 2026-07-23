@@ -19,6 +19,8 @@ METHOD_TAG = str(SPEC["method_tag"])
 EXPECTED_BRANCH = str(SPEC["expected_branch"])
 TASKS = [(str(dataset), int(seed)) for dataset, seed in SPEC["tasks"]]
 OVERRIDES = [str(item) for item in SPEC["overrides"]]
+CONFIG_TEMPLATE = str(SPEC.get(
+    "config_template", "configs/evidence_gate_v4/AML-{dataset}.yaml"))
 
 PYTHON = os.environ.get(
     "FRAUDGT_PYTHON", "/d/miniconda3/envs/fraudGT/bin/python3.9")
@@ -50,6 +52,8 @@ def protocol_audit():
         raise RuntimeError("spec must declare sampling_protocol=dynamic_random")
     if len(OVERRIDES) % 2:
         raise RuntimeError("overrides must be key/value pairs")
+    if "{dataset}" not in CONFIG_TEMPLATE:
+        raise RuntimeError("config_template must contain {dataset}")
     pairs = dict(zip(OVERRIDES[::2], OVERRIDES[1::2]))
     if pairs.get("val.fixed_target_panel", "").lower() != "false":
         raise RuntimeError("val.fixed_target_panel must be explicitly False")
@@ -197,9 +201,10 @@ def pending_tasks(active, commit):
 def launch(dataset, seed, gpu, commit):
     run_name = run_stem(dataset, seed, commit)
     stdout_path = RUNTIME_BASE / f".{run_name}_gpu{gpu}.log"
+    config_path = CONFIG_TEMPLATE.format(dataset=dataset)
     cmd = [
         PYTHON, "-m", "fraudGT.main", "--cfg",
-        f"configs/evidence_gate_v4/AML-{dataset}.yaml",
+        config_path,
         "--repeat", "1", "--gpu", "0", "out_dir", str(OUT_DIR),
         "name_tag", f"{METHOD_TAG}Dynamic500-Seed{seed}-{commit}",
         "seed", str(seed), "optim.max_epoch", str(MAX_EPOCH),
@@ -219,7 +224,7 @@ def launch(dataset, seed, gpu, commit):
     marker_path(dataset, seed, gpu).write_text(json.dumps({
         "dataset": dataset, "variant": SPEC.get("variant", METHOD_TAG),
         "seed": seed, "gpu": gpu, "pid": process.pid,
-        "git_commit": commit, "config": f"configs/evidence_gate_v4/AML-{dataset}.yaml",
+        "git_commit": commit, "config": config_path,
         "log": str(stdout_path), "sampling_protocol": "dynamic_random",
         "started_at": datetime.now().isoformat(timespec="seconds"),
     }, sort_keys=True))

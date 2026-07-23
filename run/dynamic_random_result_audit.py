@@ -101,6 +101,10 @@ def main():
     if spec.get("sampling_protocol") != "dynamic_random":
         raise ValueError("spec must declare sampling_protocol=dynamic_random")
     tag = str(spec["method_tag"])
+    config_template = str(spec.get(
+        "config_template", "configs/evidence_gate_v4/AML-{dataset}.yaml"))
+    if "{dataset}" not in config_template:
+        raise ValueError("config_template must contain {dataset}")
     root = args.root or repo / "results" / f"{slug(tag)}_{args.commit}_dynamic500"
     baseline = json.loads(
         (repo / "run" / "dynamic_random_a2_baseline.json").read_text())
@@ -132,7 +136,7 @@ def main():
                 "variant": spec.get("variant", tag),
                 "seed": int(seed),
                 "git_commit": args.commit,
-                "config": f"configs/evidence_gate_v4/AML-{dataset}.yaml",
+                "config": config_template.format(dataset=dataset),
                 "checkpoint": result["checkpoint"],
                 "selected_epoch": result["selected_epoch"],
                 "val_selected_test_f1": result["val_selected_test_f1"],

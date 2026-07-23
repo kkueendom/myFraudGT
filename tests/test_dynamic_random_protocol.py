@@ -23,6 +23,13 @@ class DynamicRandomProtocolTest(unittest.TestCase):
             self.assertIn("val_selected_test_f1", metrics)
             self.assertIn("raw_best_test_f1", metrics)
 
+    def test_pair_queue_uses_spec_config_template(self):
+        source = (ROOT / "run" / "dynamic_random_pair_queue.py").read_text()
+        self.assertIn('CONFIG_TEMPLATE.format(dataset=dataset)', source)
+        self.assertIn('"config": config_path', source)
+        self.assertNotIn(
+            'f"configs/evidence_gate_v4/AML-{dataset}.yaml"', source)
+
 
 if __name__ == "__main__":
     unittest.main()
