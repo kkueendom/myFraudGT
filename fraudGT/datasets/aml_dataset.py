@@ -19,6 +19,7 @@ from torch_geometric.data import (
 )
 
 from .temporal_dataset import TemporalDataset
+from fraudGT.evidence.tier import build_raw_edge_attributes
 
 def z_norm(data):
     std = data.std(0).unsqueeze(0)
@@ -390,6 +391,13 @@ class AMLDataset(TemporalDataset):
             'val': (val_end, train_end, val_end),
             'test': (test_end, val_end, test_end),
         }
+        raw_edge_attr = build_raw_edge_attributes(
+            timestamps=timestamps,
+            amounts=edge_attr[:, 1],
+            currencies=edge_attr[:, 2],
+            payment_formats=edge_attr[:, 3],
+            train_end=train_end,
+        )
 
         
         self.ports_dict = {}
@@ -409,6 +417,7 @@ class AMLDataset(TemporalDataset):
             data['node'].num_nodes = int(x.shape[0])
             data['node', 'to', 'node'].edge_index = masked_edge_index
             data['node', 'to', 'node'].edge_attr = masked_edge_attr
+            data['node', 'to', 'node'].raw_edge_attr = raw_edge_attr[:e_count]
             # We use "y" here so LinkNeighborLoader won't mess up the edge label
             data['node', 'to', 'node'].y = masked_y
             data['node', 'to', 'node'].timestamps = masked_timestamps
@@ -418,6 +427,7 @@ class AMLDataset(TemporalDataset):
 
             data['node', 'rev_to', 'node'].edge_index = masked_edge_index.flipud()
             data['node', 'rev_to', 'node'].edge_attr = masked_edge_attr
+            data['node', 'rev_to', 'node'].raw_edge_attr = raw_edge_attr[:e_count]
 
             # Define the labels in the training/validation/test sets
             split_mask = torch.zeros(masked_edge_index.shape[1], dtype=torch.bool)
