@@ -465,7 +465,10 @@ class TemporalIncidentIndex:
             dim=1,
         ).long()
         endpoint_starts = self.offsets[target_nodes]
-        steps = torch.arange(1, max_tokens + 1, dtype=torch.long)
+        # A self-loop appears twice in one node's incident list. Reading twice
+        # the requested unique count is sufficient because an edge can occupy
+        # at most two positions for the same endpoint.
+        steps = torch.arange(1, 2 * max_tokens + 1, dtype=torch.long)
         candidate_positions = (
             endpoint_positions.unsqueeze(-1) - steps.view(1, 1, -1))
         candidate_valid = (
