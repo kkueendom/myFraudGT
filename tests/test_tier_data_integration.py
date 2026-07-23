@@ -65,8 +65,11 @@ class TierSidecarMigrationTest(unittest.TestCase):
         self.dataset._ensure_tier_raw_edge_attr()
 
         sidecar = torch.load(self.dataset.tier_sidecar_path)
-        self.assertEqual(sidecar['schema_version'], 1)
+        self.assertEqual(sidecar['schema_version'], 2)
         self.assertEqual(sidecar['dataset'], 'Small-LI')
+        self.assertEqual(sidecar['source'], 'formatted_csv_v2')
+        self.assertEqual(
+            sidecar['amount_transform'], 'train_population_zscore')
         self.assertEqual(sidecar['train_end'], 2)
         self.assertEqual(sidecar['num_edges'], 4)
         for split, count in (('train', 2), ('val', 3), ('test', 4)):
@@ -86,6 +89,51 @@ class TierSidecarMigrationTest(unittest.TestCase):
 
         self.assertTrue(torch.equal(
             self.dataset.data_dict['test'][TASK].raw_edge_attr, expected))
+
+    def test_recovers_sidecar_when_formatted_csv_is_unavailable(self):
+        raw = torch.tensor([
+            [0.0, 1.0, 0.0, 0.0],
+            [1.0, 3.0, 1.0, 1.0],
+            [2.0, 7.0, 2.0, 0.0],
+            [3.0, 9.0, 0.0, 2.0],
+            [4.0, 100.0, 1.0, 1.0],
+            [5.0, 1000.0, 2.0, 2.0],
+        ])
+        edge_index = torch.tensor([
+            [0, 1, 2, 3, 0, 4],
+            [1, 2, 3, 4, 4, 1],
+        ])
+
+        def cached_prefix(count):
+            data = prefix_data(
+                edge_index, raw[:, 0].long(), count)
+            values = raw[:count]
+            data[TASK].edge_attr = (
+                (values - values.mean(0, keepdim=True))
+                / values.std(0, unbiased=True, keepdim=True)
+            )
+            return data
+
+        self.dataset.data_dict = {
+            'train': cached_prefix(4),
+            'val': cached_prefix(5),
+            'test': cached_prefix(6),
+        }
+        os.unlink(self.root / 'formatted_transactions_Small-LI.csv')
+        self.dataset._ensure_tier_raw_edge_attr()
+
+        sidecar = torch.load(self.dataset.tier_sidecar_path)
+        self.assertEqual(sidecar['source'], 'legacy_cache_affine_v2')
+        expected_amount = (
+            (raw[:, 1] - raw[:4, 1].mean())
+            / raw[:4, 1].std(unbiased=False)
+        )
+        self.assertTrue(torch.allclose(
+            sidecar['raw_edge_attr'][:, 1], expected_amount, atol=1e-5))
+        self.assertTrue(torch.equal(
+            sidecar['raw_edge_attr'][:, 2], raw[:, 2]))
+        self.assertTrue(torch.equal(
+            sidecar['raw_edge_attr'][:, 3], raw[:, 3]))
 
     def test_tier_is_opt_in(self):
         default = inspect.signature(AMLDataset.__init__).parameters[

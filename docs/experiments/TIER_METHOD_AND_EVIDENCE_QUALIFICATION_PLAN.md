@@ -321,11 +321,20 @@ target metadata.
 
 Legacy AML `data.pt` files are not rewritten. When TIER is enabled, immutable
 raw attributes are loaded from the versioned
-`processed/tier_raw_edge_attr_v1.pt` sidecar. If the sidecar does not exist, it
-is built from the formatted transaction CSV using train-prefix amount
-statistics and then validated against dataset name, train boundary, edge count,
-dtype, shape, and finiteness. The migration must fail rather than fall back to
-the normalized post-processing `edge_attr`.
+`processed/tier_raw_edge_attr_v2.pt` sidecar. Amount is represented by a
+train-prefix population z-score; timestamp and categorical transaction IDs are
+kept separately.
+
+If the formatted transaction CSV is available, v2 is built directly from it.
+For historical caches where that CSV was deleted, the migration uses the fact
+that each cached split column is an affine transform of the same pre-encoder
+transaction field. It fits and validates the full-prefix-to-train-prefix affine
+map only on their shared train edges, reconstructs train-only normalized amount,
+and recovers evenly spaced categorical IDs. The sidecar records either
+`formatted_csv_v2` or `legacy_cache_affine_v2` as its source. Recovery is
+rejected if overlap RMSE exceeds `1e-5`, maximum error exceeds `5e-4`, or
+categories are not evenly spaced. It never reads an encoder-produced
+`edge_attr`.
 
 `LinkNeighborLoader` retains sampled message-edge `raw_edge_attr` through its
 global `e_id`. The TIER-only batch transform additionally maps loader

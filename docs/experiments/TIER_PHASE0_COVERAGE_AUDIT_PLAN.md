@@ -46,7 +46,7 @@ PYTHONDONTWRITEBYTECODE=1 /d/miniconda3/envs/fraudGT/bin/python3.9 \
 | `coverage_rows.jsonl` | JSONL | One complete row per dataset and split |
 | `experiment_manifest.jsonl` | JSONL | Commit/config/seed/protocol and no-training fields recorded |
 | `phase0_summary.md` | Markdown | Coverage and resource tables generated |
-| `tier_raw_edge_attr_v1.pt` | PyTorch sidecar | Schema and source-boundary validation passes |
+| `tier_raw_edge_attr_v2.pt` | PyTorch sidecar | Schema, source and train-boundary validation passes |
 
 ## Mandatory Invariants
 

@@ -19,16 +19,18 @@ def build_raw_edge_attributes(
         raise ValueError("raw edge attribute inputs must have equal lengths")
     if train_end < 1 or train_end > timestamps.numel():
         raise ValueError("train_end must select a non-empty prefix")
-    if not torch.isfinite(amounts.float()).all():
-        raise ValueError("amounts must be finite")
+    if any(not torch.isfinite(tensor.float()).all() for tensor in tensors):
+        raise ValueError("raw edge attribute inputs must be finite")
     if (amounts < 0).any():
         raise ValueError("amounts must be non-negative")
+    if (currencies < 0).any() or (payment_formats < 0).any():
+        raise ValueError("categorical IDs must be non-negative")
 
-    log_amount = torch.log1p(amounts.float())
-    train_amount = log_amount[:train_end]
+    amount = amounts.float()
+    train_amount = amount[:train_end]
     amount_mean = train_amount.mean()
     amount_std = train_amount.std(unbiased=False).clamp_min(1e-6)
-    normalized_amount = (log_amount - amount_mean) / amount_std
+    normalized_amount = (amount - amount_mean) / amount_std
 
     return torch.stack(
         (
@@ -39,6 +41,104 @@ def build_raw_edge_attributes(
         ),
         dim=-1,
     )
+
+
+def _fit_affine_from_overlap(
+    target_train: torch.Tensor,
+    source_train: torch.Tensor,
+):
+    target = target_train.detach().cpu().double()
+    source = source_train.detach().cpu().double()
+    if target.shape != source.shape or target.dim() != 1:
+        raise ValueError("affine overlap inputs must be equal 1D tensors")
+    source_scale = source.std(unbiased=False)
+    target_scale = target.std(unbiased=False)
+    if source_scale <= 1e-12 or target_scale <= 1e-12:
+        raise ValueError("affine overlap feature must have nonzero variance")
+    slope = target_scale / source_scale
+    intercept = target.mean() - slope * source.mean()
+    recovered = slope * source + intercept
+    error = recovered - target
+    rmse = error.square().mean().sqrt()
+    max_error = error.abs().max()
+    if rmse > 1e-5 or max_error > 5e-4:
+        raise ValueError(
+            "legacy split features are not affine-compatible: "
+            f"rmse={float(rmse):.6g}, max={float(max_error):.6g}"
+        )
+    return slope, intercept
+
+
+def _recover_category_codes(values: torch.Tensor) -> torch.Tensor:
+    unique_values = torch.unique(values).sort().values
+    if unique_values.numel() == 1:
+        return torch.zeros_like(values)
+    spacing = torch.median(unique_values[1:] - unique_values[:-1])
+    if spacing <= 1e-12:
+        raise ValueError("category values must have positive spacing")
+    codes = torch.round((values - unique_values[0]) / spacing)
+    reconstructed = unique_values[0] + codes * spacing
+    if (reconstructed - values).abs().max() > 5e-4:
+        raise ValueError("legacy category values are not evenly spaced")
+    if (codes < 0).any():
+        raise ValueError("recovered category codes must be non-negative")
+    return codes.float()
+
+
+def recover_train_normalized_raw_edge_attributes(
+    timestamps: torch.Tensor,
+    train_edge_attr: torch.Tensor,
+    full_edge_attr: torch.Tensor,
+) -> torch.Tensor:
+    """Recover train-only transaction fields from legacy split z-scores.
+
+    Historical AML caches z-normalized each prefix separately. Those cached
+    columns are affine transforms of the same pre-encoder transaction fields.
+    The overlap with the train prefix therefore identifies an exact affine map
+    from the full-prefix cache to the train-prefix scale without labels or
+    validation/test statistics in the resulting representation.
+    """
+    if train_edge_attr.dim() != 2 or full_edge_attr.dim() != 2:
+        raise ValueError("legacy edge attributes must be two-dimensional")
+    if train_edge_attr.size(1) < 4 or full_edge_attr.size(1) < 4:
+        raise ValueError("legacy edge attributes must contain four columns")
+    train_end = int(train_edge_attr.size(0))
+    num_edges = int(full_edge_attr.size(0))
+    if train_end < 2 or train_end > num_edges:
+        raise ValueError("legacy train prefix must contain at least two edges")
+    if timestamps.dim() != 1 or timestamps.numel() != num_edges:
+        raise ValueError("timestamps must contain one value per full edge")
+    if not torch.isfinite(train_edge_attr[:, :4]).all():
+        raise ValueError("legacy train edge attributes must be finite")
+    if not torch.isfinite(full_edge_attr[:, :4]).all():
+        raise ValueError("legacy full edge attributes must be finite")
+
+    recovered_columns = []
+    for column in (1, 2, 3):
+        slope, intercept = _fit_affine_from_overlap(
+            train_edge_attr[:, column],
+            full_edge_attr[:train_end, column],
+        )
+        recovered_columns.append(
+            slope * full_edge_attr[:, column].detach().cpu().double()
+            + intercept
+        )
+
+    # Historical z_norm uses the unbiased sample standard deviation. Convert
+    # its amount channel to the population z-score used by the TIER contract.
+    amount_scale = (train_end / (train_end - 1.0)) ** 0.5
+    normalized_amount = (recovered_columns[0] * amount_scale).float()
+    currency_codes = _recover_category_codes(recovered_columns[1])
+    payment_codes = _recover_category_codes(recovered_columns[2])
+    return torch.stack(
+        (
+            timestamps.detach().cpu().float(),
+            normalized_amount,
+            currency_codes,
+            payment_codes,
+        ),
+        dim=-1,
+    ).contiguous()
 
 
 @dataclass(frozen=True)

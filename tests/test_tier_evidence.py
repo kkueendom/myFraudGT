@@ -5,6 +5,7 @@ import torch
 from fraudGT.evidence.tier import (
     TemporalIncidentIndex,
     build_raw_edge_attributes,
+    recover_train_normalized_raw_edge_attributes,
 )
 
 
@@ -17,13 +18,41 @@ class RawEdgeAttributeTest(unittest.TestCase):
         raw = build_raw_edge_attributes(
             timestamps, amounts, currencies, formats, train_end=2)
 
-        expected = torch.log1p(amounts)
+        expected = amounts
         train_mean = expected[:2].mean()
         train_std = expected[:2].std(unbiased=False)
         self.assertTrue(torch.allclose(
             raw[:, 1], (expected - train_mean) / train_std))
         self.assertTrue(torch.equal(raw[:, 2], currencies.float()))
         self.assertTrue(torch.equal(raw[:, 3], formats.float()))
+
+    def test_recovers_train_only_scale_from_legacy_split_zscores(self):
+        timestamps = torch.arange(6)
+        amount = torch.tensor([1.0, 3.0, 7.0, 9.0, 100.0, 1000.0])
+        currency = torch.tensor([0.0, 1.0, 2.0, 0.0, 1.0, 2.0])
+        payment = torch.tensor([0.0, 1.0, 0.0, 2.0, 1.0, 2.0])
+        raw = torch.stack(
+            (timestamps.float(), amount, currency, payment), dim=-1)
+
+        def legacy_zscore(values):
+            return (
+                (values - values.mean(0, keepdim=True))
+                / values.std(0, unbiased=True, keepdim=True)
+            )
+
+        recovered = recover_train_normalized_raw_edge_attributes(
+            timestamps=timestamps,
+            train_edge_attr=legacy_zscore(raw[:4]),
+            full_edge_attr=legacy_zscore(raw),
+        )
+        expected_amount = (
+            (amount - amount[:4].mean())
+            / amount[:4].std(unbiased=False)
+        )
+        self.assertTrue(torch.allclose(
+            recovered[:, 1], expected_amount, atol=1e-5))
+        self.assertTrue(torch.equal(recovered[:, 2], currency))
+        self.assertTrue(torch.equal(recovered[:, 3], payment))
 
 
 class TemporalIncidentIndexTest(unittest.TestCase):

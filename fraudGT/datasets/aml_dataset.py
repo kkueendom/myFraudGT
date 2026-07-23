@@ -19,7 +19,10 @@ from torch_geometric.data import (
 )
 
 from .temporal_dataset import TemporalDataset
-from fraudGT.evidence.tier import build_raw_edge_attributes
+from fraudGT.evidence.tier import (
+    build_raw_edge_attributes,
+    recover_train_normalized_raw_edge_attributes,
+)
 
 def z_norm(data):
     std = data.std(0).unsqueeze(0)
@@ -166,8 +169,8 @@ def aml_ports(edge_index, num_nodes):
     return in_ports, out_ports
 
 class AMLDataset(TemporalDataset):
-    TIER_SIDECAR_VERSION = 1
-    TIER_SIDECAR_NAME = 'tier_raw_edge_attr_v1.pt'
+    TIER_SIDECAR_VERSION = 2
+    TIER_SIDECAR_NAME = 'tier_raw_edge_attr_v2.pt'
     TASK_EDGE_TYPE = ('node', 'to', 'node')
     REVERSE_EDGE_TYPE = ('node', 'rev_to', 'node')
     dataset_sizes = ['Small', 'Medium', 'Large']
@@ -213,7 +216,7 @@ class AMLDataset(TemporalDataset):
     def _validate_tier_sidecar(self, payload, train_end, num_edges):
         required = {
             'schema_version', 'dataset', 'train_end', 'num_edges',
-            'raw_edge_attr',
+            'source', 'amount_transform', 'raw_edge_attr',
         }
         missing = required.difference(payload)
         if missing:
@@ -230,6 +233,12 @@ class AMLDataset(TemporalDataset):
                 raise ValueError(
                     f'TIER sidecar {key}={payload[key]!r}, expected {value!r}')
         raw_edge_attr = payload['raw_edge_attr']
+        if payload['source'] not in {
+            'formatted_csv_v2', 'legacy_cache_affine_v2',
+        }:
+            raise ValueError('unexpected TIER sidecar source')
+        if payload['amount_transform'] != 'train_population_zscore':
+            raise ValueError('unexpected TIER amount transform')
         if (
             not isinstance(raw_edge_attr, torch.Tensor)
             or raw_edge_attr.dtype != torch.float32
@@ -240,16 +249,12 @@ class AMLDataset(TemporalDataset):
                 'TIER sidecar raw_edge_attr must be finite float32 [E, 4]')
         return raw_edge_attr
 
-    def _build_tier_sidecar(self, train_end, num_edges):
-        transaction_file = osp.join(
-            self.root, f"formatted_transactions_{self.name}.csv"
-        )
-        if not osp.exists(transaction_file):
-            raise FileNotFoundError(
-                'TIER evidence requires the formatted AML CSV; refusing to '
-                'derive raw evidence from normalized encoder edge_attr: '
-                f'{transaction_file}')
-
+    def _build_tier_sidecar_from_csv(
+        self,
+        transaction_file,
+        train_end,
+        num_edges,
+    ):
         columns = pd.read_csv(
             transaction_file,
             usecols=[
@@ -278,11 +283,45 @@ class AMLDataset(TemporalDataset):
                 columns.pop('Payment Format').to_numpy(copy=False)),
             train_end=train_end,
         ).contiguous()
+        return raw_edge_attr, 'formatted_csv_v2'
+
+    def _recover_tier_sidecar_from_legacy_cache(
+        self,
+        train_end,
+        num_edges,
+    ):
+        train_store = self.data_dict['train'][self.TASK_EDGE_TYPE]
+        test_store = self.data_dict['test'][self.TASK_EDGE_TYPE]
+        if train_store.edge_attr.size(1) != 4:
+            raise ValueError(
+                'legacy TIER recovery must run before ports are attached')
+        raw_edge_attr = recover_train_normalized_raw_edge_attributes(
+            timestamps=test_store.timestamps,
+            train_edge_attr=train_store.edge_attr,
+            full_edge_attr=test_store.edge_attr,
+        )
+        if raw_edge_attr.size(0) != num_edges:
+            raise ValueError('legacy TIER recovery returned wrong edge count')
+        return raw_edge_attr, 'legacy_cache_affine_v2'
+
+    def _build_tier_sidecar(self, train_end, num_edges):
+        transaction_file = osp.join(
+            self.root, f"formatted_transactions_{self.name}.csv"
+        )
+        if osp.exists(transaction_file):
+            raw_edge_attr, source = self._build_tier_sidecar_from_csv(
+                transaction_file, train_end, num_edges)
+        else:
+            raw_edge_attr, source = \
+                self._recover_tier_sidecar_from_legacy_cache(
+                    train_end, num_edges)
         payload = {
             'schema_version': self.TIER_SIDECAR_VERSION,
             'dataset': self.name,
             'train_end': train_end,
             'num_edges': num_edges,
+            'source': source,
+            'amount_transform': 'train_population_zscore',
             'raw_edge_attr': raw_edge_attr,
         }
         tmp_path = f'{self.tier_sidecar_path}.tmp.{os.getpid()}'
