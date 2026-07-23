@@ -345,6 +345,11 @@ normal/shuffled/off comparisons. `HeteroRawEdgeEncoder` may replace
 
 ### Phase 1: evidence-only qualification
 
+- Phase 0 passed on Small-LI and Large-LI at commit `1d37669c`; see
+  `TIER_PHASE0_COVERAGE_RESULTS.md`.
+- The reference Python query is retained as a correctness oracle but must be
+  vectorized before repeated training because Large-LI achieved only about
+  87 targets/s in Phase 0.
 - train only EvidenceEncoder and `C_evi`;
 - 80 to 120 epochs initially;
 - structure, temporal, flow/role and all masks;

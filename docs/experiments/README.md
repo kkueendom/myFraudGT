@@ -6,6 +6,13 @@ All new screening, full-model, and ablation experiments must follow
 `DYNAMIC_RANDOM_A2_PROTOCOL.md`. The only baseline for new experiments is the
 initial A2 table in `run/dynamic_random_a2_baseline.json`.
 
+Current TIER research line:
+
+1. `TIER_METHOD_AND_EVIDENCE_QUALIFICATION_PLAN.md`
+2. `TIER_PHASE0_COVERAGE_AUDIT_PLAN.md`
+3. `TIER_PHASE0_COVERAGE_RESULTS.md`
+4. `tier_phase0_1d37669c/` for the raw Phase 0 JSONL and manifest
+
 - Primary: candidate Val-selected Test F1 versus initial A2 Val-selected Test F1.
 - Supplementary: candidate Raw-best Test F1 versus initial A2 Raw-best Test F1.
 - Never compare across the two metric columns.
