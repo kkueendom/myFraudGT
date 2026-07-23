@@ -313,6 +313,27 @@ after observing results.
 - validate data fields, temporal filtering, role coverage, token counts,
   class-conditional support, memory use, and loader invariants.
 
+### Raw-evidence cache and batch contract
+
+TIER is opt-in through `dataset.tier_evidence=True`. With the default `False`,
+the historical A2 data and sampler path does not load a sidecar or attach TIER
+target metadata.
+
+Legacy AML `data.pt` files are not rewritten. When TIER is enabled, immutable
+raw attributes are loaded from the versioned
+`processed/tier_raw_edge_attr_v1.pt` sidecar. If the sidecar does not exist, it
+is built from the formatted transaction CSV using train-prefix amount
+statistics and then validated against dataset name, train boundary, edge count,
+dtype, shape, and finiteness. The migration must fail rather than fall back to
+the normalized post-processing `edge_attr`.
+
+`LinkNeighborLoader` retains sampled message-edge `raw_edge_attr` through its
+global `e_id`. The TIER-only batch transform additionally maps loader
+`input_id` to an explicit global `target_edge_id`. This mapping is required for
+time-admissible evidence lookup, unique-edge diagnostics, and same-batch
+normal/shuffled/off comparisons. `HeteroRawEdgeEncoder` may replace
+`edge_attr`, but it must leave `raw_edge_attr` unchanged.
+
 ### Phase 1: evidence-only qualification
 
 - train only EvidenceEncoder and `C_evi`;

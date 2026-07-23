@@ -1,0 +1,146 @@
+import inspect
+import os
+import tempfile
+import unittest
+from pathlib import Path
+
+import pandas as pd
+import torch
+from torch import nn
+from torch_geometric.data import HeteroData
+from torch_geometric.loader import LinkNeighborLoader
+
+from fraudGT.datasets.aml_dataset import AMLDataset
+from fraudGT.encoder.hetero_raw_encoder import HeteroRawEdgeEncoder
+from fraudGT.sampler.custom_sampler import AddEgoIdsForLinkNeighbor
+
+
+TASK = ('node', 'to', 'node')
+
+
+def prefix_data(edge_index, timestamps, count):
+    data = HeteroData()
+    data['node'].x = torch.ones((5, 1))
+    data['node'].num_nodes = 5
+    data[TASK].edge_index = edge_index[:, :count]
+    data[TASK].edge_attr = torch.arange(
+        count * 4, dtype=torch.float32).view(count, 4)
+    data[TASK].timestamps = timestamps[:count]
+    data[TASK].y = torch.arange(count) % 2
+    data[TASK].split_mask = torch.ones(count, dtype=torch.bool)
+    return data
+
+
+class TierSidecarMigrationTest(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        (self.root / 'Small-LI' / 'processed').mkdir(parents=True)
+        edge_index = torch.tensor([
+            [0, 1, 2, 3],
+            [1, 2, 3, 4],
+        ])
+        timestamps = torch.tensor([0, 1, 2, 3])
+        self.dataset = AMLDataset.__new__(AMLDataset)
+        self.dataset.root = str(self.root)
+        self.dataset.name = 'Small-LI'
+        self.dataset.data_dict = {
+            'train': prefix_data(edge_index, timestamps, 2),
+            'val': prefix_data(edge_index, timestamps, 3),
+            'test': prefix_data(edge_index, timestamps, 4),
+        }
+        pd.DataFrame({
+            'Amount Received': [1.0, 3.0, 100.0, 1000.0],
+            'Received Currency': [0, 1, 1, 0],
+            'Payment Format': [2, 2, 3, 3],
+        }).to_csv(
+            self.root / 'formatted_transactions_Small-LI.csv',
+            index=False,
+        )
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_migrates_legacy_cache_to_versioned_sidecar(self):
+        self.dataset._ensure_tier_raw_edge_attr()
+
+        sidecar = torch.load(self.dataset.tier_sidecar_path)
+        self.assertEqual(sidecar['schema_version'], 1)
+        self.assertEqual(sidecar['dataset'], 'Small-LI')
+        self.assertEqual(sidecar['train_end'], 2)
+        self.assertEqual(sidecar['num_edges'], 4)
+        for split, count in (('train', 2), ('val', 3), ('test', 4)):
+            raw = self.dataset.data_dict[split][TASK].raw_edge_attr
+            self.assertEqual(raw.shape, (count, 4))
+            self.assertTrue(torch.equal(
+                raw, sidecar['raw_edge_attr'][:count]))
+
+    def test_reuses_sidecar_without_reading_encoder_edge_attr(self):
+        self.dataset._ensure_tier_raw_edge_attr()
+        expected = self.dataset.data_dict['test'][TASK].raw_edge_attr.clone()
+        os.unlink(self.root / 'formatted_transactions_Small-LI.csv')
+        for split in self.dataset.data_dict.values():
+            split[TASK].edge_attr.fill_(99999.0)
+
+        self.dataset._ensure_tier_raw_edge_attr()
+
+        self.assertTrue(torch.equal(
+            self.dataset.data_dict['test'][TASK].raw_edge_attr, expected))
+
+    def test_tier_is_opt_in(self):
+        default = inspect.signature(AMLDataset.__init__).parameters[
+            'tier_evidence'].default
+        self.assertFalse(default)
+
+
+class TierLinkNeighborIntegrationTest(unittest.TestCase):
+    def test_sampling_retains_raw_attributes_and_global_target_ids(self):
+        data = HeteroData()
+        data['node'].x = torch.ones((5, 1))
+        data['node'].num_nodes = 5
+        edge_index = torch.tensor([
+            [0, 1, 2, 3, 0, 4],
+            [1, 2, 3, 4, 4, 1],
+        ])
+        data[TASK].edge_index = edge_index
+        data[TASK].edge_attr = torch.arange(
+            24, dtype=torch.float32).view(6, 4)
+        data[TASK].raw_edge_attr = data[TASK].edge_attr + 1000.0
+        target_edge_ids = torch.tensor([4, 5])
+        loader = LinkNeighborLoader(
+            data=data,
+            num_neighbors=[-1],
+            edge_label_index=(TASK, edge_index[:, target_edge_ids]),
+            edge_label=torch.tensor([0, 1]),
+            batch_size=2,
+            shuffle=False,
+            num_workers=0,
+            transform=AddEgoIdsForLinkNeighbor(
+                target_edge_ids=target_edge_ids,
+                task=TASK,
+                add_ego_ids=False,
+            ),
+        )
+
+        batch = next(iter(loader))
+        store = batch[TASK]
+        self.assertTrue(torch.equal(
+            store.target_edge_id, target_edge_ids[store.input_id]))
+        self.assertTrue(torch.equal(
+            store.raw_edge_attr, data[TASK].raw_edge_attr[store.e_id]))
+
+        raw_before = store.raw_edge_attr.clone()
+        edge_before = store.edge_attr.clone()
+        encoder = HeteroRawEdgeEncoder.__new__(HeteroRawEdgeEncoder)
+        nn.Module.__init__(encoder)
+        encoder.linear = nn.ModuleDict({
+            'node__to__node': nn.Linear(4, 3, bias=False),
+        })
+        expected = encoder.linear['node__to__node'](edge_before)
+        encoder(batch)
+        self.assertTrue(torch.equal(store.raw_edge_attr, raw_before))
+        self.assertTrue(torch.allclose(store.edge_attr, expected))
+
+
+if __name__ == '__main__':
+    unittest.main()

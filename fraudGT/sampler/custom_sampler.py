@@ -769,10 +769,24 @@ def get_HINormerLoader(dataset, batch_size, shuffle=True, split='train'):
 class AddEgoIdsForLinkNeighbor(BaseTransform):
     r"""Add IDs to the centre nodes of the batch.
     """
-    def __init__(self):
-        pass
+    def __init__(
+        self,
+        target_edge_ids=None,
+        task=('node', 'to', 'node'),
+        add_ego_ids=True,
+    ):
+        self.target_edge_ids = target_edge_ids
+        self.task = task
+        self.add_ego_ids = add_ego_ids
 
     def __call__(self, data: Union[Data, HeteroData]):
+        if self.target_edge_ids is not None:
+            input_id = data[self.task].input_id
+            data[self.task].target_edge_id = \
+                self.target_edge_ids[input_id]
+        if not self.add_ego_ids:
+            return data
+
         x = data.x if not isinstance(data, HeteroData) else data['node'].x
         device = x.device
         ids = torch.zeros((x.shape[0], 1), device=device)
@@ -794,8 +808,17 @@ def get_LinkNeighborLoader(dataset, batch_size, shuffle=True, split='train'):
     task = cfg.dataset.task_entity
     data = dataset[split]
     mask = data[task].split_mask
+    target_edge_ids = mask_to_index(mask)
     edge_label_index = data[task].edge_index[:, mask]
     edge_label = data[task].y[mask]
+    tier_evidence = bool(cfg.dataset.tier_evidence)
+    transform = None
+    if cfg.train.add_ego_id or tier_evidence:
+        transform = AddEgoIdsForLinkNeighbor(
+            target_edge_ids=target_edge_ids if tier_evidence else None,
+            task=task,
+            add_ego_ids=cfg.train.add_ego_id,
+        )
     loader_train = \
         LoaderWrapper( \
             LinkNeighborLoader(
@@ -807,7 +830,7 @@ def get_LinkNeighborLoader(dataset, batch_size, shuffle=True, split='train'):
                 batch_size=batch_size,
                 num_workers=cfg.num_workers,
                 shuffle=shuffle,
-                transform=AddEgoIdsForLinkNeighbor() if cfg.train.add_ego_id else None
+                transform=transform,
             ),
             getattr(cfg, 'val' if split == 'test' else split).iter_per_epoch,
             split

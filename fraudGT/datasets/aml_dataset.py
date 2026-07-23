@@ -166,6 +166,10 @@ def aml_ports(edge_index, num_nodes):
     return in_ports, out_ports
 
 class AMLDataset(TemporalDataset):
+    TIER_SIDECAR_VERSION = 1
+    TIER_SIDECAR_NAME = 'tier_raw_edge_attr_v1.pt'
+    TASK_EDGE_TYPE = ('node', 'to', 'node')
+    REVERSE_EDGE_TYPE = ('node', 'rev_to', 'node')
     dataset_sizes = ['Small', 'Medium', 'Large']
     dataset_rates = ['LI', 'HI']
     csv_names = {
@@ -179,11 +183,13 @@ class AMLDataset(TemporalDataset):
 
     def __init__(self, root: str, name: str, reverse_mp: bool = False,
                  add_ports: bool = False,
+                 tier_evidence: bool = False,
                  transform: Optional[Callable] = None,
                  pre_transform: Optional[Callable] = None):
         self.name = name # Small-LI
         self.reverse_mp = reverse_mp
         self.add_ports = add_ports
+        self.tier_evidence = tier_evidence
         assert self.name.split('-')[0] in self.dataset_sizes
         assert self.name.split('-')[1] in self.dataset_rates
         super().__init__(root, transform, pre_transform)
@@ -193,10 +199,123 @@ class AMLDataset(TemporalDataset):
             for split in ['train', 'val', 'test']:
                 del self.data_dict[split]['node', 'rev_to', 'node']
             # del self.slices['node', 'rev_to', 'node']
+        if tier_evidence:
+            self._ensure_tier_raw_edge_attr()
         if add_ports:
             self.ports_dict = torch.load(self.processed_paths[1])
             for split in ['train', 'val', 'test']:
                 self.data_dict[split] = self.add_ports_func(self.data_dict[split], self.ports_dict[split])
+
+    @property
+    def tier_sidecar_path(self) -> str:
+        return osp.join(self.processed_dir, self.TIER_SIDECAR_NAME)
+
+    def _validate_tier_sidecar(self, payload, train_end, num_edges):
+        required = {
+            'schema_version', 'dataset', 'train_end', 'num_edges',
+            'raw_edge_attr',
+        }
+        missing = required.difference(payload)
+        if missing:
+            raise ValueError(
+                f'TIER sidecar is missing fields: {sorted(missing)}')
+        expected = {
+            'schema_version': self.TIER_SIDECAR_VERSION,
+            'dataset': self.name,
+            'train_end': train_end,
+            'num_edges': num_edges,
+        }
+        for key, value in expected.items():
+            if payload[key] != value:
+                raise ValueError(
+                    f'TIER sidecar {key}={payload[key]!r}, expected {value!r}')
+        raw_edge_attr = payload['raw_edge_attr']
+        if (
+            not isinstance(raw_edge_attr, torch.Tensor)
+            or raw_edge_attr.dtype != torch.float32
+            or raw_edge_attr.shape != (num_edges, 4)
+            or not torch.isfinite(raw_edge_attr).all()
+        ):
+            raise ValueError(
+                'TIER sidecar raw_edge_attr must be finite float32 [E, 4]')
+        return raw_edge_attr
+
+    def _build_tier_sidecar(self, train_end, num_edges):
+        transaction_file = osp.join(
+            self.root, f"formatted_transactions_{self.name}.csv"
+        )
+        if not osp.exists(transaction_file):
+            raise FileNotFoundError(
+                'TIER evidence requires the formatted AML CSV; refusing to '
+                'derive raw evidence from normalized encoder edge_attr: '
+                f'{transaction_file}')
+
+        columns = pd.read_csv(
+            transaction_file,
+            usecols=[
+                'Amount Received', 'Received Currency', 'Payment Format',
+            ],
+            dtype={
+                'Amount Received': np.float32,
+                'Received Currency': np.int16,
+                'Payment Format': np.int16,
+            },
+        )
+        if len(columns) != num_edges:
+            raise ValueError(
+                f'Formatted AML CSV has {len(columns)} edges, expected '
+                f'{num_edges}')
+
+        test_store = self.data_dict['test'][self.TASK_EDGE_TYPE]
+        timestamps = test_store.timestamps.detach().cpu().long()
+        raw_edge_attr = build_raw_edge_attributes(
+            timestamps=timestamps,
+            amounts=torch.from_numpy(
+                columns.pop('Amount Received').to_numpy(copy=False)),
+            currencies=torch.from_numpy(
+                columns.pop('Received Currency').to_numpy(copy=False)),
+            payment_formats=torch.from_numpy(
+                columns.pop('Payment Format').to_numpy(copy=False)),
+            train_end=train_end,
+        ).contiguous()
+        payload = {
+            'schema_version': self.TIER_SIDECAR_VERSION,
+            'dataset': self.name,
+            'train_end': train_end,
+            'num_edges': num_edges,
+            'raw_edge_attr': raw_edge_attr,
+        }
+        tmp_path = f'{self.tier_sidecar_path}.tmp.{os.getpid()}'
+        try:
+            torch.save(payload, tmp_path)
+            os.replace(tmp_path, self.tier_sidecar_path)
+        finally:
+            if osp.exists(tmp_path):
+                os.unlink(tmp_path)
+        return raw_edge_attr
+
+    def _ensure_tier_raw_edge_attr(self):
+        train_end = int(
+            self.data_dict['train'][self.TASK_EDGE_TYPE].edge_index.size(1))
+        num_edges = int(
+            self.data_dict['test'][self.TASK_EDGE_TYPE].edge_index.size(1))
+        if osp.exists(self.tier_sidecar_path):
+            payload = torch.load(
+                self.tier_sidecar_path, map_location='cpu')
+            raw_edge_attr = self._validate_tier_sidecar(
+                payload, train_end, num_edges)
+        else:
+            raw_edge_attr = self._build_tier_sidecar(train_end, num_edges)
+
+        for split in ('train', 'val', 'test'):
+            data = self.data_dict[split]
+            edge_count = int(
+                data[self.TASK_EDGE_TYPE].edge_index.size(1))
+            data[self.TASK_EDGE_TYPE].raw_edge_attr = \
+                raw_edge_attr[:edge_count]
+            if self.REVERSE_EDGE_TYPE in data.edge_types:
+                data[self.REVERSE_EDGE_TYPE].raw_edge_attr = \
+                    raw_edge_attr[:edge_count]
 
     def add_ports_func(self, data, ports):
         reverse_ports = True
@@ -391,15 +510,6 @@ class AMLDataset(TemporalDataset):
             'val': (val_end, train_end, val_end),
             'test': (test_end, val_end, test_end),
         }
-        raw_edge_attr = build_raw_edge_attributes(
-            timestamps=timestamps,
-            amounts=edge_attr[:, 1],
-            currencies=edge_attr[:, 2],
-            payment_formats=edge_attr[:, 3],
-            train_end=train_end,
-        )
-
-        
         self.ports_dict = {}
         self.data_dict = {}
         for split in ['train', 'val', 'test']:
@@ -417,7 +527,6 @@ class AMLDataset(TemporalDataset):
             data['node'].num_nodes = int(x.shape[0])
             data['node', 'to', 'node'].edge_index = masked_edge_index
             data['node', 'to', 'node'].edge_attr = masked_edge_attr
-            data['node', 'to', 'node'].raw_edge_attr = raw_edge_attr[:e_count]
             # We use "y" here so LinkNeighborLoader won't mess up the edge label
             data['node', 'to', 'node'].y = masked_y
             data['node', 'to', 'node'].timestamps = masked_timestamps
@@ -427,7 +536,6 @@ class AMLDataset(TemporalDataset):
 
             data['node', 'rev_to', 'node'].edge_index = masked_edge_index.flipud()
             data['node', 'rev_to', 'node'].edge_attr = masked_edge_attr
-            data['node', 'rev_to', 'node'].raw_edge_attr = raw_edge_attr[:e_count]
 
             # Define the labels in the training/validation/test sets
             split_mask = torch.zeros(masked_edge_index.shape[1], dtype=torch.bool)

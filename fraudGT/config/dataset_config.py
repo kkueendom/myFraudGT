@@ -23,5 +23,6 @@ def dataset_cfg(cfg):
 
     cfg.dataset.reverse_mp = False
     cfg.dataset.add_ports = False
+    cfg.dataset.tier_evidence = False
 
     cfg.dataset.rand_split = False

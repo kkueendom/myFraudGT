@@ -813,8 +813,13 @@ def preformat_AML(dataset_dir, name):
         PyG dataset object
     """
     # transform = T.ToUndirected(merge=True)
-    dataset = AMLDataset(root=dataset_dir, name=name, reverse_mp=cfg.dataset.reverse_mp,
-                         add_ports=cfg.dataset.add_ports)
+    dataset = AMLDataset(
+        root=dataset_dir,
+        name=name,
+        reverse_mp=cfg.dataset.reverse_mp,
+        add_ports=cfg.dataset.add_ports,
+        tier_evidence=cfg.dataset.tier_evidence,
+    )
     return dataset
 
 
