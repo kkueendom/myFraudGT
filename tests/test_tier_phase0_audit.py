@@ -1,4 +1,6 @@
 import importlib.util
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 
@@ -15,6 +17,20 @@ SPEC.loader.exec_module(AUDIT)
 
 
 class TierPhase0AuditTest(unittest.TestCase):
+    def test_script_entrypoint_resolves_repository_package(self):
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / 'run' / 'tier_phase0_coverage_audit.py'),
+                '--help',
+            ],
+            cwd='/tmp',
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        self.assertIn('--output-dir', result.stdout)
+
     def test_tensor_distribution(self):
         result = AUDIT.tensor_distribution(torch.tensor([0, 1, 3, 4]))
         self.assertEqual(result['count'], 4)

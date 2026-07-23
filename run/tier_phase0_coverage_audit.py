@@ -7,8 +7,13 @@ import os
 import random
 import resource
 import subprocess
+import sys
 import time
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 import numpy as np
 import torch
@@ -440,7 +445,7 @@ def write_summary(path, rows, manifests, commit):
 
 
 def main():
-    repo = Path(__file__).resolve().parents[1]
+    repo = REPO_ROOT
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '--spec', type=Path,
