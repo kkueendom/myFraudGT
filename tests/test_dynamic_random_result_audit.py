@@ -59,6 +59,8 @@ class DynamicRandomResultAuditTest(unittest.TestCase):
         self.write_run(499)
         result = self.audit()
         self.assertIn("completed=1/1", result.stdout)
+        self.assertIn("wins=1 failures=0 ties=0", result.stdout)
+        self.assertIn("noise_range=0", result.stdout)
         record = json.loads(self.manifest.read_text())
         self.assertEqual(record["config"], "configs/cptr/AML-Small-LI.yaml")
         self.assertEqual(record["sampling_protocol"], "dynamic_random")

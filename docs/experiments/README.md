@@ -1,6 +1,21 @@
 # Experiment Results Directory
 
-This directory is the main evidence bundle for the `snapshot/fraudgt-results-20260626` branch.
+## Current protocol (effective 2026-07-23)
+
+All new screening, full-model, and ablation experiments must follow
+`DYNAMIC_RANDOM_A2_PROTOCOL.md`. The only baseline for new experiments is the
+initial A2 table in `run/dynamic_random_a2_baseline.json`.
+
+- Primary: candidate Val-selected Test F1 versus initial A2 Val-selected Test F1.
+- Supplementary: candidate Raw-best Test F1 versus initial A2 Raw-best Test F1.
+- Never compare across the two metric columns.
+- Never include Fixed-panel A2 in a new main result table.
+- Mark `abs(delta_f1) < 0.005` as potentially within dynamic-sampling noise.
+- Record `sampling_protocol=dynamic_random` in every experiment manifest.
+
+The files dated `20260626` below are a historical evidence bundle from
+`snapshot/fraudgt-results-20260626`. They remain useful for diagnosis, but their
+old reporting convention is not the baseline or formal protocol for new runs.
 
 Read order for another model/reviewer:
 
@@ -16,13 +31,14 @@ Read order for another model/reviewer:
 4. `best_seed_clean_ablation_audit_20260626.tsv`  
    Raw audit of the best-seed clean ablation package. This is incomplete in the snapshot: 26/30 jobs are complete.
 
-Metric note:
+Historical metric note:
 
 ```text
 raw_best_test_f1 = max_epoch test_f1(epoch)
 ```
 
-This is the metric used for the main comparison in the summary. Do not confuse it with `test_at_val`, which is also printed by some audit scripts.
+This was the metric used for the main comparison in the archived summary. It
+must not replace the current primary Val-selected comparison.
 
 Important caveats:
 

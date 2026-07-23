@@ -173,12 +173,16 @@ def main():
         raw_deltas = [item[1] for item in completed]
         for name, values in (("val_selected", val_deltas), ("raw_best", raw_deltas)):
             wins = sum(value > 0 for value in values)
-            failures = sum(value <= 0 for value in values)
+            failures = sum(value < 0 for value in values)
+            ties = sum(value == 0 for value in values)
+            noise_range = sum(
+                abs(value) < args.noise_threshold for value in values)
             stable = sum(value >= args.noise_threshold for value in values)
             print(
                 f"summary metric={name} completed={len(values)}/{len(spec['tasks'])} "
                 f"mean_delta={sum(values) / len(values):.5f} wins={wins} "
-                f"failures={failures} gains_ge_0.005={stable}")
+                f"failures={failures} ties={ties} "
+                f"noise_range={noise_range} gains_ge_0.005={stable}")
 
 
 if __name__ == "__main__":
