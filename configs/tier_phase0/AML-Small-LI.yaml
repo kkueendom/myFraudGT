@@ -1,0 +1,14 @@
+dataset:
+  dir: /e/yyk/data/archive
+  name: Small-LI
+  reverse_mp: false
+  add_ports: true
+  tier_evidence: true
+train:
+  neighbor_sizes: [50, 50]
+  iter_per_epoch: 256
+  batch_size: 2048
+  add_ego_id: true
+val:
+  iter_per_epoch: 256
+  fixed_target_panel: false

@@ -1,0 +1,32 @@
+{
+  "sampling_protocol": "dynamic_random",
+  "method_tag": "TIER",
+  "variant": "phase0_coverage_audit",
+  "expected_branch": "feature/tier-independent-evidence-routing",
+  "config_template": "configs/tier_phase0/AML-{dataset}.yaml",
+  "tasks": [
+    {
+      "dataset": "Small-LI",
+      "seed": 42,
+      "expected_batch_size": 2048,
+      "expected_val_iter_per_epoch": 256
+    },
+    {
+      "dataset": "Large-LI",
+      "seed": 44,
+      "expected_batch_size": 1024,
+      "expected_val_iter_per_epoch": 256
+    }
+  ],
+  "splits": ["train", "val", "test"],
+  "max_tokens": 32,
+  "time_window": null,
+  "min_batches": 4,
+  "max_batches": 32,
+  "min_positive_targets": 32,
+  "coverage_gate": {
+    "min_overall_coverage": 0.25,
+    "min_positive_coverage": 0.10,
+    "min_positive_samples": 10
+  }
+}
