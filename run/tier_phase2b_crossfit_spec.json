@@ -1,0 +1,28 @@
+{
+  "sampling_protocol": "dynamic_random",
+  "expected_branch": "feature/tier-independent-evidence-routing",
+  "config_template": "configs/tier_phase1/AML-{dataset}.yaml",
+  "model": "TIER-CrossFitted-A2-Evidence-Teachers",
+  "family": "flow_role",
+  "selection": "recent",
+  "num_folds": 3,
+  "max_tokens": 32,
+  "selection_pool_factor": 3,
+  "hidden_dim": 64,
+  "num_heads": 4,
+  "dropout": 0.2,
+  "positive_weight": 6.0,
+  "a2_max_epochs": 80,
+  "evidence_max_epochs": 60,
+  "learning_rate": 0.001,
+  "weight_decay": 0.00001,
+  "warmup_epochs": 5,
+  "tasks": [
+    {"dataset": "Small-LI", "seed": 42, "fold": 0, "expected_batch_size": 2048, "expected_val_iter_per_epoch": 256},
+    {"dataset": "Small-LI", "seed": 42, "fold": 1, "expected_batch_size": 2048, "expected_val_iter_per_epoch": 256},
+    {"dataset": "Small-LI", "seed": 42, "fold": 2, "expected_batch_size": 2048, "expected_val_iter_per_epoch": 256},
+    {"dataset": "Large-LI", "seed": 44, "fold": 0, "expected_batch_size": 1024, "expected_val_iter_per_epoch": 256},
+    {"dataset": "Large-LI", "seed": 44, "fold": 1, "expected_batch_size": 1024, "expected_val_iter_per_epoch": 256},
+    {"dataset": "Large-LI", "seed": 44, "fold": 2, "expected_batch_size": 1024, "expected_val_iter_per_epoch": 256}
+  ]
+}
