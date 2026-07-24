@@ -6,6 +6,7 @@ from fraudGT.evidence.tier import EvidenceBatch
 from fraudGT.evidence.tier_model import (
     TransactionEvidenceEncoder,
     evidence_family_channels,
+    evidence_family_support_mask,
 )
 
 
@@ -73,6 +74,54 @@ class TransactionEvidenceEncoderTest(unittest.TestCase):
     def test_family_definition_rejects_unknown_name(self):
         with self.assertRaises(ValueError):
             evidence_family_channels("prototype")
+        with self.assertRaises(ValueError):
+            evidence_family_support_mask("prototype")
+
+    def test_family_support_masks_match_channel_semantics(self):
+        self.assertEqual(
+            evidence_family_support_mask("all"),
+            (1, 1, 1, 1, 1, 1),
+        )
+        self.assertEqual(
+            evidence_family_support_mask("structure"),
+            (1, 1, 0, 1, 1, 1),
+        )
+        self.assertEqual(
+            evidence_family_support_mask("temporal"),
+            (1, 0, 1, 0, 0, 0),
+        )
+        self.assertEqual(
+            evidence_family_support_mask("flow_role"),
+            (1, 1, 0, 0, 0, 0),
+        )
+
+    def test_disabled_support_channels_cannot_change_family_output(self):
+        for family in ("structure", "temporal", "flow_role"):
+            torch.manual_seed(21)
+            model = TransactionEvidenceEncoder(
+                num_currencies=3,
+                num_payment_formats=3,
+                family=family,
+                hidden_dim=32,
+                num_heads=4,
+                dropout=0.0,
+            )
+            model.eval()
+            changed_support = self.evidence.support.clone()
+            enabled = torch.tensor(
+                evidence_family_support_mask(family),
+                dtype=torch.bool,
+            )
+            changed_support[:, ~enabled] += 1000
+            changed = EvidenceBatch(
+                tokens=self.evidence.tokens,
+                mask=self.evidence.mask,
+                context_edge_ids=self.evidence.context_edge_ids,
+                support=changed_support,
+            )
+            original_logits, _ = model(self.evidence, self.target)
+            changed_logits, _ = model(changed, self.target)
+            self.assertTrue(torch.equal(original_logits, changed_logits))
 
 
 if __name__ == "__main__":

@@ -1,5 +1,12 @@
 # TIER Phase 1b Evidence Family Decomposition Results
 
+> **Attribution validity notice:** Post-run code review found that token
+> channels were family-masked, but all six support channels were still passed
+> to every family. These runs remain valid evidence that historical context is
+> counterfactually active and globally unsafe, but they are not a clean
+> structure/temporal/flow-role attribution experiment. Family comparisons in
+> this file are superseded by the support-masked rerun.
+
 ## Material Passport
 
 - Origin Skill: academic-research-suite / experiment-agent

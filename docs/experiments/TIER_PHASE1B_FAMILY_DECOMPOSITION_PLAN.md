@@ -54,6 +54,17 @@ protocol, thresholding procedure, and paired same-batch diagnostic from Phase
 | `temporal` | absolute timestamp and target-context time difference | amount, categorical attributes, roles, motifs |
 | `flow_role` | amount, currency, payment format, endpoint roles | timestamp, time difference, motifs |
 
+The controlled rerun also applies the same family boundary to support:
+
+- `structure`: context count, endpoint-role coverage, and motif counts;
+- `temporal`: context count and time span;
+- `flow_role`: context count and endpoint-role coverage;
+- `all`: all six support values.
+
+The first executed family matrix masked token channels but not support
+channels. Its family attribution is therefore superseded; its broad
+counterfactual and safety findings remain descriptive.
+
 The target transaction's raw attributes are intentionally unchanged in every
 family. The normal, shuffled, and off paths remain same-batch
 counterfactuals. `off` zeros all contextual evidence and support, while the

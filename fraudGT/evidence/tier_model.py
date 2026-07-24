@@ -8,6 +8,12 @@ from fraudGT.evidence.tier import EvidenceBatch
 
 
 EVIDENCE_FAMILIES = {"all", "structure", "temporal", "flow_role"}
+EVIDENCE_SUPPORT_MASKS = {
+    "all": (1, 1, 1, 1, 1, 1),
+    "structure": (1, 1, 0, 1, 1, 1),
+    "temporal": (1, 0, 1, 0, 0, 0),
+    "flow_role": (1, 1, 0, 0, 0, 0),
+}
 
 
 def evidence_family_channels(family: str) -> Dict[str, bool]:
@@ -20,6 +26,12 @@ def evidence_family_channels(family: str) -> Dict[str, bool]:
         "roles": family in {"all", "structure", "flow_role"},
         "motifs": family in {"all", "structure"},
     }
+
+
+def evidence_family_support_mask(family: str):
+    if family not in EVIDENCE_FAMILIES:
+        raise ValueError(f"unknown evidence family: {family}")
+    return EVIDENCE_SUPPORT_MASKS[family]
 
 
 class TransactionEvidenceEncoder(nn.Module):
@@ -46,6 +58,14 @@ class TransactionEvidenceEncoder(nn.Module):
             raise ValueError("categorical cardinalities must be positive")
         self.family = family
         self.channels = evidence_family_channels(family)
+        self.register_buffer(
+            "support_mask",
+            torch.tensor(
+                evidence_family_support_mask(family),
+                dtype=torch.float32,
+            ),
+            persistent=False,
+        )
         category_dim = max(4, hidden_dim // 8)
         self.currency_embedding = nn.Embedding(
             num_currencies, category_dim)
@@ -197,7 +217,11 @@ class TransactionEvidenceEncoder(nn.Module):
         pooled = (encoded * weights.unsqueeze(-1)).sum(dim=1)
         pooled = pooled * has_evidence.unsqueeze(-1)
 
-        support = torch.log1p(evidence.support.float().clamp_min(0))
+        support_values = (
+            evidence.support.float().clamp_min(0)
+            * self.support_mask.view(1, -1)
+        )
+        support = torch.log1p(support_values)
         support = self.support_encoder(support)
         support = support * has_evidence.unsqueeze(-1)
         features = torch.cat(

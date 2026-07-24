@@ -8,6 +8,7 @@ from .tier_model import (
     EVIDENCE_FAMILIES,
     TransactionEvidenceEncoder,
     evidence_family_channels,
+    evidence_family_support_mask,
 )
 
 __all__ = [
@@ -17,5 +18,6 @@ __all__ = [
     "TransactionEvidenceEncoder",
     "build_raw_edge_attributes",
     "evidence_family_channels",
+    "evidence_family_support_mask",
     "recover_train_normalized_raw_edge_attributes",
 ]
