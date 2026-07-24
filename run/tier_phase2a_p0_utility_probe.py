@@ -111,7 +111,7 @@ def utility_targets(rows, candidate, evidence_threshold):
 
 def deterministic_calibration_mask(edge_ids, seed, modulus, bucket):
     hashed = (
-        edge_ids.long() * 1103515245 + int(seed) * 12345
+        edge_ids.long() * 1103515247 + int(seed) * 12347
     ).remainder(int(modulus))
     return hashed == int(bucket)
 

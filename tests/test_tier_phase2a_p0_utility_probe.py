@@ -65,6 +65,7 @@ class TierPhaseTwoAP0UtilityProbeTest(unittest.TestCase):
         second = deterministic_calibration_mask(edge_ids, 42, 5, 0)
         self.assertTrue(torch.equal(first, second))
         self.assertEqual(int(first.sum()), 4)
+        self.assertEqual(int((~first).sum()), 16)
 
     def test_router_features_exclude_labels(self):
         rows = {
