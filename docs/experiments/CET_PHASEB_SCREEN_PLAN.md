@@ -3,7 +3,7 @@
 ## Material Passport
 
 - Origin Skill: academic-research-suite / experiment-agent
-- Status: preregistered, not yet executed
+- Status: executed; stopped by the registered gate
 - Branch: `feature/cet-fraudgt-complementary-encoder`
 - Baseline: initial A2, not Fixed-panel A2
 - Sampling protocol: `dynamic_random`
@@ -100,8 +100,7 @@ Validation and test labels never define OOF-error targets.
 
 The four primary tasks are scientifically distinct.
 
-At the user's request to use all currently available GPUs, three Small-LI
-diagnostic ablations run concurrently on GPUs 4-6:
+Three Small-LI diagnostic ablations were preregistered for GPUs 4-6:
 
 | GPU | Label | Removed objective |
 |---:|---|---|
@@ -110,8 +109,9 @@ diagnostic ablations run concurrently on GPUs 4-6:
 | 6 | `no_base_retention` | off-history classification and A2 distillation |
 
 These diagnostics are not substitutes for the two-scale advancement gate.
-They are interpreted only after the registered full fusion task, and their
-purpose is to diagnose a pass or failure without running duplicate seeds.
+They were cancelled before execution because the registered full fusion task
+failed the primary two-scale feasibility and mechanism gates. See
+`CET_PHASEB_RESULTS_AND_STOP_DECISION.md`.
 
 ## Fixed Runtime
 
