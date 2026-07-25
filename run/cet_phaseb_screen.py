@@ -458,6 +458,7 @@ def evaluate(
         target_raw = prepared["target_raw"]
         append_parts(parts, "edge_ids", prepared["edge_ids"])
         append_parts(parts, "labels", prepared["labels"])
+        append_parts(parts, "support", prepared["support"])
         append_parts(
             parts, "base", torch.sigmoid(prepared["base_logits"]))
         if "normal" in conditions:
