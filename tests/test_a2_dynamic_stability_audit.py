@@ -6,6 +6,7 @@ import torch
 from yacs.config import CfgNode
 
 from run.a2_dynamic_stability_audit import (
+    configure_a2_fraudgt,
     metric_row,
     prune_unknown_config,
     scalar_distribution,
@@ -76,6 +77,20 @@ class A2DynamicStabilityAuditTest(unittest.TestCase):
         self.assertEqual(clean["seed"], 42)
         self.assertEqual(
             dropped, ["train.runtime_only", "run_dir"])
+
+    def test_archived_task_entity_is_normalized_to_tuple(self):
+        config = {
+            "dataset": {
+                "task_entity": ["node", "to", "node"],
+            },
+        }
+        _, normalized = configure_a2_fraudgt(
+            config, seed=42, device="cpu")
+        from fraudGT.graphgym.config import cfg
+        self.assertEqual(
+            cfg.dataset.task_entity, ("node", "to", "node"))
+        self.assertEqual(
+            normalized, ["dataset.task_entity:list_to_tuple"])
 
     def test_summarize_preserves_historical_delta(self):
         event = {

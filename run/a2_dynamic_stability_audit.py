@@ -114,6 +114,10 @@ def configure_a2_fraudgt(config, seed, device):
     set_cfg(cfg)
     clean, dropped = prune_unknown_config(config, cfg)
     cfg.merge_from_other_cfg(CfgNode(clean))
+    normalized = []
+    if isinstance(cfg.dataset.task_entity, list):
+        cfg.dataset.task_entity = tuple(cfg.dataset.task_entity)
+        normalized.append("dataset.task_entity:list_to_tuple")
     cfg.seed = int(seed)
     cfg.device = str(device)
     cfg.num_workers = 0
@@ -121,7 +125,7 @@ def configure_a2_fraudgt(config, seed, device):
     cfg.train.pin_memory = False
     cfg.val.fixed_target_panel = False
     torch.set_num_threads(int(cfg.num_threads))
-    return dropped
+    return dropped, normalized
 
 
 def metric_row(labels, scores, threshold):
@@ -248,7 +252,7 @@ def run_audit(spec, task, args):
     config = yaml.safe_load(config_path.read_text())
     audit_protocol(spec, task, config)
     seed_process(int(task["audit_seed"]))
-    dropped_config_keys = configure_a2_fraudgt(
+    dropped_config_keys, normalized_config_values = configure_a2_fraudgt(
         config, task["audit_seed"], args.device)
     dataset = create_dataset()
     loaders = create_loader(dataset=dataset, shuffle=True)
@@ -334,6 +338,7 @@ def run_audit(spec, task, args):
         "checkpoint_epoch": checkpoint.get("epoch"),
         "config": str(config_path),
         "dropped_runtime_config_keys": dropped_config_keys,
+        "normalized_archived_config_values": normalized_config_values,
         "checkpoint": task["checkpoint"],
         "sampling_protocol": "dynamic_random",
         "loader_audit": loader_rows,
