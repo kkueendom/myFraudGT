@@ -41,6 +41,13 @@ from run.tier_phase1_evidence_qualification import (
 
 
 CONDITIONS = ("normal", "shuffled", "off")
+TASK_OVERRIDE_KEYS = {
+    "lambda_counterfactual",
+    "lambda_complementarity",
+    "lambda_dropout",
+    "lambda_distillation",
+    "lambda_auxiliary",
+}
 
 
 @dataclass(frozen=True)
@@ -126,6 +133,24 @@ def audit_cet_protocol(spec, task, config):
     )
     if any(token in source for token in forbidden):
         raise RuntimeError("fixed evaluation randomness detected")
+
+
+def task_spec(spec, task):
+    overrides = task.get("spec_overrides", {})
+    unknown = set(overrides) - TASK_OVERRIDE_KEYS
+    if unknown:
+        raise ValueError(
+            f"unsupported task spec overrides: {sorted(unknown)}")
+    resolved = dict(spec)
+    resolved.update(overrides)
+    return resolved
+
+
+def task_label(task):
+    label = task.get("experiment_label", task["variant"])
+    if not label or any(character in label for character in "/\\ "):
+        raise ValueError("experiment label must be a nonempty path-safe token")
+    return label
 
 
 def alignment_positions(requested_ids, source_ids):
@@ -611,11 +636,12 @@ def write_jsonl(path, row):
 
 def train_task(spec, task, args):
     commit = verify_repository(spec)
-    config_relative = spec["config_template"].format(
+    resolved_spec = task_spec(spec, task)
+    config_relative = resolved_spec["config_template"].format(
         dataset=task["dataset"])
     config_path = REPO_ROOT / config_relative
     config = yaml.safe_load(config_path.read_text())
-    audit_cet_protocol(spec, task, config)
+    audit_cet_protocol(resolved_spec, task, config)
     seed_process(int(task["seed"]))
     configure_fraudgt(config_path, task["seed"], args.device)
     dataset = create_dataset()
@@ -641,27 +667,28 @@ def train_task(spec, task, args):
         num_payment_formats=int(
             full_store.raw_edge_attr[:, 3].max()) + 1,
         variant=task["variant"],
-        hidden_dim=int(spec["hidden_dim"]),
-        num_heads=int(spec["num_heads"]),
-        dropout=float(spec["dropout"]),
+        hidden_dim=int(resolved_spec["hidden_dim"]),
+        num_heads=int(resolved_spec["num_heads"]),
+        dropout=float(resolved_spec["dropout"]),
     ).to(device)
     optimizer = torch.optim.AdamW(
         model.parameters(),
-        lr=float(spec["learning_rate"]),
-        weight_decay=float(spec["weight_decay"]),
+        lr=float(resolved_spec["learning_rate"]),
+        weight_decay=float(resolved_spec["weight_decay"]),
     )
     max_epochs = (
         int(args.max_epochs)
         if args.max_epochs is not None
-        else int(spec["max_epochs"])
+        else int(resolved_spec["max_epochs"])
     )
     scheduler = cosine_schedule(
         optimizer,
         max_epochs,
-        min(int(spec["warmup_epochs"]), max_epochs),
+        min(int(resolved_spec["warmup_epochs"]), max_epochs),
     )
+    label = task_label(task)
     task_dir = args.output_dir / (
-        f"{task['dataset']}_{task['variant']}_"
+        f"{task['dataset']}_{label}_"
         f"seed{task['seed']}_{commit}"
     )
     if task_dir.exists() and any(task_dir.iterdir()):
@@ -682,20 +709,20 @@ def train_task(spec, task, args):
             index,
             teacher,
             optimizer,
-            spec,
+            resolved_spec,
             task,
             device,
             args.train_step_cap,
         )
         scheduler.step()
-        if (epoch + 1) % int(spec["eval_period"]):
+        if (epoch + 1) % int(resolved_spec["eval_period"]):
             continue
         row = evaluation_event(
             model,
             a2_model,
             loaders,
             index,
-            spec,
+            resolved_spec,
             task,
             device,
             epoch,
@@ -719,13 +746,13 @@ def train_task(spec, task, args):
                 "sampling_protocol": "dynamic_random",
             }, checkpoint)
         if row["val"]["f1"] > previous + float(
-                spec["early_stop_delta"]):
+                resolved_spec["early_stop_delta"]):
             stale = 0
         else:
             stale += 1
         if (
-            epoch + 1 >= int(spec["min_epochs"])
-            and stale >= int(spec["early_stop_evaluations"])
+            epoch + 1 >= int(resolved_spec["min_epochs"])
+            and stale >= int(resolved_spec["early_stop_evaluations"])
         ):
             stopped_early = True
             break
@@ -739,16 +766,23 @@ def train_task(spec, task, args):
         "dataset": task["dataset"],
         "model": "CET-FraudGT",
         "variant": task["variant"],
+        "experiment_label": label,
         "seed": int(task["seed"]),
         "git_commit": commit,
         "config": config_relative,
+        "experiment_spec": str(args.spec),
+        "spec_overrides": task.get("spec_overrides", {}),
         "checkpoint": str(checkpoint),
         "a2_checkpoint": task["a2_checkpoint"],
         "oof_root": str(args.oof_root),
         "sampling_protocol": "dynamic_random",
         "loader_audit": loader_rows,
         "selection": task["selection"],
-        "max_tokens": int(spec["max_tokens"]),
+        "max_tokens": int(resolved_spec["max_tokens"]),
+        "effective_objective_weights": {
+            key: float(resolved_spec[key])
+            for key in sorted(TASK_OVERRIDE_KEYS)
+        },
         "epochs_completed": events[-1]["epoch"] + 1,
         "stopped_early": stopped_early,
         "train_step_cap": args.train_step_cap or None,

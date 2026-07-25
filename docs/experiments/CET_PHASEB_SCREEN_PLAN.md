@@ -98,8 +98,20 @@ Validation and test labels never define OOF-error targets.
 | 2 | 2 | Small-LI | encoder-only | 42 |
 | 3 | 3 | Large-LI | encoder-only | 44 |
 
-The four tasks are scientifically distinct. GPUs 4-6 remain available rather
-than running duplicate seeds before the method passes Phase B.
+The four primary tasks are scientifically distinct.
+
+At the user's request to use all currently available GPUs, three Small-LI
+diagnostic ablations run concurrently on GPUs 4-6:
+
+| GPU | Label | Removed objective |
+|---:|---|---|
+| 4 | `no_oof` | OOF base-error emphasis |
+| 5 | `no_counterfactual` | normal-versus-shuffled/off ranking |
+| 6 | `no_base_retention` | off-history classification and A2 distillation |
+
+These diagnostics are not substitutes for the two-scale advancement gate.
+They are interpreted only after the registered full fusion task, and their
+purpose is to diagnose a pass or failure without running duplicate seeds.
 
 ## Fixed Runtime
 
@@ -112,8 +124,9 @@ than running duplicate seeds before the method passes Phase B.
 - frozen epoch-499 A2 checkpoint;
 - OOF supervision from Phase 2b folds only.
 
-Before formal execution, all four tasks run a two-epoch, two-step smoke test in
-isolated output directories.
+Before formal execution, all four tasks run a four-epoch smoke test with two
+train and evaluation steps per epoch in isolated output directories. Four
+epochs are required to trigger the registered evaluation period.
 
 ## Dynamic Sampling Contract
 

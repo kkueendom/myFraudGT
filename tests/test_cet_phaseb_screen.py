@@ -6,6 +6,8 @@ from run.cet_phaseb_screen import (
     OOFTeacher,
     alignment_positions,
     counterfactual_ranking_loss,
+    task_label,
+    task_spec,
 )
 
 
@@ -79,6 +81,34 @@ class CETPhaseBScreenTest(unittest.TestCase):
             margin=0.05,
         )
         self.assertLess(float(good_loss), float(bad_loss))
+
+    def test_task_spec_applies_registered_objective_override(self):
+        spec = {
+            "lambda_counterfactual": 0.2,
+            "lambda_complementarity": 0.5,
+        }
+        resolved = task_spec(spec, {
+            "spec_overrides": {"lambda_complementarity": 0.0},
+        })
+        self.assertEqual(resolved["lambda_counterfactual"], 0.2)
+        self.assertEqual(resolved["lambda_complementarity"], 0.0)
+        self.assertEqual(spec["lambda_complementarity"], 0.5)
+
+    def test_task_spec_rejects_unregistered_override(self):
+        with self.assertRaises(ValueError):
+            task_spec({}, {"spec_overrides": {"max_epochs": 1}})
+
+    def test_task_label_defaults_to_variant_and_rejects_paths(self):
+        self.assertEqual(task_label({"variant": "fusion"}), "fusion")
+        self.assertEqual(task_label({
+            "variant": "fusion",
+            "experiment_label": "no_oof",
+        }), "no_oof")
+        with self.assertRaises(ValueError):
+            task_label({
+                "variant": "fusion",
+                "experiment_label": "../no_oof",
+            })
 
 
 if __name__ == "__main__":
