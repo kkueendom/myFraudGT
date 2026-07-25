@@ -1,0 +1,15 @@
+{
+  "checkpoint": {
+    "Large-LI": "/e/yky/FraudGT_tier2b_results/oof_utility_061c92e/Large-LI_utility_probes.ckpt",
+    "Small-LI": "/e/yky/FraudGT_tier2b_results/oof_utility_061c92e/Small-LI_utility_probes.ckpt"
+  },
+  "cross_scale_pass": false,
+  "git_commit": "061c92ed",
+  "input_teacher_commit": "c78214c1",
+  "model": "TIER-OOF-Directional-Utility-Probes",
+  "result_json": "/e/yky/FraudGT_tier2b_results/oof_utility_061c92e/oof_utility_results.json",
+  "result_markdown": "/e/yky/FraudGT_tier2b_results/oof_utility_061c92e/oof_utility_results.md",
+  "sampling_protocol": "dynamic_random",
+  "test_loader_iterations": 0,
+  "validation_loader_iterations": 0
+}

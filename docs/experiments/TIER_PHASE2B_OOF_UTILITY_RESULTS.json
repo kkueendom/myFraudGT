@@ -1,0 +1,400 @@
+{
+  "audit_commit": "061c92ed",
+  "conclusion": "The OOF utility gate did not pass on both datasets. TIER stops: do not tune router thresholds, train CrossFusion, or open validation/test for this route. Proceed to the CET-FraudGT complementary temporal encoder mainline.",
+  "cross_scale_pass": false,
+  "datasets": {
+    "Large-LI": {
+      "calibration_eligible_policies": 0,
+      "calibration_statistics": {
+        "a2_errors": 43,
+        "a2_paired_f1": 0.0851063829787234,
+        "broken_predictions": 1,
+        "changed_predictions": 5,
+        "corrected_minus_broken": 3,
+        "corrected_predictions": 4,
+        "corrected_to_broken_ratio": 4.0,
+        "corrected_without_breaks": false,
+        "paired_f1_delta": 0.005802707930367509,
+        "routed_paired_f1": 0.09090909090909091,
+        "samples": 20900
+      },
+      "condition_policy_statistics": {
+        "normal": {
+          "a2_errors": 45,
+          "a2_paired_f1": 0.0425531914893617,
+          "broken_predictions": 0,
+          "changed_predictions": 2,
+          "corrected_minus_broken": 2,
+          "corrected_predictions": 2,
+          "corrected_to_broken_ratio": null,
+          "corrected_without_breaks": true,
+          "paired_f1_delta": 0.001891252955082745,
+          "routed_paired_f1": 0.044444444444444446,
+          "samples": 21097
+        },
+        "off": {
+          "a2_errors": 45,
+          "a2_paired_f1": 0.0425531914893617,
+          "broken_predictions": 0,
+          "changed_predictions": 9,
+          "corrected_minus_broken": 9,
+          "corrected_predictions": 9,
+          "corrected_to_broken_ratio": null,
+          "corrected_without_breaks": true,
+          "paired_f1_delta": 0.010078387458006717,
+          "routed_paired_f1": 0.05263157894736842,
+          "samples": 21097
+        },
+        "shuffled": {
+          "a2_errors": 45,
+          "a2_paired_f1": 0.0425531914893617,
+          "broken_predictions": 1,
+          "changed_predictions": 17,
+          "corrected_minus_broken": 15,
+          "corrected_predictions": 16,
+          "corrected_to_broken_ratio": 16.0,
+          "corrected_without_breaks": false,
+          "paired_f1_delta": -0.0425531914893617,
+          "routed_paired_f1": 0.0,
+          "samples": 21097
+        }
+      },
+      "dataset": "Large-LI",
+      "direction_metrics": {
+        "add": {
+          "evaluation_candidates": 44,
+          "negative_utility": 42,
+          "normal_above_prevalence": 0.25717703998088837,
+          "normal_above_shuffled": 0.2608615309000015,
+          "normal_auprc": 0.30263158679008484,
+          "off_auprc": 0.0868055522441864,
+          "positive_utility": 2,
+          "qualified": true,
+          "shuffled_auprc": 0.04177005589008331,
+          "utility_prevalence": 0.04545454680919647
+        },
+        "remove": {
+          "evaluation_candidates": 34,
+          "negative_utility": 1,
+          "normal_above_prevalence": -0.016811072826385498,
+          "normal_above_shuffled": 0.00937950611114502,
+          "normal_auprc": 0.9537771344184875,
+          "off_auprc": 0.9667171835899353,
+          "positive_utility": 33,
+          "qualified": false,
+          "shuffled_auprc": 0.9443976283073425,
+          "utility_prevalence": 0.970588207244873
+        }
+      },
+      "evidence_qualified": true,
+      "normal_policy_passed": false,
+      "oof_edges": 104360,
+      "oof_positives": 72,
+      "policies_evaluated": 121,
+      "probe_checkpoint": "/e/yky/FraudGT_tier2b_results/oof_utility_061c92e/Large-LI_utility_probes.ckpt",
+      "probe_fit": {
+        "add": {
+          "direction": "add",
+          "epochs": 200,
+          "final_loss": 1.0125322341918945,
+          "probe_seed": 4401,
+          "total_candidates": 300,
+          "train_candidates": 181,
+          "train_negative_utility": 175,
+          "train_positive_utility": 6,
+          "trained": true
+        },
+        "remove": {
+          "direction": "remove",
+          "epochs": 200,
+          "final_loss": 0.016937734559178352,
+          "probe_seed": 4402,
+          "total_candidates": 153,
+          "train_candidates": 87,
+          "train_negative_utility": 2,
+          "train_positive_utility": 85,
+          "trained": true
+        }
+      },
+      "qualification_decision": "fail",
+      "selected_policy": {
+        "add_threshold": 0.84953773021698,
+        "remove_threshold": 0.9957652688026428
+      },
+      "split_counts": {
+        "locked_oof_evaluation": 21097,
+        "probe_fit": 62363,
+        "threshold_calibration": 20900
+      },
+      "total_normal_candidates": 453
+    },
+    "Small-LI": {
+      "calibration_eligible_policies": 1,
+      "calibration_statistics": {
+        "a2_errors": 54,
+        "a2_paired_f1": 0.25,
+        "broken_predictions": 8,
+        "changed_predictions": 20,
+        "corrected_minus_broken": 4,
+        "corrected_predictions": 12,
+        "corrected_to_broken_ratio": 1.5,
+        "corrected_without_breaks": false,
+        "paired_f1_delta": 0.01470588235294118,
+        "routed_paired_f1": 0.2647058823529412,
+        "samples": 104450
+      },
+      "condition_policy_statistics": {
+        "normal": {
+          "a2_errors": 42,
+          "a2_paired_f1": 0.19230769230769232,
+          "broken_predictions": 6,
+          "changed_predictions": 9,
+          "corrected_minus_broken": -3,
+          "corrected_predictions": 3,
+          "corrected_to_broken_ratio": 0.5,
+          "corrected_without_breaks": false,
+          "paired_f1_delta": -0.010489510489510495,
+          "routed_paired_f1": 0.18181818181818182,
+          "samples": 104770
+        },
+        "off": {
+          "a2_errors": 42,
+          "a2_paired_f1": 0.19230769230769232,
+          "broken_predictions": 5,
+          "changed_predictions": 9,
+          "corrected_minus_broken": -1,
+          "corrected_predictions": 4,
+          "corrected_to_broken_ratio": 0.8,
+          "corrected_without_breaks": false,
+          "paired_f1_delta": -0.19230769230769232,
+          "routed_paired_f1": 0.0,
+          "samples": 104770
+        },
+        "shuffled": {
+          "a2_errors": 42,
+          "a2_paired_f1": 0.19230769230769232,
+          "broken_predictions": 17,
+          "changed_predictions": 21,
+          "corrected_minus_broken": -13,
+          "corrected_predictions": 4,
+          "corrected_to_broken_ratio": 0.23529411764705882,
+          "corrected_without_breaks": false,
+          "paired_f1_delta": -0.1572199730094467,
+          "routed_paired_f1": 0.03508771929824561,
+          "samples": 104770
+        }
+      },
+      "dataset": "Small-LI",
+      "direction_metrics": {
+        "add": {
+          "evaluation_candidates": 19,
+          "negative_utility": 19,
+          "normal_above_prevalence": null,
+          "normal_above_shuffled": null,
+          "normal_auprc": null,
+          "off_auprc": null,
+          "positive_utility": 0,
+          "qualified": false,
+          "shuffled_auprc": null,
+          "utility_prevalence": 0.0
+        },
+        "remove": {
+          "evaluation_candidates": 5,
+          "negative_utility": 2,
+          "normal_above_prevalence": 0.3999999761581421,
+          "normal_above_shuffled": 0.1944444179534912,
+          "normal_auprc": 1.0,
+          "off_auprc": 0.8055555820465088,
+          "positive_utility": 3,
+          "qualified": true,
+          "shuffled_auprc": 0.8055555820465088,
+          "utility_prevalence": 0.6000000238418579
+        }
+      },
+      "evidence_qualified": true,
+      "normal_policy_passed": false,
+      "oof_edges": 523859,
+      "oof_positives": 239,
+      "policies_evaluated": 121,
+      "probe_checkpoint": "/e/yky/FraudGT_tier2b_results/oof_utility_061c92e/Small-LI_utility_probes.ckpt",
+      "probe_fit": {
+        "add": {
+          "direction": "add",
+          "epochs": 200,
+          "final_loss": 0.2193266749382019,
+          "probe_seed": 4201,
+          "total_candidates": 94,
+          "train_candidates": 56,
+          "train_negative_utility": 48,
+          "train_positive_utility": 8,
+          "trained": true
+        },
+        "remove": {
+          "direction": "remove",
+          "epochs": 200,
+          "final_loss": 0.20280665159225464,
+          "probe_seed": 4202,
+          "total_candidates": 58,
+          "train_candidates": 39,
+          "train_negative_utility": 15,
+          "train_positive_utility": 24,
+          "trained": true
+        }
+      },
+      "qualification_decision": "fail",
+      "selected_policy": {
+        "add_threshold": 0.002550955396145582,
+        "remove_threshold": 0.003990969620645046
+      },
+      "split_counts": {
+        "locked_oof_evaluation": 104770,
+        "probe_fit": 314639,
+        "threshold_calibration": 104450
+      },
+      "total_normal_candidates": 152
+    }
+  },
+  "expected_input_commit": "c78214c1",
+  "folds": [
+    {
+      "dataset": "Large-LI",
+      "fold": 0,
+      "oof_positives": 29,
+      "oof_unique_edges": 34796,
+      "paired_retention_rate": 0.3992729187011719,
+      "trajectory": {
+        "a2": {
+          "epochs": 80,
+          "last_loss": 0.02039989438497982,
+          "mean_held_out_outputs_seen": 34846.65,
+          "mean_supervised_samples": 69754.4125,
+          "min_loss": 0.015299695613682595
+        },
+        "evidence": {
+          "epochs": 60,
+          "last_loss": 0.01263709707494014,
+          "mean_held_out_outputs_seen": 87382.23333333334,
+          "mean_supervised_samples": 174761.76666666666,
+          "min_loss": 0.011154598049636725
+        }
+      }
+    },
+    {
+      "dataset": "Large-LI",
+      "fold": 1,
+      "oof_positives": 15,
+      "oof_unique_edges": 34975,
+      "paired_retention_rate": 0.3993492126464844,
+      "trajectory": {
+        "a2": {
+          "epochs": 80,
+          "last_loss": 0.02436241370267011,
+          "mean_held_out_outputs_seen": 34896.2,
+          "mean_supervised_samples": 69708.9375,
+          "min_loss": 0.016887290581035306
+        },
+        "evidence": {
+          "epochs": 60,
+          "last_loss": 0.013064798553835575,
+          "mean_held_out_outputs_seen": 87366.81666666667,
+          "mean_supervised_samples": 174777.18333333332,
+          "min_loss": 0.010560503067076161
+        }
+      }
+    },
+    {
+      "dataset": "Large-LI",
+      "fold": 2,
+      "oof_positives": 28,
+      "oof_unique_edges": 34589,
+      "paired_retention_rate": 0.39882659912109375,
+      "trajectory": {
+        "a2": {
+          "epochs": 80,
+          "last_loss": 0.02470964840325931,
+          "mean_held_out_outputs_seen": 34877.7125,
+          "mean_supervised_samples": 69744.275,
+          "min_loss": 0.017015298768028753
+        },
+        "evidence": {
+          "epochs": 60,
+          "last_loss": 0.014606160037937585,
+          "mean_held_out_outputs_seen": 87451.81666666667,
+          "mean_supervised_samples": 174692.18333333332,
+          "min_loss": 0.010579770050200185
+        }
+      }
+    },
+    {
+      "dataset": "Small-LI",
+      "fold": 0,
+      "oof_positives": 92,
+      "oof_unique_edges": 174832,
+      "paired_retention_rate": 0.998931884765625,
+      "trajectory": {
+        "a2": {
+          "epochs": 80,
+          "last_loss": 0.009984868671350643,
+          "mean_held_out_outputs_seen": 174548.3375,
+          "mean_supervised_samples": 349078.0875,
+          "min_loss": 0.009031261774922594
+        },
+        "evidence": {
+          "epochs": 60,
+          "last_loss": 0.010213225641885315,
+          "mean_held_out_outputs_seen": 174711.21666666667,
+          "mean_supervised_samples": 349461.75,
+          "min_loss": 0.009737545029379673
+        }
+      }
+    },
+    {
+      "dataset": "Small-LI",
+      "fold": 1,
+      "oof_positives": 84,
+      "oof_unique_edges": 174450,
+      "paired_retention_rate": 0.9989719390869141,
+      "trajectory": {
+        "a2": {
+          "epochs": 80,
+          "last_loss": 0.009466192012293796,
+          "mean_held_out_outputs_seen": 174539.15,
+          "mean_supervised_samples": 349088.1,
+          "min_loss": 0.008211890847778042
+        },
+        "evidence": {
+          "epochs": 60,
+          "last_loss": 0.01058850592118889,
+          "mean_held_out_outputs_seen": 174713.3,
+          "mean_supervised_samples": 349459.6666666667,
+          "min_loss": 0.009643224439525668
+        }
+      }
+    },
+    {
+      "dataset": "Small-LI",
+      "fold": 2,
+      "oof_positives": 63,
+      "oof_unique_edges": 174577,
+      "paired_retention_rate": 0.9989299774169922,
+      "trajectory": {
+        "a2": {
+          "epochs": 80,
+          "last_loss": 0.010961975780201277,
+          "mean_held_out_outputs_seen": 174549.7375,
+          "mean_supervised_samples": 349076.4625,
+          "min_loss": 0.007858241525703897
+        },
+        "evidence": {
+          "epochs": 60,
+          "last_loss": 0.010253346784323112,
+          "mean_held_out_outputs_seen": 174722.56666666668,
+          "mean_supervised_samples": 349450.4,
+          "min_loss": 0.009962327586067743
+        }
+      }
+    }
+  ],
+  "sampling_protocol": "dynamic_random",
+  "split_contract": "edge_hash_60_fit_20_calibration_20_eval"
+}
