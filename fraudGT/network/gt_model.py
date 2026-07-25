@@ -141,7 +141,7 @@ class GTModel(torch.nn.Module):
             for node_type in self.virtual_nodes:
                 torch.nn.init.normal_(self.virtual_nodes[node_type])
 
-    def forward(self, batch):
+    def encode_batch(self, batch):
         batch = self.encoder(batch)
         if isinstance(batch, HeteroData):
             h_dict, edge_index_dict = batch.collect('x'), batch.collect('edge_index')
@@ -218,4 +218,7 @@ class GTModel(torch.nn.Module):
             for node_type in batch.node_types:
                 batch[node_type].x = F.normalize(batch[node_type].x, p=2, dim=-1) 
 
-        return self.post_gt(batch)
+        return batch
+
+    def forward(self, batch):
+        return self.post_gt(self.encode_batch(batch))

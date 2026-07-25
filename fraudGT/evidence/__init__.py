@@ -10,8 +10,14 @@ from .tier_model import (
     evidence_family_channels,
     evidence_family_support_mask,
 )
+from .cet_model import (
+    CETFusionClassifier,
+    CausalTemporalSubgraphEncoder,
+)
 
 __all__ = [
+    "CETFusionClassifier",
+    "CausalTemporalSubgraphEncoder",
     "EVIDENCE_FAMILIES",
     "EvidenceBatch",
     "TemporalIncidentIndex",
