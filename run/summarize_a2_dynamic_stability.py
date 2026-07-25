@@ -17,6 +17,14 @@ DATASET_ORDER = (
     "Large-LI",
     "Large-HI",
 )
+HISTORICAL_SELECTED_EPOCH = {
+    "Small-LI": 167,
+    "Small-HI": 251,
+    "Medium-LI": 411,
+    "Medium-HI": 383,
+    "Large-LI": 445,
+    "Large-HI": 397,
+}
 
 
 def quantile(values, probability):
@@ -88,6 +96,8 @@ def validate_manifests(manifests):
             raise ValueError("validation iteration count differs")
         if manifest["test_loader_iterations"] != 8 * 256:
             raise ValueError("test iteration count differs")
+        if Path(manifest["checkpoint"]).stem != "499":
+            raise ValueError("stability audit checkpoint is not epoch 499")
         grouped.setdefault(manifest["dataset"], []).append(manifest)
     if set(grouped) != set(DATASET_ORDER):
         raise ValueError("dataset set differs")
@@ -128,10 +138,13 @@ def aggregate_dataset(dataset, manifests, seed):
         "audit_seeds": sorted(
             manifest["audit_seed"] for manifest in manifests),
         "historical_initial_a2_f1": historical,
+        "historical_val_selected_epoch": (
+            HISTORICAL_SELECTED_EPOCH[dataset]),
+        "available_audit_checkpoint_epoch": 499,
         "test_f1": distribution(test_f1),
         "test_f1_bootstrap_mean_ci95": bootstrap_mean_interval(
             test_f1, seed),
-        "delta_vs_historical_initial_a2": distribution(delta),
+        "diagnostic_delta_vs_historical_initial_a2": distribution(delta),
         "val_threshold": distribution([
             event["val"]["threshold"] for event in events]),
         "test_precision": distribution([
@@ -162,12 +175,13 @@ def format_number(value):
 
 def render_markdown(aggregate, source_root):
     lines = [
-        "# Initial A2 Dynamic-Sampling Stability Audit",
+        "# Epoch-499 A2 Checkpoint Dynamic-Sampling Stability Audit",
         "",
         "## Material Passport",
         "",
         "- Sampling protocol: `dynamic_random`",
-        "- Model: fixed initial-A2 checkpoints; no retraining",
+        "- Model: fixed epoch-499 A2 checkpoints from the original runs; no "
+        "retraining",
         "- Streams: 2 per dataset",
         "- Events: 8 per stream, 16 per dataset, 96 total",
         "- Val/test iterations: 256 per event",
@@ -176,34 +190,39 @@ def render_markdown(aggregate, source_root):
         "",
         "## Aggregate Results",
         "",
-        "| Dataset | Historical A2 | Re-evaluated F1 mean +/- sd | "
-        "Min-max | Mean delta | Event band 95% | Independent comparison "
-        "band | P(delta > .005) |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|",
+        "| Dataset | Historical A2 (selected epoch) | Epoch-499 F1 mean +/- sd | "
+        "Min-max | Diagnostic mean delta | Event band 95% | Independent "
+        "comparison band |",
+        "|---|---:|---:|---:|---:|---:|---:|",
     ]
     for dataset in DATASET_ORDER:
         row = aggregate["datasets"][dataset]
         test = row["test_f1"]
-        delta = row["delta_vs_historical_initial_a2"]
+        delta = row["diagnostic_delta_vs_historical_initial_a2"]
         lines.append(
             f"| {dataset} | "
-            f"{format_number(row['historical_initial_a2_f1'])} | "
+            f"{format_number(row['historical_initial_a2_f1'])} "
+            f"(ep {row['historical_val_selected_epoch']}) | "
             f"{format_number(test['mean'])} +/- "
             f"{format_number(test['std'])} | "
             f"{format_number(test['min'])}-"
             f"{format_number(test['max'])} | "
             f"{format_number(delta['mean'])} | "
             f"+/-{format_number(row['event_level_sampling_band_95'])} | "
-            f"+/-{format_number(row['independent_comparison_noise_band_approx95'])} | "
-            f"{row['empirical_probability_delta_gt_0_005']:.3f} |"
+            f"+/-{format_number(row['independent_comparison_noise_band_approx95'])} |"
         )
     lines.extend([
         "",
-        "The re-evaluated mean is a sampling audit, not a replacement "
-        "baseline. The event band is the central 95% spread around the "
-        "re-evaluated A2 mean. The independent comparison band is "
+        "The historical scores were selected at epochs 167, 251, 411, 383, "
+        "445 and 397, whereas the only available frozen checkpoints are at "
+        "epoch 499. Therefore the diagnostic mean delta combines checkpoint "
+        "epoch and dynamic-sampling effects. It must not be interpreted as a "
+        "sampling-only bias or used to replace the formal baseline.",
+        "",
+        "The event band is the central 95% spread around each fixed epoch-499 "
+        "checkpoint mean. The independent comparison band is "
         "`1.96 * sqrt(2) * event_sd`; it is a descriptive approximation, not "
-        "a formal confidence guarantee.",
+        "a formal confidence guarantee, and it may differ for another model.",
         "",
         "## Threshold and Label Variation",
         "",
@@ -234,11 +253,13 @@ def render_markdown(aggregate, source_root):
         "",
         "1. Keep the registered historical initial A2 result in the formal "
         "comparison table.",
-        "2. Use the repeated A2 distribution to diagnose whether an apparent "
-        "gain is compatible with dynamic sampling variation.",
-        "3. The existing `0.005` rule remains a minimum warning threshold, but "
+        "2. Use only the within-checkpoint event spread to quantify dynamic "
+        "sampling variation.",
+        "3. Do not attribute the epoch-499 versus historical mean difference "
+        "to sampling because the selected epochs differ.",
+        "4. The existing `0.005` rule remains a minimum warning threshold, but "
         "a stability claim additionally requires repeated streams or seeds.",
-        "4. Do not claim model improvement when the paired or repeated delta "
+        "5. Do not claim model improvement when the paired or repeated delta "
         "interval overlaps zero.",
         "",
     ])
@@ -267,7 +288,7 @@ def main():
         for index, dataset in enumerate(DATASET_ORDER)
     }
     aggregate = {
-        "experiment": "initial_a2_dynamic_sampling_stability",
+        "experiment": "epoch499_a2_dynamic_sampling_stability",
         "sampling_protocol": "dynamic_random",
         "formal_baseline": "registered_historical_initial_a2",
         "manifest_count": len(manifests),
