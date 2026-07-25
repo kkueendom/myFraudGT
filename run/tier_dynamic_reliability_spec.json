@@ -1,0 +1,110 @@
+{
+  "sampling_protocol": "dynamic_random",
+  "expected_branch": "feature/cet-fraudgt-complementary-encoder",
+  "config_template": "configs/tier_phase1/AML-{dataset}.yaml",
+  "model": "TIER-EvidenceOnly",
+  "family": "all",
+  "max_tokens": 32,
+  "selection_pool_factor": 3,
+  "hidden_dim": 64,
+  "num_heads": 4,
+  "dropout": 0.2,
+  "tasks": [
+    {
+      "dataset": "Small-LI",
+      "selection": "recent",
+      "experiment_label": "stream1",
+      "model_seed": 42,
+      "audit_seed": 34201,
+      "repeats": 8,
+      "expected_batch_size": 2048,
+      "expected_val_iter_per_epoch": 256,
+      "checkpoint": "/e/yky/FraudGT_tier_phase1_results/formal_204b3075/Small-LI_all_recent_seed42_204b3075/best_val.ckpt",
+      "a2_checkpoint": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Small-LI-DMPRDFormal500-a2_multi-Seed42-gpu0/42/ckpt/499.ckpt"
+    },
+    {
+      "dataset": "Small-LI",
+      "selection": "recent",
+      "experiment_label": "stream2",
+      "model_seed": 42,
+      "audit_seed": 34202,
+      "repeats": 8,
+      "expected_batch_size": 2048,
+      "expected_val_iter_per_epoch": 256,
+      "checkpoint": "/e/yky/FraudGT_tier_phase1_results/formal_204b3075/Small-LI_all_recent_seed42_204b3075/best_val.ckpt",
+      "a2_checkpoint": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Small-LI-DMPRDFormal500-a2_multi-Seed42-gpu0/42/ckpt/499.ckpt"
+    },
+    {
+      "dataset": "Small-LI",
+      "selection": "role_motif",
+      "experiment_label": "stream1",
+      "model_seed": 42,
+      "audit_seed": 34211,
+      "repeats": 8,
+      "expected_batch_size": 2048,
+      "expected_val_iter_per_epoch": 256,
+      "checkpoint": "/e/yky/FraudGT_tier_phase1_results/formal_204b3075/Small-LI_all_role_motif_seed42_204b3075/best_val.ckpt",
+      "a2_checkpoint": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Small-LI-DMPRDFormal500-a2_multi-Seed42-gpu0/42/ckpt/499.ckpt"
+    },
+    {
+      "dataset": "Small-LI",
+      "selection": "role_motif",
+      "experiment_label": "stream2",
+      "model_seed": 42,
+      "audit_seed": 34212,
+      "repeats": 8,
+      "expected_batch_size": 2048,
+      "expected_val_iter_per_epoch": 256,
+      "checkpoint": "/e/yky/FraudGT_tier_phase1_results/formal_204b3075/Small-LI_all_role_motif_seed42_204b3075/best_val.ckpt",
+      "a2_checkpoint": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Small-LI-DMPRDFormal500-a2_multi-Seed42-gpu0/42/ckpt/499.ckpt"
+    },
+    {
+      "dataset": "Large-LI",
+      "selection": "recent",
+      "experiment_label": "stream1",
+      "model_seed": 44,
+      "audit_seed": 34401,
+      "repeats": 8,
+      "expected_batch_size": 1024,
+      "expected_val_iter_per_epoch": 256,
+      "checkpoint": "/e/yky/FraudGT_tier_phase1_results/formal_204b3075/Large-LI_all_recent_seed44_204b3075/best_val.ckpt",
+      "a2_checkpoint": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Large-LI-DMPRDFormal500-a2_multi-Seed44-gpu0/44/ckpt/499.ckpt"
+    },
+    {
+      "dataset": "Large-LI",
+      "selection": "recent",
+      "experiment_label": "stream2",
+      "model_seed": 44,
+      "audit_seed": 34402,
+      "repeats": 8,
+      "expected_batch_size": 1024,
+      "expected_val_iter_per_epoch": 256,
+      "checkpoint": "/e/yky/FraudGT_tier_phase1_results/formal_204b3075/Large-LI_all_recent_seed44_204b3075/best_val.ckpt",
+      "a2_checkpoint": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Large-LI-DMPRDFormal500-a2_multi-Seed44-gpu0/44/ckpt/499.ckpt"
+    },
+    {
+      "dataset": "Large-LI",
+      "selection": "role_motif",
+      "experiment_label": "stream1",
+      "model_seed": 44,
+      "audit_seed": 34411,
+      "repeats": 8,
+      "expected_batch_size": 1024,
+      "expected_val_iter_per_epoch": 256,
+      "checkpoint": "/e/yky/FraudGT_tier_phase1_results/formal_204b3075/Large-LI_all_role_motif_seed44_204b3075/best_val.ckpt",
+      "a2_checkpoint": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Large-LI-DMPRDFormal500-a2_multi-Seed44-gpu0/44/ckpt/499.ckpt"
+    },
+    {
+      "dataset": "Large-LI",
+      "selection": "role_motif",
+      "experiment_label": "stream2",
+      "model_seed": 44,
+      "audit_seed": 34412,
+      "repeats": 8,
+      "expected_batch_size": 1024,
+      "expected_val_iter_per_epoch": 256,
+      "checkpoint": "/e/yky/FraudGT_tier_phase1_results/formal_204b3075/Large-LI_all_role_motif_seed44_204b3075/best_val.ckpt",
+      "a2_checkpoint": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Large-LI-DMPRDFormal500-a2_multi-Seed44-gpu0/44/ckpt/499.ckpt"
+    }
+  ]
+}
