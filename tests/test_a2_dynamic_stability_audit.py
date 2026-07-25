@@ -3,9 +3,11 @@ import unittest
 from pathlib import Path
 
 import torch
+from yacs.config import CfgNode
 
 from run.a2_dynamic_stability_audit import (
     metric_row,
+    prune_unknown_config,
     scalar_distribution,
     summarize,
 )
@@ -54,6 +56,26 @@ class A2DynamicStabilityAuditTest(unittest.TestCase):
         self.assertEqual(row["fn"], 1)
         self.assertEqual(row["tn"], 1)
         self.assertEqual(row["f1"], 0.5)
+
+    def test_unknown_saved_runtime_keys_are_pruned(self):
+        schema = CfgNode({
+            "train": {
+                "batch_size": 1024,
+            },
+            "seed": 0,
+        })
+        clean, dropped = prune_unknown_config({
+            "train": {
+                "batch_size": 2048,
+                "runtime_only": True,
+            },
+            "seed": 42,
+            "run_dir": "/tmp/output",
+        }, schema)
+        self.assertEqual(clean["train"]["batch_size"], 2048)
+        self.assertEqual(clean["seed"], 42)
+        self.assertEqual(
+            dropped, ["train.runtime_only", "run_dir"])
 
     def test_summarize_preserves_historical_delta(self):
         event = {

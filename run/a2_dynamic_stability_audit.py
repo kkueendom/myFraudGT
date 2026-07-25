@@ -16,15 +16,15 @@ sys.dont_write_bytecode = True
 
 import torch
 import yaml
+from yacs.config import CfgNode
 
 import fraudGT  # noqa: F401 - register GraphGym components
-from fraudGT.graphgym.config import cfg
+from fraudGT.graphgym.config import cfg, set_cfg
 from fraudGT.graphgym.loader import create_dataset, create_loader
 from run.tier_phase1_evidence_qualification import (
     INITIAL_A2,
     TASK,
     best_f1_threshold,
-    configure_fraudgt,
     loader_audit,
     load_a2_model,
     seed_process,
@@ -89,6 +89,39 @@ def audit_protocol(spec, task, config):
         raise RuntimeError("LinkNeighborLoader no longer forwards shuffle")
     if "def create_loader(dataset = None, shuffle = True" not in loader_source:
         raise RuntimeError("create_loader no longer defaults to shuffle=True")
+
+
+def prune_unknown_config(mapping, schema, prefix=""):
+    clean = {}
+    dropped = []
+    for key, value in mapping.items():
+        path = f"{prefix}.{key}" if prefix else str(key)
+        if key not in schema:
+            dropped.append(path)
+            continue
+        schema_value = schema[key]
+        if isinstance(value, dict) and isinstance(schema_value, CfgNode):
+            nested, nested_dropped = prune_unknown_config(
+                value, schema_value, path)
+            clean[key] = nested
+            dropped.extend(nested_dropped)
+        else:
+            clean[key] = value
+    return clean, dropped
+
+
+def configure_a2_fraudgt(config, seed, device):
+    set_cfg(cfg)
+    clean, dropped = prune_unknown_config(config, cfg)
+    cfg.merge_from_other_cfg(CfgNode(clean))
+    cfg.seed = int(seed)
+    cfg.device = str(device)
+    cfg.num_workers = 0
+    cfg.train.persistent_workers = False
+    cfg.train.pin_memory = False
+    cfg.val.fixed_target_panel = False
+    torch.set_num_threads(int(cfg.num_threads))
+    return dropped
 
 
 def metric_row(labels, scores, threshold):
@@ -215,7 +248,8 @@ def run_audit(spec, task, args):
     config = yaml.safe_load(config_path.read_text())
     audit_protocol(spec, task, config)
     seed_process(int(task["audit_seed"]))
-    configure_fraudgt(config_path, task["audit_seed"], args.device)
+    dropped_config_keys = configure_a2_fraudgt(
+        config, task["audit_seed"], args.device)
     dataset = create_dataset()
     loaders = create_loader(dataset=dataset, shuffle=True)
     loader_rows = loader_audit(loaders)
@@ -299,6 +333,7 @@ def run_audit(spec, task, args):
         "checkpoint_git_commit": checkpoint.get("git_commit"),
         "checkpoint_epoch": checkpoint.get("epoch"),
         "config": str(config_path),
+        "dropped_runtime_config_keys": dropped_config_keys,
         "checkpoint": task["checkpoint"],
         "sampling_protocol": "dynamic_random",
         "loader_audit": loader_rows,
