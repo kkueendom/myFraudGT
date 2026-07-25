@@ -3,7 +3,7 @@
 ## Material Passport
 
 - Origin Skill: academic-research-suite / experiment-agent
-- Status: preregistered, not yet executed
+- Status: completed
 - Parent decision: `STOP_CET_V1`
 - Sampling protocol: `dynamic_random`
 - Purpose: characterize evidence reliability, not tune CET v1
@@ -76,3 +76,5 @@ This audit cannot revive CET v1. It determines the next research problem:
 - only a stable, support-localized positive correction region can justify a
   future train-only reliability method.
 
+The completed results and stop decision are recorded in
+`CET_DYNAMIC_RELIABILITY_RESULTS.md`.
