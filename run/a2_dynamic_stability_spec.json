@@ -1,0 +1,138 @@
+{
+  "expected_branch": "feature/cet-fraudgt-complementary-encoder",
+  "sampling_protocol": "dynamic_random",
+  "tasks": [
+    {
+      "dataset": "Small-LI",
+      "experiment_label": "stream1",
+      "model_seed": 42,
+      "audit_seed": 14201,
+      "repeats": 8,
+      "expected_batch_size": 2048,
+      "expected_val_iter_per_epoch": 256,
+      "config": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Small-LI-DMPRDFormal500-a2_multi-Seed42-gpu0/config.yaml",
+      "checkpoint": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Small-LI-DMPRDFormal500-a2_multi-Seed42-gpu0/42/ckpt/499.ckpt"
+    },
+    {
+      "dataset": "Small-HI",
+      "experiment_label": "stream1",
+      "model_seed": 42,
+      "audit_seed": 14211,
+      "repeats": 8,
+      "expected_batch_size": 2048,
+      "expected_val_iter_per_epoch": 256,
+      "config": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Small-HI-DMPRDFormal500-a2_multi-Seed42-gpu0/config.yaml",
+      "checkpoint": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Small-HI-DMPRDFormal500-a2_multi-Seed42-gpu0/42/ckpt/499.ckpt"
+    },
+    {
+      "dataset": "Medium-LI",
+      "experiment_label": "stream1",
+      "model_seed": 44,
+      "audit_seed": 14401,
+      "repeats": 8,
+      "expected_batch_size": 1024,
+      "expected_val_iter_per_epoch": 256,
+      "config": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Medium-LI-DMPRDFormal500-a2_multi-Seed44-gpu0/config.yaml",
+      "checkpoint": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Medium-LI-DMPRDFormal500-a2_multi-Seed44-gpu0/44/ckpt/499.ckpt"
+    },
+    {
+      "dataset": "Medium-HI",
+      "experiment_label": "stream1",
+      "model_seed": 42,
+      "audit_seed": 14411,
+      "repeats": 8,
+      "expected_batch_size": 1024,
+      "expected_val_iter_per_epoch": 256,
+      "config": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Medium-HI-DMPRDFormal500-a2_multi-Seed42-gpu0/config.yaml",
+      "checkpoint": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Medium-HI-DMPRDFormal500-a2_multi-Seed42-gpu0/42/ckpt/499.ckpt"
+    },
+    {
+      "dataset": "Large-LI",
+      "experiment_label": "stream1",
+      "model_seed": 44,
+      "audit_seed": 14601,
+      "repeats": 8,
+      "expected_batch_size": 1024,
+      "expected_val_iter_per_epoch": 256,
+      "config": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Large-LI-DMPRDFormal500-a2_multi-Seed44-gpu0/config.yaml",
+      "checkpoint": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Large-LI-DMPRDFormal500-a2_multi-Seed44-gpu0/44/ckpt/499.ckpt"
+    },
+    {
+      "dataset": "Large-HI",
+      "experiment_label": "stream1",
+      "model_seed": 43,
+      "audit_seed": 14611,
+      "repeats": 8,
+      "expected_batch_size": 1024,
+      "expected_val_iter_per_epoch": 256,
+      "config": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Large-HI-DMPRDFormal500-a2_multi-Seed43-gpu0/config.yaml",
+      "checkpoint": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Large-HI-DMPRDFormal500-a2_multi-Seed43-gpu0/43/ckpt/499.ckpt"
+    },
+    {
+      "dataset": "Small-LI",
+      "experiment_label": "stream2",
+      "model_seed": 42,
+      "audit_seed": 24201,
+      "repeats": 8,
+      "expected_batch_size": 2048,
+      "expected_val_iter_per_epoch": 256,
+      "config": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Small-LI-DMPRDFormal500-a2_multi-Seed42-gpu0/config.yaml",
+      "checkpoint": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Small-LI-DMPRDFormal500-a2_multi-Seed42-gpu0/42/ckpt/499.ckpt"
+    },
+    {
+      "dataset": "Small-HI",
+      "experiment_label": "stream2",
+      "model_seed": 42,
+      "audit_seed": 24211,
+      "repeats": 8,
+      "expected_batch_size": 2048,
+      "expected_val_iter_per_epoch": 256,
+      "config": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Small-HI-DMPRDFormal500-a2_multi-Seed42-gpu0/config.yaml",
+      "checkpoint": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Small-HI-DMPRDFormal500-a2_multi-Seed42-gpu0/42/ckpt/499.ckpt"
+    },
+    {
+      "dataset": "Medium-LI",
+      "experiment_label": "stream2",
+      "model_seed": 44,
+      "audit_seed": 24401,
+      "repeats": 8,
+      "expected_batch_size": 1024,
+      "expected_val_iter_per_epoch": 256,
+      "config": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Medium-LI-DMPRDFormal500-a2_multi-Seed44-gpu0/config.yaml",
+      "checkpoint": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Medium-LI-DMPRDFormal500-a2_multi-Seed44-gpu0/44/ckpt/499.ckpt"
+    },
+    {
+      "dataset": "Medium-HI",
+      "experiment_label": "stream2",
+      "model_seed": 42,
+      "audit_seed": 24411,
+      "repeats": 8,
+      "expected_batch_size": 1024,
+      "expected_val_iter_per_epoch": 256,
+      "config": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Medium-HI-DMPRDFormal500-a2_multi-Seed42-gpu0/config.yaml",
+      "checkpoint": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Medium-HI-DMPRDFormal500-a2_multi-Seed42-gpu0/42/ckpt/499.ckpt"
+    },
+    {
+      "dataset": "Large-LI",
+      "experiment_label": "stream2",
+      "model_seed": 44,
+      "audit_seed": 24601,
+      "repeats": 8,
+      "expected_batch_size": 1024,
+      "expected_val_iter_per_epoch": 256,
+      "config": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Large-LI-DMPRDFormal500-a2_multi-Seed44-gpu0/config.yaml",
+      "checkpoint": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Large-LI-DMPRDFormal500-a2_multi-Seed44-gpu0/44/ckpt/499.ckpt"
+    },
+    {
+      "dataset": "Large-HI",
+      "experiment_label": "stream2",
+      "model_seed": 43,
+      "audit_seed": 24611,
+      "repeats": 8,
+      "expected_batch_size": 1024,
+      "expected_val_iter_per_epoch": 256,
+      "config": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Large-HI-DMPRDFormal500-a2_multi-Seed43-gpu0/config.yaml",
+      "checkpoint": "/e/yky/FraudGT_dmprd_quickcheck/results/dmprd_formal500/AML-Large-HI-DMPRDFormal500-a2_multi-Seed43-gpu0/43/ckpt/499.ckpt"
+    }
+  ]
+}
