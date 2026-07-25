@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export PYTHONDONTWRITEBYTECODE=1
 
 REPO="${A2_STABILITY_REPO:-$(cd "$(dirname "$0")/.." && pwd)}"
 OUTPUT="${A2_STABILITY_OUTPUT:?set A2_STABILITY_OUTPUT}"
