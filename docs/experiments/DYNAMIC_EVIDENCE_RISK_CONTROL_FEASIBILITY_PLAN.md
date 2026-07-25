@@ -3,11 +3,14 @@
 ## Material Passport
 
 - Origin Skill: academic-research-suite / experiment-agent
-- Status: preregistered, not started
+- Status: completed; F1 failed and F2 completed
 - Branch: `feature/cet-fraudgt-complementary-encoder`
 - Sampling protocol: `dynamic_random`
 - Formal baseline: initial A2 only
 - Model training allowed in this phase: no
+- Results:
+  - `docs/experiments/DYNAMIC_EVIDENCE_RISK_CONTROL_FEASIBILITY_RESULTS.md`
+  - `docs/experiments/A2_DYNAMIC_SAMPLING_STABILITY_RESULTS.md`
 
 ## Objective
 
@@ -189,11 +192,18 @@ counterfactual audits to frame an evaluation-method paper on temporal evidence
 reliability under dynamic fraud-graph sampling. Expand the benchmark across
 multiple existing FraudGT variants only after preregistering the model set.
 
+**Observed:** F1 failed on both Small-LI and Large-LI. Predictive intervention
+development is stopped.
+
 ### If F2 Shows Large Sampling Variation
 
 Future model comparisons require repeated dynamic streams or multiple seeds
 whose confidence interval excludes zero. The fixed 0.005 heuristic is retained
 for protocol continuity but cannot support a stability claim by itself.
+
+**Observed:** all six dataset-specific event bands exceed 0.005; Medium-LI and
+Large-LI are especially unstable. Proceed to a preregistered multi-model
+reliability benchmark.
 
 ## Engineering Discipline
 
