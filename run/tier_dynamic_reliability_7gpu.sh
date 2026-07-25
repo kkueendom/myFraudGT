@@ -30,20 +30,20 @@ run_task() {
   "${command[@]}" >"$OUTPUT/task${task}.stdout" 2>"$OUTPUT/task${task}.stderr"
 }
 
-run_queue() {
+run_worker() {
   local gpu="$1"
-  shift
-  local task
-  for task in "$@"; do
-    run_task "$gpu" "$task"
-  done
+  local initial_task="$2"
+  run_task "$gpu" "$initial_task"
+  if mkdir "$OUTPUT/.task3_claim" 2>/dev/null; then
+    run_task "$gpu" 3
+  fi
 }
 
-run_queue 0 4 &
-run_queue 1 5 &
-run_queue 2 6 &
-run_queue 3 7 &
-run_queue 4 0 &
-run_queue 5 1 &
-run_queue 6 2 3 &
+run_worker 0 4 &
+run_worker 1 5 &
+run_worker 2 6 &
+run_worker 3 7 &
+run_worker 4 0 &
+run_worker 5 1 &
+run_worker 6 2 &
 wait

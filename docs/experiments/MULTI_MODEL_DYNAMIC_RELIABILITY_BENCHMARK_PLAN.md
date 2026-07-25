@@ -100,9 +100,9 @@ only a same-batch diagnostic.
 | 6 | Large-LI | role_motif | 1 |
 | 7 | Large-LI | role_motif | 2 |
 
-Seven GPUs start seven distinct tasks. The eighth task is queued behind the
-first Small-LI task to finish. No duplicate stream is added merely to occupy a
-GPU.
+Seven GPUs start seven distinct tasks. The first worker to finish atomically
+claims the eighth task, so no GPU remains idle while another initial task is
+still running. No duplicate stream is added merely to occupy a GPU.
 
 ## Mechanism Classification
 

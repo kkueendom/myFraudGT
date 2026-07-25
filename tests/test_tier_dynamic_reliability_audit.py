@@ -41,6 +41,22 @@ class TierDynamicReliabilityAuditTest(unittest.TestCase):
             self.assertEqual(
                 len({task["audit_seed"] for task in tasks}), 2)
 
+    def test_launcher_starts_seven_distinct_tasks_then_claims_eighth(self):
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "run"
+            / "tier_dynamic_reliability_7gpu.sh"
+        ).read_text()
+        initial_tasks = []
+        for line in source.splitlines():
+            if line.startswith("run_worker "):
+                _, gpu, task, _ = line.split()
+                self.assertEqual(int(gpu), len(initial_tasks))
+                initial_tasks.append(int(task))
+        self.assertEqual(initial_tasks, [4, 5, 6, 7, 0, 1, 2])
+        self.assertIn('mkdir "$OUTPUT/.task3_claim"', source)
+        self.assertIn('run_task "$gpu" 3', source)
+
     def test_scalar_distribution_uses_sample_std(self):
         row = scalar_distribution([1, 2, 3])
         self.assertEqual(row["mean"], 2.0)
