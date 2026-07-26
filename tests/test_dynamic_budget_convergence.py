@@ -7,6 +7,7 @@ import torch
 from run.dynamic_budget_convergence import (
     _check_finite,
     build_budget_rows,
+    finish_registered_loader_event,
     verify_nested_prefixes,
 )
 from run.nested_dynamic_stability_audit import expand_tasks
@@ -119,6 +120,28 @@ class DynamicBudgetConvergenceTest(unittest.TestCase):
     def test_percentile_uses_linear_interpolation(self):
         self.assertEqual(percentile([0, 10], 0.5), 5.0)
         self.assertEqual(percentile([0, 10, 20], 0.9), 18.0)
+
+    def test_full_event_break_triggers_wrapper_reset(self):
+        class FixtureLoader:
+            def __init__(self):
+                self.idx = 2
+
+            def __len__(self):
+                return 2
+
+            def __next__(self):
+                if self.idx == 2:
+                    self.idx = 0
+                    raise StopIteration
+                self.idx += 1
+                return self.idx
+
+        loader = FixtureLoader()
+        self.assertTrue(
+            finish_registered_loader_event(loader, 2, 2))
+        self.assertEqual(loader.idx, 0)
+        self.assertFalse(
+            finish_registered_loader_event(loader, 1, 2))
 
 
 if __name__ == "__main__":

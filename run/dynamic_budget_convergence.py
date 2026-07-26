@@ -54,6 +54,18 @@ def _sha256(values):
     ).hexdigest()
 
 
+def finish_registered_loader_event(loader, observed_steps, maximum):
+    """Trigger the wrapper's natural StopIteration reset after a full event."""
+    if observed_steps != maximum or maximum != len(loader):
+        return False
+    try:
+        next(loader)
+    except StopIteration:
+        return True
+    raise RuntimeError(
+        "loader yielded beyond its registered full-event length")
+
+
 @torch.no_grad()
 def evaluate_prefixes(model, loader, split, device, budgets):
     model.eval()
@@ -64,7 +76,9 @@ def evaluate_prefixes(model, loader, split, device, budgets):
     score_parts = []
     snapshots = {}
     started = time.monotonic()
+    observed_steps = 0
     for step, batch in enumerate(loader, start=1):
+        observed_steps = step
         batch.split = split
         batch.to(device)
         mask = model.post_gt._edge_mask(batch)
@@ -99,9 +113,18 @@ def evaluate_prefixes(model, loader, split, device, budgets):
             }
         if step >= maximum:
             break
+    finish_registered_loader_event(
+        loader, observed_steps, maximum)
     if set(snapshots) != set(budgets):
         raise RuntimeError(
-            "loader ended before every registered budget was observed")
+            "loader ended after {} steps before registered budgets {} "
+            "were observed; wrapper_length={}, base_length={}".format(
+                observed_steps,
+                list(budgets),
+                len(loader),
+                len(loader.loader) if hasattr(loader, "loader") else None,
+            )
+        )
     elapsed = time.monotonic() - started
     return snapshots, elapsed
 
@@ -234,6 +257,9 @@ def run_task(spec, task, args):
     )
     if repeats < 1:
         raise ValueError("repeats must be positive")
+    if maximum < int(spec["reference_budget"]) and repeats != 1:
+        raise ValueError(
+            "truncated-budget smoke runs must use exactly one repeat")
 
     historical_f1 = INITIAL_A2[task["dataset"]][
         "val_selected_test_f1"]
