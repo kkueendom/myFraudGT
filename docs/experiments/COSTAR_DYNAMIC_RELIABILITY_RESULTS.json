@@ -1,0 +1,422 @@
+{
+  "classification_counts": {
+    "inactive_evidence": 1,
+    "used_but_unaligned": 1
+  },
+  "dataset_count": 2,
+  "datasets": {
+    "Large-LI": {
+      "applied_correction_rate": {
+        "count": 16,
+        "max": 0.009227299605330107,
+        "mean": 0.00872710043997231,
+        "median": 0.008740375644066854,
+        "min": 0.007966910948256719,
+        "q025": 0.008031080516960248,
+        "q975": 0.009199556532507518,
+        "std": 0.00035872322311490733
+      },
+      "audit_seeds": [
+        35401,
+        35402
+      ],
+      "checkpoint": "/e/yky/FraudGT_dynamic_results/costar_4abe58c6_dynamic500/AML-Large-LI-COSTARDynamic500-Seed44-4abe58c6-gpu0/44/ckpt/499.ckpt",
+      "checkpoint_epoch": 499,
+      "corrected_gt_broken_events": 4,
+      "corrected_le_broken_events": 12,
+      "dataset": "Large-LI",
+      "delta_vs_historical_initial_a2": {
+        "count": 16,
+        "max": 0.16403627906976742,
+        "mean": 0.03640605771671262,
+        "median": 0.03882581954622144,
+        "min": -0.07973612648221345,
+        "q025": -0.07659143040273476,
+        "q975": 0.14479008821170808,
+        "std": 0.06556608021780516
+      },
+      "events": 16,
+      "git_commit": "8d95c17a",
+      "historical_initial_a2_f1": 0.30108,
+      "mean_abs_costar_delta": {
+        "count": 16,
+        "max": 3.889384652285296e-05,
+        "mean": 3.587068023031357e-05,
+        "median": 3.5913534304969646e-05,
+        "min": 3.11905416819086e-05,
+        "q025": 3.206514846968772e-05,
+        "q975": 3.878283559632691e-05,
+        "std": 2.2770103723149263e-06
+      },
+      "mechanism_classification": "used_but_unaligned",
+      "median_costar_over_base": {
+        "count": 16,
+        "max": 8.081095188572363e-07,
+        "mean": 8.070311565688826e-07,
+        "median": 8.072016157711914e-07,
+        "min": 8.052246585066314e-07,
+        "q025": 8.054709468297006e-07,
+        "q975": 8.080557378775666e-07,
+        "std": 8.42039506952447e-10
+      },
+      "model_git_commit": "4abe58c6",
+      "model_seed": 44,
+      "nonpositive_same_batch_delta_events": 12,
+      "normal_broken": {
+        "count": 16,
+        "max": 4.0,
+        "mean": 0.5,
+        "median": 0.0,
+        "min": 0.0,
+        "q025": 0.0,
+        "q975": 3.625,
+        "std": 1.2110601416389966
+      },
+      "normal_changed": {
+        "count": 16,
+        "max": 4.0,
+        "mean": 0.75,
+        "median": 0.0,
+        "min": 0.0,
+        "q025": 0.0,
+        "q975": 3.625,
+        "std": 1.1832159566199232
+      },
+      "normal_corrected": {
+        "count": 16,
+        "max": 1.0,
+        "mean": 0.25,
+        "median": 0.0,
+        "min": 0.0,
+        "q025": 0.0,
+        "q975": 1.0,
+        "std": 0.4472135954999579
+      },
+      "normal_corrected_minus_broken": {
+        "count": 16,
+        "max": 1.0,
+        "mean": -0.25,
+        "median": 0.0,
+        "min": -4.0,
+        "q025": -3.625,
+        "q975": 1.0,
+        "std": 1.390443574307614
+      },
+      "normal_minus_off_f1": {
+        "count": 16,
+        "max": 0.06682222798375251,
+        "mean": 0.015816490677159088,
+        "median": 0.01120740598431863,
+        "min": -0.017183850517183824,
+        "q025": -0.015519318337945776,
+        "q975": 0.060218664731146426,
+        "std": 0.022163103990722972
+      },
+      "normal_minus_shuffled_f1": {
+        "count": 16,
+        "max": 0.003450960587504992,
+        "mean": 0.0002811398004721674,
+        "median": 0.0,
+        "min": -0.004514363885088912,
+        "q025": -0.00282147742818057,
+        "q975": 0.003043549874579783,
+        "std": 0.0016682586513061249
+      },
+      "normal_shuffled_gap_ge_0_01_events": 0,
+      "normal_shuffled_gap_lt_0_01_events": 16,
+      "normal_test_f1": {
+        "count": 16,
+        "max": 0.46511627906976744,
+        "mean": 0.33748605771671264,
+        "median": 0.33990581954622145,
+        "min": 0.22134387351778656,
+        "q025": 0.22448856959726526,
+        "q975": 0.44587008821170815,
+        "std": 0.06556608021780516
+      },
+      "off_test_f1": {
+        "count": 16,
+        "max": 0.4279835390946502,
+        "mean": 0.3216695670395535,
+        "median": 0.3208131451443017,
+        "min": 0.1721311475409836,
+        "q025": 0.19705565142364107,
+        "q975": 0.4233885883386508,
+        "std": 0.06926664889375606
+      },
+      "positive_same_batch_delta_events": 4,
+      "same_batch_a2_anchor_test_f1": {
+        "count": 16,
+        "max": 0.47393364928909953,
+        "mean": 0.33783200368752603,
+        "median": 0.33990581954622145,
+        "min": 0.224,
+        "q025": 0.22614864864864867,
+        "q975": 0.45049424509140146,
+        "std": 0.06624171070754546
+      },
+      "same_batch_delta_vs_a2_anchor": {
+        "count": 16,
+        "max": 0.002364532019704435,
+        "mean": -0.00034594597081338656,
+        "median": 0.0,
+        "min": -0.008817370219332099,
+        "q025": -0.006506903817912604,
+        "q975": 0.00227310631372403,
+        "std": 0.002594552021511179
+      },
+      "sensitivity_threshold_crossing": false,
+      "shuffled_test_f1": {
+        "count": 16,
+        "max": 0.46511627906976744,
+        "mean": 0.33720491791624047,
+        "median": 0.33990581954622145,
+        "min": 0.22134387351778656,
+        "q025": 0.22448856959726526,
+        "q975": 0.44498338870431897,
+        "std": 0.06557170594107455
+      },
+      "single_event_conclusion_reversal": true,
+      "stream_summaries": [
+        {
+          "audit_seed": 35401,
+          "experiment_label": "stream1",
+          "normal_minus_shuffled_f1_mean": -0.00016465697495684356,
+          "normal_test_f1_mean": 0.33685511011091707,
+          "same_batch_delta_vs_a2_anchor_mean": 0.00044672864360336545
+        },
+        {
+          "audit_seed": 35402,
+          "experiment_label": "stream2",
+          "normal_minus_shuffled_f1_mean": 0.0007269365759011784,
+          "normal_test_f1_mean": 0.33811700532250816,
+          "same_batch_delta_vs_a2_anchor_mean": -0.0011386205852301386
+        }
+      ],
+      "streams": 2,
+      "test_unique_edge_rate": {
+        "count": 16,
+        "max": 1.0,
+        "mean": 1.0,
+        "median": 1.0,
+        "min": 1.0,
+        "q025": 1.0,
+        "q975": 1.0,
+        "std": 0.0
+      },
+      "utility_sign_crossing": true
+    },
+    "Small-LI": {
+      "applied_correction_rate": {
+        "count": 16,
+        "max": 0.981195554683019,
+        "mean": 0.9810225211397421,
+        "median": 0.9810342003851447,
+        "min": 0.9807215330412412,
+        "q025": 0.9807869754921165,
+        "q975": 0.9811743100622998,
+        "std": 0.0001173159302666863
+      },
+      "audit_seeds": [
+        35201,
+        35202
+      ],
+      "checkpoint": "/e/yky/FraudGT_dynamic_results/costar_4abe58c6_dynamic500/AML-Small-LI-COSTARDynamic500-Seed42-4abe58c6-gpu0/42/ckpt/499.ckpt",
+      "checkpoint_epoch": 499,
+      "corrected_gt_broken_events": 5,
+      "corrected_le_broken_events": 11,
+      "dataset": "Small-LI",
+      "delta_vs_historical_initial_a2": {
+        "count": 16,
+        "max": -0.007403078393881435,
+        "mean": -0.03483991595725161,
+        "median": -0.026734605592180022,
+        "min": -0.08502965292841647,
+        "q025": -0.07420291917493484,
+        "q975": -0.010482675080774592,
+        "std": 0.020049676672360496
+      },
+      "events": 16,
+      "git_commit": "8d95c17a",
+      "historical_initial_a2_f1": 0.46247,
+      "mean_abs_costar_delta": {
+        "count": 16,
+        "max": 0.0010362515206171102,
+        "mean": 0.0010298118047624635,
+        "median": 0.0010295808444144247,
+        "min": 0.001025751225248694,
+        "q025": 0.0010259881052004833,
+        "q975": 0.0010346756787592325,
+        "std": 2.565915257664845e-06
+      },
+      "mechanism_classification": "inactive_evidence",
+      "median_costar_over_base": {
+        "count": 16,
+        "max": 3.421015389903914e-05,
+        "mean": 3.419014376504492e-05,
+        "median": 3.419215136091225e-05,
+        "min": 3.41569866577629e-05,
+        "q025": 3.416305276005005e-05,
+        "q975": 3.420785583330144e-05,
+        "std": 1.2929010296399871e-08
+      },
+      "model_git_commit": "4abe58c6",
+      "model_seed": 42,
+      "nonpositive_same_batch_delta_events": 10,
+      "normal_broken": {
+        "count": 16,
+        "max": 4.0,
+        "mean": 1.125,
+        "median": 1.0,
+        "min": 0.0,
+        "q025": 0.0,
+        "q975": 3.625,
+        "std": 1.2041594578792296
+      },
+      "normal_changed": {
+        "count": 16,
+        "max": 15.0,
+        "mean": 2.5625,
+        "median": 1.0,
+        "min": 0.0,
+        "q025": 0.0,
+        "q975": 11.625,
+        "std": 3.632606961031338
+      },
+      "normal_corrected": {
+        "count": 16,
+        "max": 11.0,
+        "mean": 1.4375,
+        "median": 1.0,
+        "min": 0.0,
+        "q025": 0.0,
+        "q975": 8.0,
+        "std": 2.707243370416976
+      },
+      "normal_corrected_minus_broken": {
+        "count": 16,
+        "max": 7.0,
+        "mean": 0.3125,
+        "median": -0.5,
+        "min": -1.0,
+        "q025": -1.0,
+        "q975": 5.125,
+        "std": 2.0886598574205424
+      },
+      "normal_minus_off_f1": {
+        "count": 16,
+        "max": 0.01966869151762296,
+        "mean": -0.002943189438875775,
+        "median": -0.0058191748956231415,
+        "min": -0.023386099209408207,
+        "q025": -0.02220504875926864,
+        "q975": 0.0180951316131994,
+        "std": 0.012767276052944847
+      },
+      "normal_minus_shuffled_f1": {
+        "count": 16,
+        "max": 0.0034540183803121183,
+        "mean": -0.0009401359463289301,
+        "median": -0.00046826163767269,
+        "min": -0.00714231364293505,
+        "q025": -0.0070678423554270745,
+        "q975": 0.00345327456909042,
+        "std": 0.0030788631186567344
+      },
+      "normal_shuffled_gap_ge_0_01_events": 0,
+      "normal_shuffled_gap_lt_0_01_events": 16,
+      "normal_test_f1": {
+        "count": 16,
+        "max": 0.45506692160611856,
+        "mean": 0.4276300840427484,
+        "median": 0.43573539440781994,
+        "min": 0.3774403470715835,
+        "q025": 0.3882670808250651,
+        "q975": 0.45198732491922544,
+        "std": 0.020049676672360496
+      },
+      "off_test_f1": {
+        "count": 16,
+        "max": 0.46709129511677283,
+        "mean": 0.43057327348162416,
+        "median": 0.4275400649635097,
+        "min": 0.40082644628099173,
+        "q025": 0.40235701972316584,
+        "q975": 0.46086409828293445,
+        "std": 0.01744034613417316
+      },
+      "positive_same_batch_delta_events": 6,
+      "same_batch_a2_anchor_test_f1": {
+        "count": 16,
+        "max": 0.4559386973180077,
+        "mean": 0.4284634792882735,
+        "median": 0.4362849456076734,
+        "min": 0.38095238095238093,
+        "q025": 0.3898809523809524,
+        "q975": 0.45278346800197267,
+        "std": 0.019761072196131796
+      },
+      "same_batch_delta_vs_a2_anchor": {
+        "count": 16,
+        "max": 0.0017600070400281553,
+        "mean": -0.0008333952455251044,
+        "median": -0.00043588785594456114,
+        "min": -0.006642988948193429,
+        "q025": -0.006155652062349123,
+        "q975": 0.0017415759664741806,
+        "std": 0.002536593902379341
+      },
+      "sensitivity_threshold_crossing": false,
+      "shuffled_test_f1": {
+        "count": 16,
+        "max": 0.45161290322580644,
+        "mean": 0.4285702199890773,
+        "median": 0.436573134722291,
+        "min": 0.3801295896328294,
+        "q025": 0.39203959224663304,
+        "q975": 0.4494658567239212,
+        "std": 0.017973105244001777
+      },
+      "single_event_conclusion_reversal": true,
+      "stream_summaries": [
+        {
+          "audit_seed": 35201,
+          "experiment_label": "stream1",
+          "normal_minus_shuffled_f1_mean": -0.00030743594390194445,
+          "normal_test_f1_mean": 0.4365885946919354,
+          "same_batch_delta_vs_a2_anchor_mean": -0.0009663938336953101
+        },
+        {
+          "audit_seed": 35202,
+          "experiment_label": "stream2",
+          "normal_minus_shuffled_f1_mean": -0.0015728359487559157,
+          "normal_test_f1_mean": 0.41867157339356137,
+          "same_batch_delta_vs_a2_anchor_mean": -0.0007003966573548986
+        }
+      ],
+      "streams": 2,
+      "test_unique_edge_rate": {
+        "count": 16,
+        "max": 1.0,
+        "mean": 1.0,
+        "median": 1.0,
+        "min": 1.0,
+        "q025": 1.0,
+        "q975": 1.0,
+        "std": 0.0
+      },
+      "utility_sign_crossing": true
+    }
+  },
+  "event_count": 32,
+  "experiment": "costar_fixed_checkpoint_dynamic_reliability",
+  "manifest_count": 4,
+  "manifest_paths": [
+    "/Users/kun/FraudGT_experiment_workspace/costar_reliability_formal_8d95c17/Large-LI_stream1_auditseed35401_8d95c17a/costar_reliability_manifest.json",
+    "/Users/kun/FraudGT_experiment_workspace/costar_reliability_formal_8d95c17/Large-LI_stream2_auditseed35402_8d95c17a/costar_reliability_manifest.json",
+    "/Users/kun/FraudGT_experiment_workspace/costar_reliability_formal_8d95c17/Small-LI_stream1_auditseed35201_8d95c17a/costar_reliability_manifest.json",
+    "/Users/kun/FraudGT_experiment_workspace/costar_reliability_formal_8d95c17/Small-LI_stream2_auditseed35202_8d95c17a/costar_reliability_manifest.json"
+  ],
+  "sampling_protocol": "dynamic_random",
+  "single_event_reversal_datasets": 2
+}
