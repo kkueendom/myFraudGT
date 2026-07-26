@@ -3,8 +3,9 @@
 ## Material Passport
 
 - Origin Skill: academic-research-suite / experiment-agent
-- Status: preregistered, not started
+- Status: completed; formal gate failed
 - Parent gate: `GTPRC_PHASE0A_V2C_FORMAL_RESULTS.md`
+- Result: `CPSE_PHASE0B_OOF_RESULTS.md`
 - Sampling protocol: `dynamic_random`
 - Validation/test loader iterations allowed: 0
 - A2 retraining: no
@@ -110,4 +111,3 @@ Both Small-LI and Large-LI must satisfy:
 
 Failure on either dataset stops CPSE. Threshold tuning, decoder additions,
 validation/test evaluation, and full-model training remain prohibited.
-

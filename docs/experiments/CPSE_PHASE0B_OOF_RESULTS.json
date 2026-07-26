@@ -1,0 +1,517 @@
+{
+  "datasets": {
+    "Large-LI": {
+      "corrected_to_broken_ratio": 19.666666666666668,
+      "gate": {
+        "auprc_above_prevalence": false,
+        "auprc_above_shuffled": false,
+        "min_changed": true,
+        "nonempty_gtprc_policy": true,
+        "normal_above_shuffled": false,
+        "passed": false,
+        "positive_f1": false,
+        "positive_net": true,
+        "positive_net_folds": true,
+        "ratio": true
+      },
+      "normal_auprc": 0.4944337614191075,
+      "positives": 72,
+      "rotations": [
+        {
+          "calibration_fold": 2,
+          "conditions": {
+            "normal": {
+              "a2_f1": 0.030534351145038167,
+              "broken": 0,
+              "changed": 0,
+              "corrected": 0,
+              "net": 0,
+              "paired_f1_delta": 0.0,
+              "routed_f1": 0.030534351145038167
+            },
+            "off": {
+              "a2_f1": 0.030534351145038167,
+              "broken": 0,
+              "changed": 0,
+              "corrected": 0,
+              "net": 0,
+              "paired_f1_delta": 0.0,
+              "routed_f1": 0.030534351145038167
+            },
+            "shuffled": {
+              "a2_f1": 0.030534351145038167,
+              "broken": 0,
+              "changed": 0,
+              "corrected": 0,
+              "net": 0,
+              "paired_f1_delta": 0.0,
+              "routed_f1": 0.030534351145038167
+            }
+          },
+          "direction_metrics": {
+            "add": {
+              "diagnostic": {
+                "negative_utility": 34918,
+                "positive_utility": 12,
+                "train_candidates": 34930,
+                "trained": true
+              },
+              "normal_auprc": 0.014841795898973942,
+              "off_auprc": 0.023059820756316185,
+              "prevalence": 0.000778232526499778,
+              "shuffled_auprc": 0.002129630884155631
+            },
+            "remove": {
+              "diagnostic": {
+                "negative_utility": 3,
+                "positive_utility": 42,
+                "train_candidates": 45,
+                "trained": true
+              },
+              "normal_auprc": 0.981913685798645,
+              "off_auprc": 0.9925796985626221,
+              "prevalence": 0.9803921580314636,
+              "shuffled_auprc": 0.985679030418396
+            }
+          },
+          "evaluation_fold": 0,
+          "policies": {
+            "add": null,
+            "remove": null
+          },
+          "train_fold": 1
+        },
+        {
+          "calibration_fold": 0,
+          "conditions": {
+            "normal": {
+              "a2_f1": 0.1,
+              "broken": 3,
+              "changed": 45,
+              "corrected": 42,
+              "net": 39,
+              "paired_f1_delta": -0.1,
+              "routed_f1": 0.0
+            },
+            "off": {
+              "a2_f1": 0.1,
+              "broken": 3,
+              "changed": 45,
+              "corrected": 42,
+              "net": 39,
+              "paired_f1_delta": -0.1,
+              "routed_f1": 0.0
+            },
+            "shuffled": {
+              "a2_f1": 0.1,
+              "broken": 3,
+              "changed": 45,
+              "corrected": 42,
+              "net": 39,
+              "paired_f1_delta": -0.1,
+              "routed_f1": 0.0
+            }
+          },
+          "direction_metrics": {
+            "add": {
+              "diagnostic": {
+                "negative_utility": 34540,
+                "positive_utility": 28,
+                "train_candidates": 34568,
+                "trained": true
+              },
+              "normal_auprc": 0.016614019870758057,
+              "off_auprc": 0.013610969297587872,
+              "prevalence": 0.00034354423405602574,
+              "shuffled_auprc": 0.013831798918545246
+            },
+            "remove": {
+              "diagnostic": {
+                "negative_utility": 0,
+                "positive_utility": 21,
+                "train_candidates": 21,
+                "trained": false
+              },
+              "normal_auprc": 0.9335163831710815,
+              "off_auprc": 0.9335163831710815,
+              "prevalence": 0.9333333373069763,
+              "shuffled_auprc": 0.9335163831710815
+            }
+          },
+          "evaluation_fold": 1,
+          "policies": {
+            "add": null,
+            "remove": {
+              "calibration_changed": 102,
+              "calibration_net": 98,
+              "harm_upper": 0.14078936934255915,
+              "threshold": 0.0
+            }
+          },
+          "train_fold": 2
+        },
+        {
+          "calibration_fold": 1,
+          "conditions": {
+            "normal": {
+              "a2_f1": 0.0,
+              "broken": 0,
+              "changed": 17,
+              "corrected": 17,
+              "net": 17,
+              "paired_f1_delta": 0.0,
+              "routed_f1": 0.0
+            },
+            "off": {
+              "a2_f1": 0.0,
+              "broken": 0,
+              "changed": 21,
+              "corrected": 21,
+              "net": 21,
+              "paired_f1_delta": 0.0,
+              "routed_f1": 0.0
+            },
+            "shuffled": {
+              "a2_f1": 0.0,
+              "broken": 0,
+              "changed": 16,
+              "corrected": 16,
+              "net": 16,
+              "paired_f1_delta": 0.0,
+              "routed_f1": 0.0
+            }
+          },
+          "direction_metrics": {
+            "add": {
+              "diagnostic": {
+                "negative_utility": 34667,
+                "positive_utility": 27,
+                "train_candidates": 34694,
+                "trained": true
+              },
+              "normal_auprc": 0.01971668377518654,
+              "off_auprc": 0.013591957278549671,
+              "prevalence": 0.0008099976694211364,
+              "shuffled_auprc": 0.014990778639912605
+            },
+            "remove": {
+              "diagnostic": {
+                "negative_utility": 2,
+                "positive_utility": 100,
+                "train_candidates": 102,
+                "trained": true
+              },
+              "normal_auprc": 1.0,
+              "off_auprc": 1.0,
+              "prevalence": 1.0,
+              "shuffled_auprc": 1.0
+            }
+          },
+          "evaluation_fold": 2,
+          "policies": {
+            "add": null,
+            "remove": {
+              "calibration_changed": 45,
+              "calibration_net": 39,
+              "harm_upper": 0.3486165348144879,
+              "threshold": 0.3692425489425659
+            }
+          },
+          "train_fold": 0
+        }
+      ],
+      "samples": 104360,
+      "shuffled_auprc": 0.4916912703386818,
+      "source_manifests": [
+        "/e/yky/FraudGT_cet_results/cpse_phase0b_formal_a78d3396/Large-LI_fold0_seed44_a78d3396/cpse_phase0b_manifest.json",
+        "/e/yky/FraudGT_cet_results/cpse_phase0b_formal_a78d3396/Large-LI_fold1_seed44_a78d3396/cpse_phase0b_manifest.json",
+        "/e/yky/FraudGT_cet_results/cpse_phase0b_formal_a78d3396/Large-LI_fold2_seed44_a78d3396/cpse_phase0b_manifest.json"
+      ],
+      "summary": {
+        "normal": {
+          "broken": 3,
+          "changed": 62,
+          "corrected": 59,
+          "net": 56,
+          "paired_f1_delta_mean": -0.03333333333333333,
+          "paired_f1_delta_sum": -0.1,
+          "positive_net_folds": 2
+        },
+        "off": {
+          "broken": 3,
+          "changed": 66,
+          "corrected": 63,
+          "net": 60,
+          "paired_f1_delta_mean": -0.03333333333333333,
+          "paired_f1_delta_sum": -0.1,
+          "positive_net_folds": 2
+        },
+        "shuffled": {
+          "broken": 3,
+          "changed": 61,
+          "corrected": 58,
+          "net": 55,
+          "paired_f1_delta_mean": -0.03333333333333333,
+          "paired_f1_delta_sum": -0.1,
+          "positive_net_folds": 2
+        }
+      },
+      "utility_prevalence": 0.48594287829473615
+    },
+    "Small-LI": {
+      "corrected_to_broken_ratio": null,
+      "gate": {
+        "auprc_above_prevalence": true,
+        "auprc_above_shuffled": true,
+        "min_changed": false,
+        "nonempty_gtprc_policy": false,
+        "normal_above_shuffled": false,
+        "passed": false,
+        "positive_f1": false,
+        "positive_net": false,
+        "positive_net_folds": false,
+        "ratio": false
+      },
+      "normal_auprc": 0.42489093355834484,
+      "positives": 239,
+      "rotations": [
+        {
+          "calibration_fold": 2,
+          "conditions": {
+            "normal": {
+              "a2_f1": 0.3,
+              "broken": 0,
+              "changed": 0,
+              "corrected": 0,
+              "net": 0,
+              "paired_f1_delta": 0.0,
+              "routed_f1": 0.3
+            },
+            "off": {
+              "a2_f1": 0.3,
+              "broken": 0,
+              "changed": 0,
+              "corrected": 0,
+              "net": 0,
+              "paired_f1_delta": 0.0,
+              "routed_f1": 0.3
+            },
+            "shuffled": {
+              "a2_f1": 0.3,
+              "broken": 0,
+              "changed": 0,
+              "corrected": 0,
+              "net": 0,
+              "paired_f1_delta": 0.0,
+              "routed_f1": 0.3
+            }
+          },
+          "direction_metrics": {
+            "add": {
+              "diagnostic": {
+                "negative_utility": 174347,
+                "positive_utility": 69,
+                "train_candidates": 174416,
+                "trained": true
+              },
+              "normal_auprc": 0.03692734241485596,
+              "off_auprc": 0.041802700608968735,
+              "prevalence": 0.00042333127930760384,
+              "shuffled_auprc": 0.04774026945233345
+            },
+            "remove": {
+              "diagnostic": {
+                "negative_utility": 15,
+                "positive_utility": 19,
+                "train_candidates": 34,
+                "trained": true
+              },
+              "normal_auprc": 0.7326357960700989,
+              "off_auprc": 0.6225834488868713,
+              "prevalence": 0.3571428656578064,
+              "shuffled_auprc": 0.4253620207309723
+            }
+          },
+          "evaluation_fold": 0,
+          "policies": {
+            "add": null,
+            "remove": null
+          },
+          "train_fold": 1
+        },
+        {
+          "calibration_fold": 0,
+          "conditions": {
+            "normal": {
+              "a2_f1": 0.2542372881355932,
+              "broken": 0,
+              "changed": 0,
+              "corrected": 0,
+              "net": 0,
+              "paired_f1_delta": 0.0,
+              "routed_f1": 0.2542372881355932
+            },
+            "off": {
+              "a2_f1": 0.2542372881355932,
+              "broken": 0,
+              "changed": 0,
+              "corrected": 0,
+              "net": 0,
+              "paired_f1_delta": 0.0,
+              "routed_f1": 0.2542372881355932
+            },
+            "shuffled": {
+              "a2_f1": 0.2542372881355932,
+              "broken": 0,
+              "changed": 0,
+              "corrected": 0,
+              "net": 0,
+              "paired_f1_delta": 0.0,
+              "routed_f1": 0.2542372881355932
+            }
+          },
+          "direction_metrics": {
+            "add": {
+              "diagnostic": {
+                "negative_utility": 174499,
+                "positive_utility": 52,
+                "train_candidates": 174551,
+                "trained": true
+              },
+              "normal_auprc": 0.016029736027121544,
+              "off_auprc": 0.03270389884710312,
+              "prevalence": 0.0003956058935727924,
+              "shuffled_auprc": 0.012557556852698326
+            },
+            "remove": {
+              "diagnostic": {
+                "negative_utility": 11,
+                "positive_utility": 15,
+                "train_candidates": 26,
+                "trained": true
+              },
+              "normal_auprc": 0.8073528409004211,
+              "off_auprc": 0.836463212966919,
+              "prevalence": 0.5588235259056091,
+              "shuffled_auprc": 0.5095103979110718
+            }
+          },
+          "evaluation_fold": 1,
+          "policies": {
+            "add": null,
+            "remove": null
+          },
+          "train_fold": 2
+        },
+        {
+          "calibration_fold": 1,
+          "conditions": {
+            "normal": {
+              "a2_f1": 0.24719101123595505,
+              "broken": 0,
+              "changed": 0,
+              "corrected": 0,
+              "net": 0,
+              "paired_f1_delta": 0.0,
+              "routed_f1": 0.24719101123595505
+            },
+            "off": {
+              "a2_f1": 0.24719101123595505,
+              "broken": 0,
+              "changed": 0,
+              "corrected": 0,
+              "net": 0,
+              "paired_f1_delta": 0.0,
+              "routed_f1": 0.24719101123595505
+            },
+            "shuffled": {
+              "a2_f1": 0.24719101123595505,
+              "broken": 0,
+              "changed": 0,
+              "corrected": 0,
+              "net": 0,
+              "paired_f1_delta": 0.0,
+              "routed_f1": 0.24719101123595505
+            }
+          },
+          "direction_metrics": {
+            "add": {
+              "diagnostic": {
+                "negative_utility": 174730,
+                "positive_utility": 74,
+                "train_candidates": 174804,
+                "trained": true
+              },
+              "normal_auprc": 0.02097502164542675,
+              "off_auprc": 0.02719351276755333,
+              "prevalence": 0.0002979072160087526,
+              "shuffled_auprc": 0.006998423021286726
+            },
+            "remove": {
+              "diagnostic": {
+                "negative_utility": 18,
+                "positive_utility": 10,
+                "train_candidates": 28,
+                "trained": true
+              },
+              "normal_auprc": 0.9354248642921448,
+              "off_auprc": 0.8209648728370667,
+              "prevalence": 0.5769230723381042,
+              "shuffled_auprc": 0.7131459712982178
+            }
+          },
+          "evaluation_fold": 2,
+          "policies": {
+            "add": null,
+            "remove": null
+          },
+          "train_fold": 0
+        }
+      ],
+      "samples": 523859,
+      "shuffled_auprc": 0.2858857732110967,
+      "source_manifests": [
+        "/e/yky/FraudGT_cet_results/cpse_phase0b_formal_a78d3396/Small-LI_fold0_seed42_a78d3396/cpse_phase0b_manifest.json",
+        "/e/yky/FraudGT_cet_results/cpse_phase0b_formal_a78d3396/Small-LI_fold1_seed42_a78d3396/cpse_phase0b_manifest.json",
+        "/e/yky/FraudGT_cet_results/cpse_phase0b_formal_a78d3396/Small-LI_fold2_seed42_a78d3396/cpse_phase0b_manifest.json"
+      ],
+      "summary": {
+        "normal": {
+          "broken": 0,
+          "changed": 0,
+          "corrected": 0,
+          "net": 0,
+          "paired_f1_delta_mean": 0.0,
+          "paired_f1_delta_sum": 0.0,
+          "positive_net_folds": 0
+        },
+        "off": {
+          "broken": 0,
+          "changed": 0,
+          "corrected": 0,
+          "net": 0,
+          "paired_f1_delta_mean": 0.0,
+          "paired_f1_delta_sum": 0.0,
+          "positive_net_folds": 0
+        },
+        "shuffled": {
+          "broken": 0,
+          "changed": 0,
+          "corrected": 0,
+          "net": 0,
+          "paired_f1_delta_mean": 0.0,
+          "paired_f1_delta_sum": 0.0,
+          "positive_net_folds": 0
+        }
+      },
+      "utility_prevalence": 0.2490010513817348
+    }
+  },
+  "decision": "STOP_CPSE",
+  "experiment": "CPSE_Phase0B_train_only_OOF_utility",
+  "git_commit": "4bf1703c",
+  "passed": false,
+  "sampling_protocol": "dynamic_random",
+  "test_loader_iterations": 0,
+  "validation_loader_iterations": 0
+}
