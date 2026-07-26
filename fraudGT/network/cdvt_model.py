@@ -46,15 +46,18 @@ class CDVTModel(nn.Module):
         )
         self.last_diagnostics = None
 
-    def _event_graph(self, edge_ids, condition):
+    def _event_graph(self, edge_ids):
         time_window = int(cfg.cdvt.time_window)
-        graph = self.event_index.query(
+        return self.event_index.query(
             edge_ids.detach().cpu(),
             k=int(cfg.cdvt.history_k),
             hops=int(cfg.cdvt.history_hops),
             max_events=int(cfg.cdvt.max_events),
             time_window=None if time_window < 0 else time_window,
         ).to(edge_ids.device)
+
+    @staticmethod
+    def _intervene(graph, condition):
         if condition == "normal":
             return graph
         if condition == "shuffled":
@@ -63,7 +66,7 @@ class CDVTModel(nn.Module):
             return graph.off()
         raise ValueError(f"unknown event condition: {condition}")
 
-    def forward_details(self, batch, condition="normal"):
+    def prepare_views(self, batch):
         encoded = self.account_encoder.encode_batch(batch)
         head = self.account_encoder.post_gt
         mask = head._edge_mask(encoded)
@@ -71,15 +74,33 @@ class CDVTModel(nn.Module):
         account_features, labels = head._apply_index(encoded)
         if edge_ids.numel() != labels.numel():
             raise AssertionError("target edge IDs and labels are not aligned")
-        graph = self._event_graph(edge_ids, condition)
-        logits, diagnostics = self.dual_view(account_features, graph)
+        graph = self._event_graph(edge_ids)
+        return account_features, labels, edge_ids, graph
+
+    def classify_prepared(
+        self, account_features, labels, edge_ids, graph, condition="normal"
+    ):
+        intervened = self._intervene(graph, condition)
+        logits, diagnostics = self.dual_view(
+            account_features, intervened)
         diagnostics = dict(diagnostics)
         diagnostics["target_edge_ids"] = edge_ids
         diagnostics["event_condition"] = condition
         return logits, labels, diagnostics
 
+    def forward_details(self, batch, condition="normal"):
+        return self.classify_prepared(
+            *self.prepare_views(batch), condition=condition)
+
+    def forward_counterfactuals(self, batch):
+        prepared = self.prepare_views(batch)
+        return {
+            condition: self.classify_prepared(
+                *prepared, condition=condition)
+            for condition in ("normal", "shuffled", "off")
+        }
+
     def forward(self, batch):
         logits, labels, diagnostics = self.forward_details(batch)
         self.last_diagnostics = diagnostics
         return logits, labels
-
