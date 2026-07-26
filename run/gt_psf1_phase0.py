@@ -558,7 +558,7 @@ def run_task(args):
         args.device if args.device else (
             "cuda" if torch.cuda.is_available() else "cpu"))
     if device.type == "cuda":
-        torch.cuda.set_device(device)
+        torch.cuda.set_device(0 if device.index is None else device.index)
     experiments = (
         int(args.experiments)
         if args.experiments is not None
