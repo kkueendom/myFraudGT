@@ -9,8 +9,9 @@
   methods-oriented journal
 - Authoritative objective:
   `/Users/kun/.codex/attachments/0438ff2d-e89b-48df-97e3-4bd02864fcac/goal-objective.md`
-- Current branch: `feature/dgr-f1-dynamic-replication`
-- Current result commit before this audit: `4267189`
+- Current branch: `paper/temporal-evidence-reliability-benchmark`
+- Current nested benchmark result commit: `eb04985`
+- Current budget-convergence preregistration commit: `1344ef8`
 - Audit verdict: target not achieved
 
 ## Executive Verdict
@@ -324,7 +325,7 @@ scientifically distinct from CET or CPSE.
 
 ## GPU Decision
 
-No further GPU task is currently justified:
+No further predictive-model or failed-interval rerun is justified:
 
 - TREFIC formal expansion is prohibited by its failed power gate.
 - DGR-F1 reruns or interval replacement are prohibited by its stop rule.
@@ -333,10 +334,17 @@ No further GPU task is currently justified:
 - CET/CPSE additional seeds are prohibited by failed two-scale qualification.
 - Phase C/D six-dataset training is not authorized.
 
-Leaving GPUs idle at this point follows the objective's prohibition against
-duplicate or post hoc experiments. New GPU use requires an approved claim
-target, new data, or an independently derived method with a fresh
-preregistration.
+One new non-training GPU experiment is now justified and preregistered in
+`DYNAMIC_EVALUATION_BUDGET_CONVERGENCE_PLAN.md`. It extracts seven nested
+evaluation budgets from each full dynamic trajectory across six datasets,
+three fixed model seeds and two streams. This directly addresses the paper's
+missing actionable recommendation: how much dynamic evaluation is needed
+before F1 approaches the original 256-batch result. The 36 tasks are distinct
+and may be distributed over all seven GPUs.
+
+External GPU training remains blocked until a real dataset, official
+preprocessing and access terms are verified. The comparison and resource plan
+are recorded in `EXTERNAL_RELIABILITY_VALIDATION_FEASIBILITY.md`.
 
 ## Final Audit Verdict
 

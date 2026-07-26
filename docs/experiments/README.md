@@ -14,6 +14,17 @@ The predictive decoder/encoder search and four registered reliability methods
 have stopped after failed advancement gates. The active deliverable is a
 negative reliability benchmark and reproducible evaluation protocol.
 
+Current active experiment:
+
+- `DYNAMIC_EVALUATION_BUDGET_CONVERGENCE_PLAN.md`
+  preregisters a paired 6-dataset x 3-model-seed x 2-stream evaluation-budget
+  audit. Seven nested budgets are extracted from each full dynamic trajectory,
+  so the experiment can recommend how many sampled batches are required
+  without confounding budget and target-edge draws.
+- `EXTERNAL_RELIABILITY_VALIDATION_FEASIBILITY.md`
+  compares DGraph-Fin and Elliptic for the mandatory external-validation
+  stage. It is a feasibility review, not permission to start an external run.
+
 Current read order for another model or reviewer:
 
 1. `TEMPORAL_EVIDENCE_RELIABILITY_BENCHMARK_RESULTS.md`
@@ -38,6 +49,12 @@ Current read order for another model or reviewer:
 6. `TEMPORAL_EVIDENCE_RELIABILITY_BENCHMARK_PLAN.md` and
    `DYNAMIC_EVIDENCE_RELIABILITY_LITERATURE_AND_NOVELTY_REVIEW.md`
    Protocol, research question and conservative novelty boundary.
+
+7. `DYNAMIC_EVALUATION_BUDGET_CONVERGENCE_PLAN.md`
+   Preregistered actionability experiment for the current benchmark paper.
+
+8. `EXTERNAL_RELIABILITY_VALIDATION_FEASIBILITY.md`
+   External dataset/task/resource comparison and remaining access blockers.
 
 - Primary: candidate Val-selected Test F1 versus initial A2 Val-selected Test F1.
 - Supplementary: candidate Raw-best Test F1 versus initial A2 Raw-best Test F1.
