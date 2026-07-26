@@ -21,7 +21,7 @@ if [[ -e "$root/queue_manifest.json" ]]; then
 fi
 
 mkdir -p "$root"
-printf '{"commit":"%s","sampling_protocol":"dynamic_random","tasks":6}\n' \
+printf '{"commit":"%s","sampling_protocol":"dynamic_random","tasks":8}\n' \
   "$commit" > "$root/queue_manifest.json"
 
 pids=()
@@ -61,6 +61,42 @@ launch 2 Small-LI dual_view full_cdvt 0.1
 launch 3 Large-LI event_only event_only 0.0
 launch 4 Large-LI dual_view dual_view 0.0
 launch 5 Large-LI dual_view full_cdvt 0.1
+
+run_account_task() {
+  local dataset="$1"
+  local config="configs/CDVT/phase1/AML-${dataset}.yaml"
+  local name="${dataset}_account_only_seed42"
+  local output="$root/$name"
+  mkdir -p "$output"
+  env CUDA_VISIBLE_DEVICES=6 PYTHONDONTWRITEBYTECODE=1 \
+    "$python" "$repo/run/cdvt_phase1_screen.py" \
+      --config "$repo/$config" \
+      --device cuda:0 \
+      --variant account_only \
+      --experiment-label account_only \
+      --lambda-cons 0.0 \
+      --output-dir "$output" \
+      --max-epochs 500 \
+      --early-stop-min-epoch 80 \
+      --early-stop-patience-evals 10 \
+      > "$output/stdout.log" 2>&1
+}
+
+run_account_queue() {
+  local account_status=0
+  if ! run_account_task Small-LI; then
+    account_status=1
+  fi
+  if ! run_account_task Large-LI; then
+    account_status=1
+  fi
+  return "$account_status"
+}
+
+run_account_queue &
+pids+=("$!")
+names+=("account_only_queue")
+echo "$!" > "$root/account_only_queue.pid"
 
 status=0
 for index in "${!pids[@]}"; do

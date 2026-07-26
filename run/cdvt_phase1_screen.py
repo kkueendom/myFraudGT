@@ -42,11 +42,14 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--device", required=True)
-    parser.add_argument("--variant", choices=("event_only", "dual_view"),
-                        required=True)
+    parser.add_argument(
+        "--variant",
+        choices=("account_only", "event_only", "dual_view"),
+        required=True,
+    )
     parser.add_argument(
         "--experiment-label",
-        choices=("event_only", "dual_view", "full_cdvt"),
+        choices=("account_only", "event_only", "dual_view", "full_cdvt"),
         required=True,
     )
     parser.add_argument("--lambda-cons", type=float, required=True)
@@ -82,9 +85,12 @@ def configure(args):
     cfg.train.persistent_workers = False
     cfg.train.pin_memory = False
     cfg.val.fixed_target_panel = False
-    if args.variant == "event_only" and args.lambda_cons != 0:
-        raise ValueError("event-only does not use account-view consistency")
+    if args.variant in {"account_only", "event_only"} \
+            and args.lambda_cons != 0:
+        raise ValueError(
+            "account-only and event-only do not use view consistency")
     expected = {
+        "account_only": ("account_only", False),
         "event_only": ("event_only", False),
         "dual_view": ("dual_view", False),
         "full_cdvt": ("dual_view", True),
@@ -94,6 +100,8 @@ def configure(args):
         raise ValueError("experiment label and architecture variant differ")
     if requires_consistency != (args.lambda_cons > 0):
         raise ValueError("experiment label and consistency setting differ")
+    if args.variant == "account_only":
+        cfg.model.type = "GTModel"
     if args.lambda_cons < 0:
         raise ValueError("lambda_cons must be non-negative")
     return config
@@ -184,6 +192,24 @@ def bernoulli_js(first_logits, second_logits):
     return 0.5 * (kl(first, midpoint) + kl(second, midpoint)).mean()
 
 
+def normal_forward(model, batch):
+    if hasattr(model, "forward_details"):
+        return model.forward_details(batch, "normal")
+    logits, labels = model(batch)
+    head = model.post_gt
+    mask = head._edge_mask(batch)
+    edge_ids = batch[TASK].e_id[mask]
+    if edge_ids.numel() != labels.numel():
+        raise AssertionError("account-only edge IDs and labels are not aligned")
+    diagnostics = {
+        "target_edge_ids": edge_ids,
+        "event_count": torch.ones_like(edge_ids),
+        "fusion_gain_norm": torch.zeros_like(edge_ids, dtype=torch.float32),
+        "event_condition": "normal",
+    }
+    return logits, labels, diagnostics
+
+
 def train_epoch(model, loader, train_data, optimizer, device, lambda_cons):
     model.train()
     optimizer.zero_grad(set_to_none=True)
@@ -194,8 +220,8 @@ def train_epoch(model, loader, train_data, optimizer, device, lambda_cons):
     for step, raw_batch in enumerate(loader):
         raw_batch.split = "train"
         raw_batch.to(device)
-        first_logits, first_labels, first_diagnostics = (
-            model.forward_details(raw_batch, "normal"))
+        first_logits, first_labels, first_diagnostics = normal_forward(
+            model, raw_batch)
         fraud_loss, _ = compute_loss(first_logits, first_labels)
         consistency = first_logits.sum() * 0.0
         requested = 0
@@ -206,8 +232,8 @@ def train_epoch(model, loader, train_data, optimizer, device, lambda_cons):
             second = paired_batch(train_data, first_ids)
             second.split = "train"
             second.to(device)
-            second_logits, second_labels, second_diagnostics = (
-                model.forward_details(second, "normal"))
+            second_logits, second_labels, second_diagnostics = normal_forward(
+                model, second)
             first_positions, second_positions = common_positions(
                 first_ids, second_diagnostics["target_edge_ids"])
             if first_positions.numel():
@@ -266,7 +292,13 @@ def evaluate(model, loader, device, split):
     for raw_batch in loader:
         raw_batch.split = split
         raw_batch.to(device)
-        outputs = model.forward_counterfactuals(raw_batch)
+        if hasattr(model, "forward_counterfactuals"):
+            outputs = model.forward_counterfactuals(raw_batch)
+        else:
+            normal_output = normal_forward(model, raw_batch)
+            outputs = {
+                condition: normal_output for condition in CONDITIONS
+            }
         normal_logits, batch_labels, normal_diagnostics = outputs["normal"]
         edge_ids.append(
             normal_diagnostics["target_edge_ids"].detach().cpu())

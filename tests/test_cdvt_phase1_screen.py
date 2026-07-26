@@ -37,7 +37,7 @@ class CDVTPhase1ScreenTest(unittest.TestCase):
         self.assertIn("shuffle=True", source)
         self.assertIn('"sampling_protocol": "dynamic_random"', source)
 
-    def test_formal_launcher_has_six_distinct_seed42_tasks(self):
+    def test_formal_launcher_has_eight_seed42_tasks_on_seven_gpus(self):
         source = Path("run/cdvt_phase1_6gpu.sh").read_text()
         launch_rows = [
             line for line in source.splitlines()
@@ -45,6 +45,13 @@ class CDVTPhase1ScreenTest(unittest.TestCase):
         ]
         self.assertEqual(len(launch_rows), 6)
         self.assertEqual(len(set(launch_rows)), 6)
+        self.assertIn('"tasks":8', source)
+        self.assertEqual(source.count("run_account_task "), 2)
+        for gpu in range(7):
+            self.assertIn(f"CUDA_VISIBLE_DEVICES={gpu}", source.replace(
+                'CUDA_VISIBLE_DEVICES="$gpu"',
+                " ".join(f"CUDA_VISIBLE_DEVICES={i}" for i in range(6)),
+            ))
         self.assertIn("--max-epochs 500", source)
         self.assertNotIn("seed44", source)
 
