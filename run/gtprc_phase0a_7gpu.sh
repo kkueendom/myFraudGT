@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export PYTHONDONTWRITEBYTECODE=1
 
 REPO="${GTPRC_REPO:-$(cd "$(dirname "$0")/.." && pwd)}"
 OUTPUT="${GTPRC_OUTPUT:?GTPRC_OUTPUT is required}"
