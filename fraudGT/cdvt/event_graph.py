@@ -145,21 +145,13 @@ class CausalEventGraphIndex:
         if counts.numel():
             self.offsets[1:] = counts.cumsum(0)
 
-    def _admissible(self, event_ids, target_id):
-        target_time = self.timestamps[target_id]
-        times = self.timestamps[event_ids]
-        return (times < target_time) | (
-            (times == target_time) & (event_ids < target_id))
-
     def _latest_for_account(self, account, target_id, k):
         start = int(self.offsets[account])
         stop = int(self.offsets[account + 1])
         events = self.incident_events[start:stop]
-        events = events[self._admissible(events, target_id)]
-        if not events.numel():
-            return events
-        key = self.timestamps[events] * (self.num_edges + 1) + events
-        return events[torch.argsort(key, descending=True)[:k]]
+        # Edge IDs are chronological and provide the equal-time tie-break.
+        position = int(torch.searchsorted(events, target_id))
+        return events[max(0, position - k):position].flip(0)
 
     def _collect_nodes(self, target_id, k, hops, max_events, time_window):
         target_accounts = self.edge_index[:, target_id].tolist()
@@ -172,12 +164,7 @@ class CausalEventGraphIndex:
             for account in sorted(frontier):
                 candidates.extend(
                     self._latest_for_account(account, target_id, k).tolist())
-            candidates = sorted(
-                set(candidates),
-                key=lambda event: (
-                    int(self.timestamps[event]), int(event)),
-                reverse=True,
-            )
+            candidates = sorted(set(candidates), reverse=True)
             for event in candidates:
                 if time_window is not None and (
                     target_time - int(self.timestamps[event]) > time_window
@@ -193,84 +180,74 @@ class CausalEventGraphIndex:
             if len(selected) >= max_events or not next_frontier:
                 break
             frontier = next_frontier
-        context = sorted(
-            selected - {int(target_id)},
-            key=lambda event: (int(self.timestamps[event]), int(event)),
-        )
+        context = sorted(selected - {int(target_id)})
         return context + [int(target_id)]
 
-    def _relation_for_account(self, first, second, account):
-        first_src, first_dst = self.edge_index[:, first].tolist()
-        second_src, second_dst = self.edge_index[:, second].tolist()
-        first_out = first_src == account
-        second_out = second_src == account
-        if first_out and second_out:
-            return self.OUT_OUT, False, True, True
-        if not first_out and not second_out:
-            return self.IN_IN, False, True, True
-        if first_out:
-            return self.OUT_IN, True, False, False
-        return self.IN_OUT, True, False, False
-
-    def _transition_features(self, first, second, relation_flags):
-        relation, role_change, same_side, same_role = relation_flags
-        first_raw = self.raw_edge_attr[first]
-        second_raw = self.raw_edge_attr[second]
-        delta_time = float(self.timestamps[second] - self.timestamps[first])
-        first_amount = float(first_raw[1])
-        second_amount = float(second_raw[1])
-        amount_scale = abs(first_amount) + 1.0
-        log_ratio = torch.log(torch.tensor(
-            (abs(second_amount) + 1.0) / amount_scale)).item()
-        return torch.tensor((
-            torch.log1p(torch.tensor(delta_time)).item(),
-            log_ratio,
+    def _transition_features(self, first_ids, second_ids, relations):
+        first_raw = self.raw_edge_attr[first_ids]
+        second_raw = self.raw_edge_attr[second_ids]
+        first_amount = first_raw[:, 1]
+        second_amount = second_raw[:, 1]
+        amount_scale = first_amount.abs() + 1.0
+        delta_time = (
+            self.timestamps[second_ids] - self.timestamps[first_ids]
+        ).float()
+        return torch.stack((
+            torch.log1p(delta_time),
+            torch.log((second_amount.abs() + 1.0) / amount_scale),
             (second_amount - first_amount) / amount_scale,
-            float(relation == self.OUT_OUT),
-            float(relation == self.IN_IN),
-            float(relation == self.IN_OUT),
-            float(relation == self.OUT_IN),
-            float(first_raw[2].round() != second_raw[2].round()),
-            float(first_raw[3].round() != second_raw[3].round()),
-            float(role_change and not same_side and not same_role),
-        ), dtype=torch.float32)
+            (relations == self.OUT_OUT).float(),
+            (relations == self.IN_IN).float(),
+            (relations == self.IN_OUT).float(),
+            (relations == self.OUT_IN).float(),
+            (first_raw[:, 2].round() != second_raw[:, 2].round()).float(),
+            (first_raw[:, 3].round() != second_raw[:, 3].round()).float(),
+            (relations >= self.OUT_IN).float(),
+        ), dim=-1)
 
     def _build_one(self, target_id, k, hops, max_events, time_window):
         nodes = self._collect_nodes(
             target_id, k, hops, max_events, time_window)
-        local = {event: position for position, event in enumerate(nodes)}
-        transitions = []
-        for second_position, second in enumerate(nodes):
-            second_accounts = set(
-                int(account) for account in self.edge_index[:, second])
-            for account in sorted(second_accounts):
-                candidates = []
-                for first in nodes[:second_position]:
-                    if account not in self.edge_index[:, first].tolist():
-                        continue
-                    if self._admissible(
-                        torch.tensor([first]), second
-                    ).item():
-                        candidates.append(first)
-                candidates.sort(
-                    key=lambda event: (
-                        int(self.timestamps[event]), int(event)),
-                    reverse=True,
-                )
-                for first in candidates[:k]:
-                    flags = self._relation_for_account(
-                        first, second, account)
-                    transitions.append((
-                        local[first], local[second], flags[0],
-                        self._transition_features(first, second, flags),
-                    ))
-        if transitions:
+        node_accounts = self.edge_index[:, nodes].t().tolist()
+        recent_by_account = {}
+        source_positions = []
+        destination_positions = []
+        first_events = []
+        second_events = []
+        relations = []
+        for second_position, (second, endpoints) in enumerate(zip(
+            nodes, node_accounts
+        )):
+            source_account, destination_account = endpoints
+            for account in sorted(set(endpoints)):
+                second_out = source_account == account
+                recent = recent_by_account.get(account, ())
+                for first, first_position, first_out in recent[-k:][::-1]:
+                    if first_out and second_out:
+                        relation = self.OUT_OUT
+                    elif not first_out and not second_out:
+                        relation = self.IN_IN
+                    elif first_out:
+                        relation = self.OUT_IN
+                    else:
+                        relation = self.IN_OUT
+                    source_positions.append(first_position)
+                    destination_positions.append(second_position)
+                    first_events.append(first)
+                    second_events.append(second)
+                    relations.append(relation)
+            for account in sorted(set(endpoints)):
+                recent_by_account.setdefault(account, []).append((
+                    second, second_position, source_account == account))
+        if relations:
+            relation = torch.tensor(relations, dtype=torch.long)
             edge_index = torch.tensor(
-                [(row[0], row[1]) for row in transitions],
-                dtype=torch.long).t().contiguous()
-            relation = torch.tensor(
-                [row[2] for row in transitions], dtype=torch.long)
-            edge_attr = torch.stack([row[3] for row in transitions])
+                (source_positions, destination_positions), dtype=torch.long)
+            edge_attr = self._transition_features(
+                torch.tensor(first_events, dtype=torch.long),
+                torch.tensor(second_events, dtype=torch.long),
+                relation,
+            )
         else:
             edge_index = torch.empty((2, 0), dtype=torch.long)
             relation = torch.empty(0, dtype=torch.long)

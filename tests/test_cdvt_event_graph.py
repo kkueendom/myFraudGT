@@ -54,6 +54,25 @@ class CausalEventGraphIndexTest(unittest.TestCase):
         self.assertTrue(torch.isfinite(graph.edge_attr).all())
         self.assertGreater(int(torch.unique(graph.edge_relation).numel()), 1)
 
+    def test_streaming_builder_preserves_transition_order_and_values(self):
+        graph = self.index.query(torch.tensor([4]), k=4, hops=2)
+        self.assertEqual(graph.node_edge_ids.tolist(), [0, 1, 2, 3, 4])
+        self.assertEqual(graph.edge_index.tolist(), [
+            [0, 0, 1, 2, 0, 2, 1, 3, 2, 0, 1, 0],
+            [1, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 4],
+        ])
+        self.assertEqual(graph.edge_relation.tolist(), [
+            3, 0, 1, 2, 2, 3, 3, 1, 2, 2, 0, 3,
+        ])
+        self.assertTrue(torch.allclose(
+            graph.edge_attr[0],
+            torch.tensor([
+                0.693147, 0.405465, 0.5, 0.0, 0.0,
+                1.0, 0.0, 0.0, 0.0, 1.0,
+            ]),
+            atol=1e-6,
+        ))
+
     def test_off_keeps_only_target_query_nodes(self):
         graph = self.index.query(torch.tensor([4, 6]), k=2, hops=2)
         off = graph.off()
