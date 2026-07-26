@@ -21,12 +21,12 @@ class GTPRCTest(unittest.TestCase):
         self.assertTrue(torch.equal(upper, torch.ones_like(upper)))
 
     def test_group_bound_is_stricter_with_fewer_groups(self):
-        selected = torch.ones((1, 1, 16), dtype=torch.bool)
-        broken = torch.zeros((1, 16), dtype=torch.bool)
+        selected = torch.ones((1, 1, 1024), dtype=torch.bool)
+        broken = torch.zeros((1, 1024), dtype=torch.bool)
         small_groups = grouped_empirical_bernstein_upper(
             selected, broken, 2, 1, 0.05)
         large_groups = grouped_empirical_bernstein_upper(
-            selected, broken, 8, 1, 0.05)
+            selected, broken, 64, 1, 0.05)
         self.assertGreater(
             large_groups.item(), small_groups.item())
 
