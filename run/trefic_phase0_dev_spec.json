@@ -1,0 +1,18 @@
+{
+  "block_count": 32,
+  "delta": 0.05,
+  "input_root": "/e/yky/FraudGT_cet_results/cpse_phase0b_formal_a78d3396",
+  "min_changes": 20,
+  "policy_count": 16,
+  "practical_delta": 0.005,
+  "replicates": 64,
+  "tasks": [
+    {"gpu": 0, "regime": "iid_positive", "seed": 75001},
+    {"gpu": 1, "regime": "entity_positive", "seed": 75002},
+    {"gpu": 2, "regime": "temporal_positive", "seed": 75003},
+    {"gpu": 3, "regime": "graph_time_positive", "seed": 75004},
+    {"gpu": 4, "regime": "cpse_remove_fragility", "seed": 75005},
+    {"gpu": 5, "regime": "alignment_drift", "seed": 75006},
+    {"gpu": 6, "regime": "rare_duplicate", "seed": 75007}
+  ]
+}
