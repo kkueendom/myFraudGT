@@ -106,6 +106,32 @@ only to occupy a GPU.
 - reference seeds: `98001` through `98007`;
 - no parameter changes after the first formal task starts.
 
+## Fixed Data-Generating Parameters
+
+- base classifier class-separation coefficient: `0.85`;
+- practical alternative separation change for classifier B: `+/-0.22`;
+- target-specific classifier noise standard deviation: `1.0`;
+- shared classifier-noise fraction: `0.4`;
+- label-logit graph shock coefficient: `0.30`;
+- target acquisition cost: `8.0`;
+- each additional neighborhood cost: `1.0`.
+
+Scenario-specific graph-dependence and sampler-noise standard deviations:
+
+| Scenario | Graph dependence | Sampler noise |
+|---|---:|---:|
+| independent deterministic | 0.00 | 0.00 |
+| endpoint dyadic | 0.35 | 0.25 |
+| two-hop spillover | 0.45 | 0.25 |
+| temporal AR(1) | 0.45 | 0.25 |
+| low sampler variance | 0.35 | 0.15 |
+| high sampler variance | 0.35 | 0.90 |
+| dense hub out of scope | 0.60 | 0.30 |
+
+Null classifiers use symmetric `+/-` graph effects and identically distributed
+classifier noise, so their population F1 values are equal without calibrating
+against the formal runs.
+
 ## Working-Assumption Diagnostic
 
 The estimator must return `OUT_OF_SCOPE` rather than a confidence claim when
@@ -211,4 +237,3 @@ Formal GPU jobs are authorized only after:
 4. the remote worktree is clean.
 
 When authorized, use all seven available GPUs, one registered scenario per GPU.
-

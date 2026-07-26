@@ -15,6 +15,24 @@
   "population_reference_experiments": 4096,
   "formal_replicates": 4,
   "allocation_replicate_grid": [2, 4, 8, 16],
+  "data_generating_parameters": {
+    "base_separation": 0.85,
+    "alternative_separation_change": 0.22,
+    "target_noise_sd": 1.0,
+    "shared_classifier_noise_fraction": 0.4,
+    "label_logit_graph_shock": 0.3,
+    "target_cost": 8.0,
+    "neighbor_cost": 1.0,
+    "scenario_dependence_and_sampler_sd": {
+      "iid_deterministic": [0.0, 0.0],
+      "endpoint_dyadic": [0.35, 0.25],
+      "two_hop_spillover": [0.45, 0.25],
+      "temporal_ar1": [0.45, 0.25],
+      "low_sampler_variance": [0.35, 0.15],
+      "high_sampler_variance": [0.35, 0.9],
+      "dense_hub_out_of_scope": [0.6, 0.3]
+    }
+  },
   "templates": {
     "rare_sparse": {
       "targets": 384,
