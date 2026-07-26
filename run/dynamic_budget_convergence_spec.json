@@ -1,0 +1,64 @@
+{
+  "name": "Dynamic-random evaluation budget convergence",
+  "experiment": "v4_dynamic_evaluation_budget_convergence",
+  "manifest_filename": "budget_convergence_manifest.json",
+  "expected_branch": "paper/temporal-evidence-reliability-benchmark",
+  "sampling_protocol": "dynamic_random",
+  "model": "evidence-gate-v4-fixed-checkpoint",
+  "variant": "evidence_gate_v4_residual",
+  "checkpoint_epoch": 499,
+  "audit_seeds": [94001, 94002],
+  "repeats": 8,
+  "budgets": [4, 8, 16, 32, 64, 128, 256],
+  "reference_budget": 256,
+  "expected_val_iter_per_epoch": 256,
+  "datasets": [
+    {
+      "dataset": "Small-LI",
+      "run_dir": "/e/yky/FraudGT_evidence_gate_v4/results/evidence_gate_v4_formal/AML-Small-LI-gpu0",
+      "model_seeds": [42, 43, 44],
+      "expected_batch_size": 2048
+    },
+    {
+      "dataset": "Small-HI",
+      "run_dir": "/e/yky/FraudGT_evidence_gate_v4/results/evidence_gate_v4_formal/AML-Small-HI-gpu0",
+      "model_seeds": [42, 43, 44],
+      "expected_batch_size": 2048
+    },
+    {
+      "dataset": "Medium-LI",
+      "run_dir": "/e/yky/FraudGT_evidence_gate_v4/results/evidence_gate_v4_formal/AML-Medium-LI-gpu0",
+      "model_seeds": [42, 43, 44],
+      "expected_batch_size": 1024
+    },
+    {
+      "dataset": "Medium-HI",
+      "run_dir": "/e/yky/FraudGT_evidence_gate_v4/results/evidence_gate_v4_formal/AML-Medium-HI-gpu0",
+      "model_seeds": [42, 43, 44],
+      "expected_batch_size": 1024
+    },
+    {
+      "dataset": "Large-LI",
+      "run_dir": "/e/yky/FraudGT_evidence_gate_v4/results/evidence_gate_v4_formal/AML-Large-LI-gpu0",
+      "model_seeds": [42, 43, 44],
+      "expected_batch_size": 1024
+    },
+    {
+      "dataset": "Large-HI",
+      "run_dir": "/e/yky/FraudGT_evidence_gate_v4/results/evidence_gate_v4_formal/AML-Large-HI-gpu0",
+      "model_seeds": [42, 43, 44],
+      "expected_batch_size": 1024
+    }
+  ],
+  "task_count": 36,
+  "event_count": 288,
+  "adequacy_rule": {
+    "median_absolute_f1_error_max": 0.005,
+    "p90_absolute_f1_error_max": 0.01,
+    "delta_sign_agreement_min": 0.9,
+    "minimum_adequate_datasets": 5,
+    "monotone_larger_budget_requirement": true
+  },
+  "comparison_note": "Historical initial A2 is used only for paired conclusion-sign diagnostics; the 256-batch result within the same event is the budget reference."
+}
+
