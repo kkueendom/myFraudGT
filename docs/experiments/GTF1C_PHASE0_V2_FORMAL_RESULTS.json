@@ -1,0 +1,3979 @@
+{
+  "conditional_coverage_regimes": {
+    "Large-LI": 4,
+    "Small-LI": 4
+  },
+  "decision": "STOP_GTF1C",
+  "experiment": "GTF1C_Phase0_v2_directional",
+  "exposed_negative_units": 3,
+  "gate": {
+    "controls_rejected_all_units": true,
+    "gtf1c_controls_all_normal_units": false,
+    "iid_power_retention_both_datasets": true,
+    "large_conditional_coverage_two_regimes": true,
+    "large_positive_power_two_regimes": true,
+    "passed": false,
+    "practical_failure_control_all_positive_units": false,
+    "row_harm_exposes_two_negative_units": true,
+    "small_conditional_coverage_three_regimes": true,
+    "small_positive_power_three_regimes": true
+  },
+  "git_commit": "b140bdcd90c847860911541251ec164d06b10a02",
+  "iid_power_retention": {
+    "Large-LI": 0.9980506822612085,
+    "Small-LI": 1.0
+  },
+  "manifest_count": 7,
+  "manifest_paths": [
+    "/e/yky/FraudGT_cet_results/gtf1c_phase0_v2_formal_b140bdcd/alignment_drift_seed74006_b140bdcd/gtf1c_phase0_manifest.json",
+    "/e/yky/FraudGT_cet_results/gtf1c_phase0_v2_formal_b140bdcd/cpse_remove_fragility_seed74005_b140bdcd/gtf1c_phase0_manifest.json",
+    "/e/yky/FraudGT_cet_results/gtf1c_phase0_v2_formal_b140bdcd/entity_positive_seed74002_b140bdcd/gtf1c_phase0_manifest.json",
+    "/e/yky/FraudGT_cet_results/gtf1c_phase0_v2_formal_b140bdcd/graph_time_positive_seed74004_b140bdcd/gtf1c_phase0_manifest.json",
+    "/e/yky/FraudGT_cet_results/gtf1c_phase0_v2_formal_b140bdcd/iid_positive_seed74001_b140bdcd/gtf1c_phase0_manifest.json",
+    "/e/yky/FraudGT_cet_results/gtf1c_phase0_v2_formal_b140bdcd/rare_duplicate_seed74007_b140bdcd/gtf1c_phase0_manifest.json",
+    "/e/yky/FraudGT_cet_results/gtf1c_phase0_v2_formal_b140bdcd/temporal_positive_seed74003_b140bdcd/gtf1c_phase0_manifest.json"
+  ],
+  "mode": "formal",
+  "positive_power_regimes": {
+    "Large-LI": 3,
+    "Small-LI": 4
+  },
+  "replicates_per_regime": 512,
+  "trial_count": 21504,
+  "units": {
+    "alignment_drift": {
+      "Large-LI": {
+        "controls": {
+          "harmful": {
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "shuffled": {
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          }
+        },
+        "methods": {
+          "gtf1c_graph_time": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 0.0,
+              "conditional_changes_median": 0.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 0,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "gtprc_row_harm": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 2,
+                  "qualified": 2,
+                  "trials": 512,
+                  "violations": 2
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 432,
+                  "qualified": 432,
+                  "trials": 512,
+                  "violations": 432
+                }
+              },
+              "conditional_changes_mean": 8.442396313364055,
+              "conditional_changes_median": 8.0,
+              "conditional_delta_mean": -0.00014071129559925424,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 434,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.845703125,
+              "replicate_any_qualification_rate": 0.845703125,
+              "replicate_any_violation_rate": 0.845703125,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 1.0,
+            "evaluation_changes_mean": 2.3854166666666665,
+            "evaluation_delta_mean": -3.975826972010178e-05,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.2825520833333333,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.2825520833333333,
+            "practical_failures": 434,
+            "qualification_rate": 0.2825520833333333,
+            "qualified": 434,
+            "trials": 1536,
+            "violations": 434
+          },
+          "iid_paired_f1": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 2,
+                  "qualified": 2,
+                  "trials": 512,
+                  "violations": 2
+                }
+              },
+              "conditional_changes_mean": 10.0,
+              "conditional_changes_median": 10.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 2,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.00390625,
+              "replicate_any_qualification_rate": 0.00390625,
+              "replicate_any_violation_rate": 0.00390625,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 1.0,
+            "evaluation_changes_mean": 0.013020833333333334,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0013020833333333333,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0013020833333333333,
+            "practical_failures": 2,
+            "qualification_rate": 0.0013020833333333333,
+            "qualified": 2,
+            "trials": 1536,
+            "violations": 2
+          },
+          "row_net": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 2,
+                  "qualified": 2,
+                  "trials": 512,
+                  "violations": 2
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 464,
+                  "qualified": 464,
+                  "trials": 512,
+                  "violations": 464
+                }
+              },
+              "conditional_changes_mean": 8.381974248927039,
+              "conditional_changes_median": 8.0,
+              "conditional_delta_mean": -0.00013104871736067882,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 466,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.90625,
+              "replicate_any_qualification_rate": 0.90625,
+              "replicate_any_violation_rate": 0.90625,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 1.0,
+            "evaluation_changes_mean": 2.54296875,
+            "evaluation_delta_mean": -3.975826972010178e-05,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.3033854166666667,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.3033854166666667,
+            "practical_failures": 466,
+            "qualification_rate": 0.3033854166666667,
+            "qualified": 466,
+            "trials": 1536,
+            "violations": 466
+          },
+          "time_block_paired_f1": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 0.0,
+              "conditional_changes_median": 0.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 0,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          }
+        },
+        "oracle_opportunity_rate": 0.040364583333333336
+      },
+      "Small-LI": {
+        "controls": {
+          "harmful": {
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "shuffled": {
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          }
+        },
+        "methods": {
+          "gtf1c_graph_time": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 0.0,
+              "conditional_changes_median": 0.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 0,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "gtprc_row_harm": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 0.0,
+              "conditional_changes_median": 0.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 0,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "iid_paired_f1": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 0.0,
+              "conditional_changes_median": 0.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 0,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "row_net": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 0.0,
+              "conditional_changes_median": 0.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 0,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "time_block_paired_f1": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 0.0,
+              "conditional_changes_median": 0.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 0,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          }
+        },
+        "oracle_opportunity_rate": 0.0
+      }
+    },
+    "cpse_remove_fragility": {
+      "Large-LI": {
+        "controls": {
+          "harmful": {
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "shuffled": {
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          }
+        },
+        "methods": {
+          "gtf1c_graph_time": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 0.0,
+              "conditional_changes_median": 0.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 0,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "gtprc_row_harm": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 2,
+                  "qualified": 2,
+                  "trials": 512,
+                  "violations": 2
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 455,
+                  "qualified": 455,
+                  "trials": 512,
+                  "violations": 455
+                }
+              },
+              "conditional_changes_mean": 10.951859956236325,
+              "conditional_changes_median": 11,
+              "conditional_delta_mean": -1.5241968401537471e-05,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 457,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.888671875,
+              "replicate_any_qualification_rate": 0.888671875,
+              "replicate_any_violation_rate": 0.888671875,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 1.0,
+            "evaluation_changes_mean": 3.2584635416666665,
+            "evaluation_delta_mean": -4.534882525717854e-06,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.2975260416666667,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.2975260416666667,
+            "practical_failures": 457,
+            "qualification_rate": 0.2975260416666667,
+            "qualified": 457,
+            "trials": 1536,
+            "violations": 457
+          },
+          "iid_paired_f1": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 0.0,
+              "conditional_changes_median": 0.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 0,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "row_net": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 2,
+                  "qualified": 2,
+                  "trials": 512,
+                  "violations": 2
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 476,
+                  "qualified": 476,
+                  "trials": 512,
+                  "violations": 476
+                }
+              },
+              "conditional_changes_mean": 10.905857740585773,
+              "conditional_changes_median": 11.0,
+              "conditional_delta_mean": -1.4572342174691683e-05,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 478,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.9296875,
+              "replicate_any_qualification_rate": 0.9296875,
+              "replicate_any_violation_rate": 0.9296875,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 1.0,
+            "evaluation_changes_mean": 3.3938802083333335,
+            "evaluation_delta_mean": -4.534882525717854e-06,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.3111979166666667,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.3111979166666667,
+            "practical_failures": 478,
+            "qualification_rate": 0.3111979166666667,
+            "qualified": 478,
+            "trials": 1536,
+            "violations": 478
+          },
+          "time_block_paired_f1": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 0.0,
+              "conditional_changes_median": 0.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 0,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          }
+        },
+        "oracle_opportunity_rate": 0.07421875
+      },
+      "Small-LI": {
+        "controls": {
+          "harmful": {
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "shuffled": {
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          }
+        },
+        "methods": {
+          "gtf1c_graph_time": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 0.0,
+              "conditional_changes_median": 0.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 0,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "gtprc_row_harm": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 0.0,
+              "conditional_changes_median": 0.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 0,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "iid_paired_f1": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 0.0,
+              "conditional_changes_median": 0.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 0,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "row_net": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 0.0,
+              "conditional_changes_median": 0.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 0,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "time_block_paired_f1": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 0.0,
+              "conditional_changes_median": 0.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 0,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          }
+        },
+        "oracle_opportunity_rate": 0.0
+      }
+    },
+    "entity_positive": {
+      "Large-LI": {
+        "controls": {
+          "harmful": {
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "shuffled": {
+            "conditional_violation_rate": 1.0,
+            "evaluation_changes_mean": 0.8528645833333334,
+            "evaluation_delta_mean": -1.987913486005089e-05,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0006510416666666666,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failures": 1,
+            "qualification_rate": 0.0006510416666666666,
+            "qualified": 1,
+            "trials": 1536,
+            "violations": 1
+          }
+        },
+        "methods": {
+          "gtf1c_graph_time": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 512,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 1242.8046875,
+              "conditional_changes_median": 1242.0,
+              "conditional_delta_mean": 0.015277556726248694,
+              "conditional_delta_median": 0.01520697377609748,
+              "conditional_oracle_fraction_mean": 1.0,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 512,
+              "qualified_with_oracle_count": 512,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 1.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 414.2682291666667,
+            "evaluation_delta_mean": 0.005092518908749565,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.3333333333333333,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.3333333333333333,
+            "qualified": 512,
+            "trials": 1536,
+            "violations": 0
+          },
+          "gtprc_row_harm": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 334,
+                  "qualified": 334,
+                  "trials": 512,
+                  "violations": 334
+                }
+              },
+              "conditional_changes_mean": 10.844311377245509,
+              "conditional_changes_median": 11.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.009221830580294132,
+              "conditional_oracle_fraction_median": 0.009063569327922499,
+              "qualified_trial_count": 334,
+              "qualified_with_oracle_count": 334,
+              "replicate_any_practical_failure_rate": 0.65234375,
+              "replicate_any_qualification_rate": 0.65234375,
+              "replicate_any_violation_rate": 0.65234375,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 1.0,
+            "evaluation_changes_mean": 2.3580729166666665,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.21744791666666666,
+            "oracle_fraction_mean": 0.002005267847537917,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.21744791666666666,
+            "practical_failures": 334,
+            "qualification_rate": 0.21744791666666666,
+            "qualified": 334,
+            "trials": 1536,
+            "violations": 334
+          },
+          "iid_paired_f1": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 512,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 1242.8046875,
+              "conditional_changes_median": 1242.0,
+              "conditional_delta_mean": 0.015277556726248694,
+              "conditional_delta_median": 0.01520697377609748,
+              "conditional_oracle_fraction_mean": 1.0,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 512,
+              "qualified_with_oracle_count": 512,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 1.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 414.2682291666667,
+            "evaluation_delta_mean": 0.005092518908749565,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.3333333333333333,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.3333333333333333,
+            "qualified": 512,
+            "trials": 1536,
+            "violations": 0
+          },
+          "row_net": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 334,
+                  "qualified": 334,
+                  "trials": 512,
+                  "violations": 334
+                }
+              },
+              "conditional_changes_mean": 10.844311377245509,
+              "conditional_changes_median": 11.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.009221830580294132,
+              "conditional_oracle_fraction_median": 0.009063569327922499,
+              "qualified_trial_count": 334,
+              "qualified_with_oracle_count": 334,
+              "replicate_any_practical_failure_rate": 0.65234375,
+              "replicate_any_qualification_rate": 0.65234375,
+              "replicate_any_violation_rate": 0.65234375,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 1.0,
+            "evaluation_changes_mean": 2.3580729166666665,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.21744791666666666,
+            "oracle_fraction_mean": 0.002005267847537917,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.21744791666666666,
+            "practical_failures": 334,
+            "qualification_rate": 0.21744791666666666,
+            "qualified": 334,
+            "trials": 1536,
+            "violations": 334
+          },
+          "time_block_paired_f1": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 512,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 1242.8046875,
+              "conditional_changes_median": 1242.0,
+              "conditional_delta_mean": 0.015277556726248694,
+              "conditional_delta_median": 0.01520697377609748,
+              "conditional_oracle_fraction_mean": 1.0,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 512,
+              "qualified_with_oracle_count": 512,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 1.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 414.2682291666667,
+            "evaluation_delta_mean": 0.005092518908749565,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.3333333333333333,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.3333333333333333,
+            "qualified": 512,
+            "trials": 1536,
+            "violations": 0
+          }
+        },
+        "oracle_opportunity_rate": 0.6666666666666666
+      },
+      "Small-LI": {
+        "controls": {
+          "harmful": {
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "shuffled": {
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          }
+        },
+        "methods": {
+          "gtf1c_graph_time": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 511,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 511,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 511,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 88.5955642530985,
+              "conditional_changes_median": 89,
+              "conditional_delta_mean": 0.4472567813359204,
+              "conditional_delta_median": 0.4487330088941097,
+              "conditional_oracle_fraction_mean": 1.0,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 1533,
+              "qualified_with_oracle_count": 1533,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 1.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 88.42252604166667,
+            "evaluation_delta_mean": 0.44638323293487364,
+            "evaluation_delta_median": 0.4484611626770884,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.998046875,
+            "oracle_fraction_median": 1.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.998046875,
+            "qualified": 1533,
+            "trials": 1536,
+            "violations": 0
+          },
+          "gtprc_row_harm": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 4,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 4,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 106,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 65.1140350877193,
+              "conditional_changes_median": 64.0,
+              "conditional_delta_mean": 0.46396595714578504,
+              "conditional_delta_median": 0.4614060351775471,
+              "conditional_oracle_fraction_mean": 1.0,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 114,
+              "qualified_with_oracle_count": 114,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.220703125,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 4.832682291666667,
+            "evaluation_delta_mean": 0.03443497338191374,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.07421875,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.07421875,
+            "qualified": 114,
+            "trials": 1536,
+            "violations": 0
+          },
+          "iid_paired_f1": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 512,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 512,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 512,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 88.59309895833333,
+              "conditional_changes_median": 89.0,
+              "conditional_delta_mean": 0.44725062048364284,
+              "conditional_delta_median": 0.4485992117306096,
+              "conditional_oracle_fraction_mean": 1.0,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 1536,
+              "qualified_with_oracle_count": 1536,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 1.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 88.59309895833333,
+            "evaluation_delta_mean": 0.4472506204836429,
+            "evaluation_delta_median": 0.44846541456710953,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 1.0,
+            "oracle_fraction_median": 1.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 1.0,
+            "qualified": 1536,
+            "trials": 1536,
+            "violations": 0
+          },
+          "row_net": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 24,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 20,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 217,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 68.94252873563218,
+              "conditional_changes_median": 68,
+              "conditional_delta_mean": 0.46041625011540804,
+              "conditional_delta_median": 0.4594756554307116,
+              "conditional_oracle_fraction_mean": 1.0,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 261,
+              "qualified_with_oracle_count": 261,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.4765625,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 11.71484375,
+            "evaluation_delta_mean": 0.0782347925000791,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.169921875,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.169921875,
+            "qualified": 261,
+            "trials": 1536,
+            "violations": 0
+          },
+          "time_block_paired_f1": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 511,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 511,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 511,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 88.5955642530985,
+              "conditional_changes_median": 89,
+              "conditional_delta_mean": 0.4472567813359204,
+              "conditional_delta_median": 0.4487330088941097,
+              "conditional_oracle_fraction_mean": 1.0,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 1533,
+              "qualified_with_oracle_count": 1533,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 1.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 88.42252604166667,
+            "evaluation_delta_mean": 0.44638323293487364,
+            "evaluation_delta_median": 0.4484611626770884,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.998046875,
+            "oracle_fraction_median": 1.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.998046875,
+            "qualified": 1533,
+            "trials": 1536,
+            "violations": 0
+          }
+        },
+        "oracle_opportunity_rate": 1.0
+      }
+    },
+    "graph_time_positive": {
+      "Large-LI": {
+        "controls": {
+          "harmful": {
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "shuffled": {
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          }
+        },
+        "methods": {
+          "gtf1c_graph_time": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 119,
+                  "qualified": 506,
+                  "trials": 512,
+                  "violations": 61
+                },
+                "1": {
+                  "practical_failures": 17,
+                  "qualified": 17,
+                  "trials": 512,
+                  "violations": 17
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 1255.734225621415,
+              "conditional_changes_median": 1190,
+              "conditional_delta_mean": 0.016333237957347844,
+              "conditional_delta_median": 0.013842083437976372,
+              "conditional_oracle_fraction_mean": 0.9905505641769046,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 523,
+              "qualified_with_oracle_count": 506,
+              "replicate_any_practical_failure_rate": 0.259765625,
+              "replicate_any_qualification_rate": 0.98828125,
+              "replicate_any_violation_rate": 0.1484375,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.1491395793499044,
+            "evaluation_changes_mean": 427.5709635416667,
+            "evaluation_delta_mean": 0.005561382455529246,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.05078125,
+            "oracle_fraction_mean": 0.32631418325098543,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.08854166666666667,
+            "practical_failures": 136,
+            "qualification_rate": 0.3404947916666667,
+            "qualified": 523,
+            "trials": 1536,
+            "violations": 78
+          },
+          "gtprc_row_harm": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 330,
+                  "qualified": 330,
+                  "trials": 512,
+                  "violations": 330
+                }
+              },
+              "conditional_changes_mean": 10.918181818181818,
+              "conditional_changes_median": 11.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.009317003121978775,
+              "conditional_oracle_fraction_median": 0.008289421502530658,
+              "qualified_trial_count": 330,
+              "qualified_with_oracle_count": 330,
+              "replicate_any_practical_failure_rate": 0.64453125,
+              "replicate_any_qualification_rate": 0.64453125,
+              "replicate_any_violation_rate": 0.64453125,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 1.0,
+            "evaluation_changes_mean": 2.345703125,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.21484375,
+            "oracle_fraction_mean": 0.0020016998894876277,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.21484375,
+            "practical_failures": 330,
+            "qualification_rate": 0.21484375,
+            "qualified": 330,
+            "trials": 1536,
+            "violations": 330
+          },
+          "iid_paired_f1": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 115,
+                  "qualified": 512,
+                  "trials": 512,
+                  "violations": 60
+                },
+                "1": {
+                  "practical_failures": 34,
+                  "qualified": 34,
+                  "trials": 512,
+                  "violations": 34
+                },
+                "2": {
+                  "practical_failures": 3,
+                  "qualified": 3,
+                  "trials": 512,
+                  "violations": 3
+                }
+              },
+              "conditional_changes_mean": 1253.7723132969033,
+              "conditional_changes_median": 1211,
+              "conditional_delta_mean": 0.014839241993963293,
+              "conditional_delta_median": 0.014218735274714917,
+              "conditional_oracle_fraction_mean": 0.9942454200526545,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 549,
+              "qualified_with_oracle_count": 515,
+              "replicate_any_practical_failure_rate": 0.28515625,
+              "replicate_any_qualification_rate": 1.0,
+              "replicate_any_violation_rate": 0.1875,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.1766848816029144,
+            "evaluation_changes_mean": 448.1256510416667,
+            "evaluation_delta_mean": 0.005303869697061099,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.06315104166666667,
+            "oracle_fraction_mean": 0.3333570256035918,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.09895833333333333,
+            "practical_failures": 152,
+            "qualification_rate": 0.357421875,
+            "qualified": 549,
+            "trials": 1536,
+            "violations": 97
+          },
+          "row_net": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 330,
+                  "qualified": 330,
+                  "trials": 512,
+                  "violations": 330
+                }
+              },
+              "conditional_changes_mean": 10.918181818181818,
+              "conditional_changes_median": 11.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.009317003121978775,
+              "conditional_oracle_fraction_median": 0.008289421502530658,
+              "qualified_trial_count": 330,
+              "qualified_with_oracle_count": 330,
+              "replicate_any_practical_failure_rate": 0.64453125,
+              "replicate_any_qualification_rate": 0.64453125,
+              "replicate_any_violation_rate": 0.64453125,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 1.0,
+            "evaluation_changes_mean": 2.345703125,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.21484375,
+            "oracle_fraction_mean": 0.0020016998894876277,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.21484375,
+            "practical_failures": 330,
+            "qualification_rate": 0.21484375,
+            "qualified": 330,
+            "trials": 1536,
+            "violations": 330
+          },
+          "time_block_paired_f1": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 119,
+                  "qualified": 506,
+                  "trials": 512,
+                  "violations": 61
+                },
+                "1": {
+                  "practical_failures": 17,
+                  "qualified": 17,
+                  "trials": 512,
+                  "violations": 17
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 1255.734225621415,
+              "conditional_changes_median": 1190,
+              "conditional_delta_mean": 0.016333237957347844,
+              "conditional_delta_median": 0.013842083437976372,
+              "conditional_oracle_fraction_mean": 0.9905505641769046,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 523,
+              "qualified_with_oracle_count": 506,
+              "replicate_any_practical_failure_rate": 0.259765625,
+              "replicate_any_qualification_rate": 0.98828125,
+              "replicate_any_violation_rate": 0.1484375,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.1491395793499044,
+            "evaluation_changes_mean": 427.5709635416667,
+            "evaluation_delta_mean": 0.005561382455529246,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.05078125,
+            "oracle_fraction_mean": 0.32631418325098543,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.08854166666666667,
+            "practical_failures": 136,
+            "qualification_rate": 0.3404947916666667,
+            "qualified": 523,
+            "trials": 1536,
+            "violations": 78
+          }
+        },
+        "oracle_opportunity_rate": 0.6666666666666666
+      },
+      "Small-LI": {
+        "controls": {
+          "harmful": {
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "shuffled": {
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          }
+        },
+        "methods": {
+          "gtf1c_graph_time": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 431,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 4,
+                  "qualified": 423,
+                  "trials": 512,
+                  "violations": 3
+                },
+                "2": {
+                  "practical_failures": 1,
+                  "qualified": 474,
+                  "trials": 512,
+                  "violations": 1
+                }
+              },
+              "conditional_changes_mean": 99.12876506024097,
+              "conditional_changes_median": 82.0,
+              "conditional_delta_mean": 0.4338759504755441,
+              "conditional_delta_median": 0.46546955966157777,
+              "conditional_oracle_fraction_mean": 1.0,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 1328,
+              "qualified_with_oracle_count": 1323,
+              "replicate_any_practical_failure_rate": 0.009765625,
+              "replicate_any_qualification_rate": 0.998046875,
+              "replicate_any_violation_rate": 0.0078125,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0030120481927710845,
+            "evaluation_changes_mean": 85.705078125,
+            "evaluation_delta_mean": 0.3751219155153141,
+            "evaluation_delta_median": 0.4467811158798283,
+            "false_qualification_rate": 0.0026041666666666665,
+            "oracle_fraction_mean": 0.861328125,
+            "oracle_fraction_median": 1.0,
+            "practical_failure_rate": 0.0032552083333333335,
+            "practical_failures": 5,
+            "qualification_rate": 0.8645833333333334,
+            "qualified": 1328,
+            "trials": 1536,
+            "violations": 4
+          },
+          "gtprc_row_harm": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 112,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 115,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 223,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 77.4088888888889,
+              "conditional_changes_median": 66.0,
+              "conditional_delta_mean": 0.4642707889309243,
+              "conditional_delta_median": 0.4852718345486769,
+              "conditional_oracle_fraction_mean": 1.0,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 450,
+              "qualified_with_oracle_count": 450,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.646484375,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 22.678385416666668,
+            "evaluation_delta_mean": 0.13601683269460674,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.29296875,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.29296875,
+            "qualified": 450,
+            "trials": 1536,
+            "violations": 0
+          },
+          "iid_paired_f1": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 1,
+                  "qualified": 493,
+                  "trials": 512,
+                  "violations": 1
+                },
+                "1": {
+                  "practical_failures": 7,
+                  "qualified": 496,
+                  "trials": 512,
+                  "violations": 6
+                },
+                "2": {
+                  "practical_failures": 2,
+                  "qualified": 505,
+                  "trials": 512,
+                  "violations": 1
+                }
+              },
+              "conditional_changes_mean": 104.9912985274431,
+              "conditional_changes_median": 85.0,
+              "conditional_delta_mean": 0.42431957316350394,
+              "conditional_delta_median": 0.45759183733872,
+              "conditional_oracle_fraction_mean": 1.0,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 1494,
+              "qualified_with_oracle_count": 1484,
+              "replicate_any_practical_failure_rate": 0.01953125,
+              "replicate_any_qualification_rate": 1.0,
+              "replicate_any_violation_rate": 0.015625,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.00535475234270415,
+            "evaluation_changes_mean": 102.12044270833333,
+            "evaluation_delta_mean": 0.41271708483481434,
+            "evaluation_delta_median": 0.45512231777573686,
+            "false_qualification_rate": 0.005208333333333333,
+            "oracle_fraction_mean": 0.9661458333333334,
+            "oracle_fraction_median": 1.0,
+            "practical_failure_rate": 0.006510416666666667,
+            "practical_failures": 10,
+            "qualification_rate": 0.97265625,
+            "qualified": 1494,
+            "trials": 1536,
+            "violations": 8
+          },
+          "row_net": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 157,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 156,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 266,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 81.25215889464594,
+              "conditional_changes_median": 69,
+              "conditional_delta_mean": 0.45970114982048416,
+              "conditional_delta_median": 0.4835782195332757,
+              "conditional_oracle_fraction_mean": 1.0,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 579,
+              "qualified_with_oracle_count": 579,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.765625,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 30.628255208333332,
+            "evaluation_delta_mean": 0.17328578499092473,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.376953125,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.376953125,
+            "qualified": 579,
+            "trials": 1536,
+            "violations": 0
+          },
+          "time_block_paired_f1": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 431,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 4,
+                  "qualified": 423,
+                  "trials": 512,
+                  "violations": 3
+                },
+                "2": {
+                  "practical_failures": 1,
+                  "qualified": 474,
+                  "trials": 512,
+                  "violations": 1
+                }
+              },
+              "conditional_changes_mean": 99.12876506024097,
+              "conditional_changes_median": 82.0,
+              "conditional_delta_mean": 0.4338759504755441,
+              "conditional_delta_median": 0.46546955966157777,
+              "conditional_oracle_fraction_mean": 1.0,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 1328,
+              "qualified_with_oracle_count": 1323,
+              "replicate_any_practical_failure_rate": 0.009765625,
+              "replicate_any_qualification_rate": 0.998046875,
+              "replicate_any_violation_rate": 0.0078125,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0030120481927710845,
+            "evaluation_changes_mean": 85.705078125,
+            "evaluation_delta_mean": 0.3751219155153141,
+            "evaluation_delta_median": 0.4467811158798283,
+            "false_qualification_rate": 0.0026041666666666665,
+            "oracle_fraction_mean": 0.861328125,
+            "oracle_fraction_median": 1.0,
+            "practical_failure_rate": 0.0032552083333333335,
+            "practical_failures": 5,
+            "qualification_rate": 0.8645833333333334,
+            "qualified": 1328,
+            "trials": 1536,
+            "violations": 4
+          }
+        },
+        "oracle_opportunity_rate": 0.9921875
+      }
+    },
+    "iid_positive": {
+      "Large-LI": {
+        "controls": {
+          "harmful": {
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "shuffled": {
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          }
+        },
+        "methods": {
+          "gtf1c_graph_time": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 512,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 1242.2109375,
+              "conditional_changes_median": 1241.0,
+              "conditional_delta_mean": 0.015334835162893957,
+              "conditional_delta_median": 0.015315451226503334,
+              "conditional_oracle_fraction_mean": 1.0,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 512,
+              "qualified_with_oracle_count": 512,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 1.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 414.0703125,
+            "evaluation_delta_mean": 0.005111611720964652,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.3333333333333333,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.3333333333333333,
+            "qualified": 512,
+            "trials": 1536,
+            "violations": 0
+          },
+          "gtprc_row_harm": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 359,
+                  "qualified": 359,
+                  "trials": 512,
+                  "violations": 359
+                }
+              },
+              "conditional_changes_mean": 10.86350974930362,
+              "conditional_changes_median": 11,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.009216442383224254,
+              "conditional_oracle_fraction_median": 0.009235936188077247,
+              "qualified_trial_count": 359,
+              "qualified_with_oracle_count": 359,
+              "replicate_any_practical_failure_rate": 0.701171875,
+              "replicate_any_qualification_rate": 0.701171875,
+              "replicate_any_violation_rate": 0.701171875,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 1.0,
+            "evaluation_changes_mean": 2.5390625,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.23372395833333334,
+            "oracle_fraction_mean": 0.0021541033955582733,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.23372395833333334,
+            "practical_failures": 359,
+            "qualification_rate": 0.23372395833333334,
+            "qualified": 359,
+            "trials": 1536,
+            "violations": 359
+          },
+          "iid_paired_f1": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 512,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 1,
+                  "qualified": 1,
+                  "trials": 512,
+                  "violations": 1
+                }
+              },
+              "conditional_changes_mean": 1239.8187134502923,
+              "conditional_changes_median": 1241,
+              "conditional_delta_mean": 0.015304942696689486,
+              "conditional_delta_median": 0.015315451226503334,
+              "conditional_oracle_fraction_mean": 0.9980755248831984,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 513,
+              "qualified_with_oracle_count": 513,
+              "replicate_any_practical_failure_rate": 0.001953125,
+              "replicate_any_qualification_rate": 1.0,
+              "replicate_any_violation_rate": 0.001953125,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.001949317738791423,
+            "evaluation_changes_mean": 414.080078125,
+            "evaluation_delta_mean": 0.005111611720964652,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0006510416666666666,
+            "oracle_fraction_mean": 0.33334163038091197,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0006510416666666666,
+            "practical_failures": 1,
+            "qualification_rate": 0.333984375,
+            "qualified": 513,
+            "trials": 1536,
+            "violations": 1
+          },
+          "row_net": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 359,
+                  "qualified": 359,
+                  "trials": 512,
+                  "violations": 359
+                }
+              },
+              "conditional_changes_mean": 10.86350974930362,
+              "conditional_changes_median": 11,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.009216442383224254,
+              "conditional_oracle_fraction_median": 0.009235936188077247,
+              "qualified_trial_count": 359,
+              "qualified_with_oracle_count": 359,
+              "replicate_any_practical_failure_rate": 0.701171875,
+              "replicate_any_qualification_rate": 0.701171875,
+              "replicate_any_violation_rate": 0.701171875,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 1.0,
+            "evaluation_changes_mean": 2.5390625,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.23372395833333334,
+            "oracle_fraction_mean": 0.0021541033955582733,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.23372395833333334,
+            "practical_failures": 359,
+            "qualification_rate": 0.23372395833333334,
+            "qualified": 359,
+            "trials": 1536,
+            "violations": 359
+          },
+          "time_block_paired_f1": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 512,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 1242.2109375,
+              "conditional_changes_median": 1241.0,
+              "conditional_delta_mean": 0.015334835162893957,
+              "conditional_delta_median": 0.015315451226503334,
+              "conditional_oracle_fraction_mean": 1.0,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 512,
+              "qualified_with_oracle_count": 512,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 1.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 414.0703125,
+            "evaluation_delta_mean": 0.005111611720964652,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.3333333333333333,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.3333333333333333,
+            "qualified": 512,
+            "trials": 1536,
+            "violations": 0
+          }
+        },
+        "oracle_opportunity_rate": 0.6666666666666666
+      },
+      "Small-LI": {
+        "controls": {
+          "harmful": {
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "shuffled": {
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          }
+        },
+        "methods": {
+          "gtf1c_graph_time": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 512,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 512,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 512,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 88.357421875,
+              "conditional_changes_median": 92.0,
+              "conditional_delta_mean": 0.5424767740009936,
+              "conditional_delta_median": 0.5502773431944248,
+              "conditional_oracle_fraction_mean": 1.0,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 1536,
+              "qualified_with_oracle_count": 1536,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 1.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 88.357421875,
+            "evaluation_delta_mean": 0.5424767740009937,
+            "evaluation_delta_median": 0.5502773431944248,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 1.0,
+            "oracle_fraction_median": 1.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 1.0,
+            "qualified": 1536,
+            "trials": 1536,
+            "violations": 0
+          },
+          "gtprc_row_harm": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 110,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 33,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 476,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 71.65105008077545,
+              "conditional_changes_median": 67,
+              "conditional_delta_mean": 0.5675677442397737,
+              "conditional_delta_median": 0.5709908069458631,
+              "conditional_oracle_fraction_mean": 1.0,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 619,
+              "qualified_with_oracle_count": 619,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.953125,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 28.875,
+            "evaluation_delta_mean": 0.2287268448466276,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.4029947916666667,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.4029947916666667,
+            "qualified": 619,
+            "trials": 1536,
+            "violations": 0
+          },
+          "iid_paired_f1": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 512,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 512,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 512,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 88.357421875,
+              "conditional_changes_median": 92.0,
+              "conditional_delta_mean": 0.5424767740009936,
+              "conditional_delta_median": 0.5502773431944248,
+              "conditional_oracle_fraction_mean": 1.0,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 1536,
+              "qualified_with_oracle_count": 1536,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 1.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 88.357421875,
+            "evaluation_delta_mean": 0.5424767740009937,
+            "evaluation_delta_median": 0.5502773431944248,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 1.0,
+            "oracle_fraction_median": 1.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 1.0,
+            "qualified": 1536,
+            "trials": 1536,
+            "violations": 0
+          },
+          "row_net": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 280,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 154,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 505,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 79.15548455804047,
+              "conditional_changes_median": 73,
+              "conditional_delta_mean": 0.5597814214110118,
+              "conditional_delta_median": 0.563849765258216,
+              "conditional_oracle_fraction_mean": 1.0,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 939,
+              "qualified_with_oracle_count": 939,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.99609375,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 48.389973958333336,
+            "evaluation_delta_mean": 0.3422101267610287,
+            "evaluation_delta_median": 0.5308094408363694,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.611328125,
+            "oracle_fraction_median": 1.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.611328125,
+            "qualified": 939,
+            "trials": 1536,
+            "violations": 0
+          },
+          "time_block_paired_f1": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 512,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 512,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 512,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 88.357421875,
+              "conditional_changes_median": 92.0,
+              "conditional_delta_mean": 0.5424767740009936,
+              "conditional_delta_median": 0.5502773431944248,
+              "conditional_oracle_fraction_mean": 1.0,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 1536,
+              "qualified_with_oracle_count": 1536,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 1.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 88.357421875,
+            "evaluation_delta_mean": 0.5424767740009937,
+            "evaluation_delta_median": 0.5502773431944248,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 1.0,
+            "oracle_fraction_median": 1.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 1.0,
+            "qualified": 1536,
+            "trials": 1536,
+            "violations": 0
+          }
+        },
+        "oracle_opportunity_rate": 1.0
+      }
+    },
+    "rare_duplicate": {
+      "Large-LI": {
+        "controls": {
+          "harmful": {
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "shuffled": {
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          }
+        },
+        "methods": {
+          "gtf1c_graph_time": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 0.0,
+              "conditional_changes_median": 0.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 0,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "gtprc_row_harm": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 389,
+                  "qualified": 389,
+                  "trials": 512,
+                  "violations": 389
+                }
+              },
+              "conditional_changes_mean": 10.899742930591259,
+              "conditional_changes_median": 11,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 389,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.759765625,
+              "replicate_any_qualification_rate": 0.759765625,
+              "replicate_any_violation_rate": 0.759765625,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 1.0,
+            "evaluation_changes_mean": 2.7604166666666665,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.2532552083333333,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.2532552083333333,
+            "practical_failures": 389,
+            "qualification_rate": 0.2532552083333333,
+            "qualified": 389,
+            "trials": 1536,
+            "violations": 389
+          },
+          "iid_paired_f1": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 0.0,
+              "conditional_changes_median": 0.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 0,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "row_net": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 430,
+                  "qualified": 430,
+                  "trials": 512,
+                  "violations": 430
+                }
+              },
+              "conditional_changes_mean": 10.853488372093024,
+              "conditional_changes_median": 11.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 430,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.83984375,
+              "replicate_any_qualification_rate": 0.83984375,
+              "replicate_any_violation_rate": 0.83984375,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 1.0,
+            "evaluation_changes_mean": 3.0384114583333335,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.2799479166666667,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.2799479166666667,
+            "practical_failures": 430,
+            "qualification_rate": 0.2799479166666667,
+            "qualified": 430,
+            "trials": 1536,
+            "violations": 430
+          },
+          "time_block_paired_f1": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 0.0,
+              "conditional_changes_median": 0.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 0,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          }
+        },
+        "oracle_opportunity_rate": 0.068359375
+      },
+      "Small-LI": {
+        "controls": {
+          "harmful": {
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "shuffled": {
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          }
+        },
+        "methods": {
+          "gtf1c_graph_time": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 0.0,
+              "conditional_changes_median": 0.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 0,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "gtprc_row_harm": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 0.0,
+              "conditional_changes_median": 0.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 0,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "iid_paired_f1": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 0.0,
+              "conditional_changes_median": 0.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 0,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "row_net": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 0.0,
+              "conditional_changes_median": 0.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 0,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "time_block_paired_f1": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 0.0,
+              "conditional_changes_median": 0.0,
+              "conditional_delta_mean": 0.0,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.0,
+              "conditional_oracle_fraction_median": 0.0,
+              "qualified_trial_count": 0,
+              "qualified_with_oracle_count": 0,
+              "replicate_any_practical_failure_rate": 0.0,
+              "replicate_any_qualification_rate": 0.0,
+              "replicate_any_violation_rate": 0.0,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          }
+        },
+        "oracle_opportunity_rate": 0.0
+      }
+    },
+    "temporal_positive": {
+      "Large-LI": {
+        "controls": {
+          "harmful": {
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "shuffled": {
+            "conditional_violation_rate": 1.0,
+            "evaluation_changes_mean": 0.6354166666666666,
+            "evaluation_delta_mean": -1.7526680779954533e-05,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0006510416666666666,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failures": 1,
+            "qualification_rate": 0.0006510416666666666,
+            "qualified": 1,
+            "trials": 1536,
+            "violations": 1
+          }
+        },
+        "methods": {
+          "gtf1c_graph_time": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 123,
+                  "qualified": 293,
+                  "trials": 512,
+                  "violations": 104
+                },
+                "1": {
+                  "practical_failures": 41,
+                  "qualified": 49,
+                  "trials": 512,
+                  "violations": 41
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 1,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 1461.5189504373177,
+              "conditional_changes_median": 1206,
+              "conditional_delta_mean": 0.015736555782329485,
+              "conditional_delta_median": 0.007226065521628498,
+              "conditional_oracle_fraction_mean": 0.9725798052422028,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 343,
+              "qualified_with_oracle_count": 301,
+              "replicate_any_practical_failure_rate": 0.302734375,
+              "replicate_any_qualification_rate": 0.619140625,
+              "replicate_any_violation_rate": 0.267578125,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.4227405247813411,
+            "evaluation_changes_mean": 326.3678385416667,
+            "evaluation_delta_mean": 0.00351408765191342,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.09440104166666667,
+            "oracle_fraction_mean": 0.19059018318873897,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.10677083333333333,
+            "practical_failures": 164,
+            "qualification_rate": 0.22330729166666666,
+            "qualified": 343,
+            "trials": 1536,
+            "violations": 145
+          },
+          "gtprc_row_harm": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 2,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 312,
+                  "qualified": 312,
+                  "trials": 512,
+                  "violations": 312
+                }
+              },
+              "conditional_changes_mean": 11.738853503184714,
+              "conditional_changes_median": 11.0,
+              "conditional_delta_mean": 0.0002731104921507022,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.022299974087694824,
+              "conditional_oracle_fraction_median": 0.009264086051582635,
+              "qualified_trial_count": 314,
+              "qualified_with_oracle_count": 314,
+              "replicate_any_practical_failure_rate": 0.609375,
+              "replicate_any_qualification_rate": 0.609375,
+              "replicate_any_violation_rate": 0.609375,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.9936305732484076,
+            "evaluation_changes_mean": 2.3997395833333335,
+            "evaluation_delta_mean": 5.5831181338099276e-05,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.203125,
+            "oracle_fraction_mean": 0.004558718661156363,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.203125,
+            "practical_failures": 312,
+            "qualification_rate": 0.20442708333333334,
+            "qualified": 314,
+            "trials": 1536,
+            "violations": 312
+          },
+          "iid_paired_f1": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 185,
+                  "qualified": 512,
+                  "trials": 512,
+                  "violations": 151
+                },
+                "1": {
+                  "practical_failures": 95,
+                  "qualified": 114,
+                  "trials": 512,
+                  "violations": 95
+                },
+                "2": {
+                  "practical_failures": 11,
+                  "qualified": 21,
+                  "trials": 512,
+                  "violations": 11
+                }
+              },
+              "conditional_changes_mean": 1342.1545595054097,
+              "conditional_changes_median": 1147,
+              "conditional_delta_mean": 0.02178317950516546,
+              "conditional_delta_median": 0.00927347315146149,
+              "conditional_oracle_fraction_mean": 0.9802203225803814,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 647,
+              "qualified_with_oracle_count": 551,
+              "replicate_any_practical_failure_rate": 0.494140625,
+              "replicate_any_qualification_rate": 1.0,
+              "replicate_any_violation_rate": 0.443359375,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.3972179289026275,
+            "evaluation_changes_mean": 565.34765625,
+            "evaluation_delta_mean": 0.009175597096251337,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.16731770833333334,
+            "oracle_fraction_mean": 0.3516285141548113,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.189453125,
+            "practical_failures": 291,
+            "qualification_rate": 0.4212239583333333,
+            "qualified": 647,
+            "trials": 1536,
+            "violations": 257
+          },
+          "row_net": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 0,
+                  "qualified": 2,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "1": {
+                  "practical_failures": 0,
+                  "qualified": 0,
+                  "trials": 512,
+                  "violations": 0
+                },
+                "2": {
+                  "practical_failures": 312,
+                  "qualified": 313,
+                  "trials": 512,
+                  "violations": 312
+                }
+              },
+              "conditional_changes_mean": 12.463492063492064,
+              "conditional_changes_median": 11,
+              "conditional_delta_mean": 0.0009380778484148454,
+              "conditional_delta_median": 0.0,
+              "conditional_oracle_fraction_mean": 0.025403783693765638,
+              "conditional_oracle_fraction_median": 0.009287925696594427,
+              "qualified_trial_count": 315,
+              "qualified_with_oracle_count": 315,
+              "replicate_any_practical_failure_rate": 0.609375,
+              "replicate_any_qualification_rate": 0.611328125,
+              "replicate_any_violation_rate": 0.609375,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.9904761904761905,
+            "evaluation_changes_mean": 2.5559895833333335,
+            "evaluation_delta_mean": 0.0001923792462569507,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.203125,
+            "oracle_fraction_mean": 0.005209760327823031,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.203125,
+            "practical_failures": 312,
+            "qualification_rate": 0.205078125,
+            "qualified": 315,
+            "trials": 1536,
+            "violations": 312
+          },
+          "time_block_paired_f1": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 123,
+                  "qualified": 293,
+                  "trials": 512,
+                  "violations": 104
+                },
+                "1": {
+                  "practical_failures": 41,
+                  "qualified": 49,
+                  "trials": 512,
+                  "violations": 41
+                },
+                "2": {
+                  "practical_failures": 0,
+                  "qualified": 1,
+                  "trials": 512,
+                  "violations": 0
+                }
+              },
+              "conditional_changes_mean": 1461.5189504373177,
+              "conditional_changes_median": 1206,
+              "conditional_delta_mean": 0.015736555782329485,
+              "conditional_delta_median": 0.007226065521628498,
+              "conditional_oracle_fraction_mean": 0.9725798052422028,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 343,
+              "qualified_with_oracle_count": 301,
+              "replicate_any_practical_failure_rate": 0.302734375,
+              "replicate_any_qualification_rate": 0.619140625,
+              "replicate_any_violation_rate": 0.267578125,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.4227405247813411,
+            "evaluation_changes_mean": 326.3678385416667,
+            "evaluation_delta_mean": 0.00351408765191342,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.09440104166666667,
+            "oracle_fraction_mean": 0.19059018318873897,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.10677083333333333,
+            "practical_failures": 164,
+            "qualification_rate": 0.22330729166666666,
+            "qualified": 343,
+            "trials": 1536,
+            "violations": 145
+          }
+        },
+        "oracle_opportunity_rate": 0.6861979166666666
+      },
+      "Small-LI": {
+        "controls": {
+          "harmful": {
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          },
+          "shuffled": {
+            "conditional_violation_rate": 0.0,
+            "evaluation_changes_mean": 0.0,
+            "evaluation_delta_mean": 0.0,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.0,
+            "oracle_fraction_mean": 0.0,
+            "oracle_fraction_median": 0.0,
+            "practical_failures": 0,
+            "qualification_rate": 0.0,
+            "qualified": 0,
+            "trials": 1536,
+            "violations": 0
+          }
+        },
+        "methods": {
+          "gtf1c_graph_time": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 30,
+                  "qualified": 347,
+                  "trials": 512,
+                  "violations": 30
+                },
+                "1": {
+                  "practical_failures": 22,
+                  "qualified": 326,
+                  "trials": 512,
+                  "violations": 22
+                },
+                "2": {
+                  "practical_failures": 20,
+                  "qualified": 367,
+                  "trials": 512,
+                  "violations": 20
+                }
+              },
+              "conditional_changes_mean": 169.22884615384615,
+              "conditional_changes_median": 76.0,
+              "conditional_delta_mean": 0.41633680393747524,
+              "conditional_delta_median": 0.5046479149385417,
+              "conditional_oracle_fraction_mean": 1.0,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 1040,
+              "qualified_with_oracle_count": 967,
+              "replicate_any_practical_failure_rate": 0.140625,
+              "replicate_any_qualification_rate": 0.96875,
+              "replicate_any_violation_rate": 0.140625,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.06923076923076923,
+            "evaluation_changes_mean": 114.58203125,
+            "evaluation_delta_mean": 0.28189471099933217,
+            "evaluation_delta_median": 0.3288089887640449,
+            "false_qualification_rate": 0.046875,
+            "oracle_fraction_mean": 0.6295572916666666,
+            "oracle_fraction_median": 1.0,
+            "practical_failure_rate": 0.046875,
+            "practical_failures": 72,
+            "qualification_rate": 0.6770833333333334,
+            "qualified": 1040,
+            "trials": 1536,
+            "violations": 72
+          },
+          "gtprc_row_harm": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 12,
+                  "qualified": 195,
+                  "trials": 512,
+                  "violations": 12
+                },
+                "1": {
+                  "practical_failures": 9,
+                  "qualified": 202,
+                  "trials": 512,
+                  "violations": 9
+                },
+                "2": {
+                  "practical_failures": 12,
+                  "qualified": 268,
+                  "trials": 512,
+                  "violations": 12
+                }
+              },
+              "conditional_changes_mean": 139.15037593984962,
+              "conditional_changes_median": 69,
+              "conditional_delta_mean": 0.4421816276177622,
+              "conditional_delta_median": 0.5195722356739306,
+              "conditional_oracle_fraction_mean": 1.0,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 665,
+              "qualified_with_oracle_count": 631,
+              "replicate_any_practical_failure_rate": 0.064453125,
+              "replicate_any_qualification_rate": 0.814453125,
+              "replicate_any_violation_rate": 0.064453125,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.04962406015037594,
+            "evaluation_changes_mean": 60.244140625,
+            "evaluation_delta_mean": 0.19143931143607548,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.021484375,
+            "oracle_fraction_mean": 0.4108072916666667,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.021484375,
+            "practical_failures": 33,
+            "qualification_rate": 0.4329427083333333,
+            "qualified": 665,
+            "trials": 1536,
+            "violations": 33
+          },
+          "iid_paired_f1": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 44,
+                  "qualified": 410,
+                  "trials": 512,
+                  "violations": 44
+                },
+                "1": {
+                  "practical_failures": 33,
+                  "qualified": 402,
+                  "trials": 512,
+                  "violations": 33
+                },
+                "2": {
+                  "practical_failures": 31,
+                  "qualified": 440,
+                  "trials": 512,
+                  "violations": 31
+                }
+              },
+              "conditional_changes_mean": 197.75718849840257,
+              "conditional_changes_median": 80.0,
+              "conditional_delta_mean": 0.4011474727171518,
+              "conditional_delta_median": 0.4971364493276156,
+              "conditional_oracle_fraction_mean": 1.0,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 1252,
+              "qualified_with_oracle_count": 1143,
+              "replicate_any_practical_failure_rate": 0.19921875,
+              "replicate_any_qualification_rate": 0.9921875,
+              "replicate_any_violation_rate": 0.19921875,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.08626198083067092,
+            "evaluation_changes_mean": 161.19270833333334,
+            "evaluation_delta_mean": 0.3269769764595534,
+            "evaluation_delta_median": 0.4354260089686099,
+            "false_qualification_rate": 0.0703125,
+            "oracle_fraction_mean": 0.744140625,
+            "oracle_fraction_median": 1.0,
+            "practical_failure_rate": 0.0703125,
+            "practical_failures": 108,
+            "qualification_rate": 0.8151041666666666,
+            "qualified": 1252,
+            "trials": 1536,
+            "violations": 108
+          },
+          "row_net": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 16,
+                  "qualified": 223,
+                  "trials": 512,
+                  "violations": 16
+                },
+                "1": {
+                  "practical_failures": 14,
+                  "qualified": 229,
+                  "trials": 512,
+                  "violations": 14
+                },
+                "2": {
+                  "practical_failures": 12,
+                  "qualified": 282,
+                  "trials": 512,
+                  "violations": 12
+                }
+              },
+              "conditional_changes_mean": 151.33514986376022,
+              "conditional_changes_median": 71.0,
+              "conditional_delta_mean": 0.4350114932334176,
+              "conditional_delta_median": 0.5185702031674424,
+              "conditional_oracle_fraction_mean": 1.0,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 734,
+              "qualified_with_oracle_count": 691,
+              "replicate_any_practical_failure_rate": 0.08203125,
+              "replicate_any_qualification_rate": 0.845703125,
+              "replicate_any_violation_rate": 0.08203125,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.05722070844686648,
+            "evaluation_changes_mean": 72.31770833333333,
+            "evaluation_delta_mean": 0.20787658595919825,
+            "evaluation_delta_median": 0.0,
+            "false_qualification_rate": 0.02734375,
+            "oracle_fraction_mean": 0.4498697916666667,
+            "oracle_fraction_median": 0.0,
+            "practical_failure_rate": 0.02734375,
+            "practical_failures": 42,
+            "qualification_rate": 0.4778645833333333,
+            "qualified": 734,
+            "trials": 1536,
+            "violations": 42
+          },
+          "time_block_paired_f1": {
+            "conditional": {
+              "by_fold": {
+                "0": {
+                  "practical_failures": 30,
+                  "qualified": 347,
+                  "trials": 512,
+                  "violations": 30
+                },
+                "1": {
+                  "practical_failures": 22,
+                  "qualified": 326,
+                  "trials": 512,
+                  "violations": 22
+                },
+                "2": {
+                  "practical_failures": 20,
+                  "qualified": 367,
+                  "trials": 512,
+                  "violations": 20
+                }
+              },
+              "conditional_changes_mean": 169.22884615384615,
+              "conditional_changes_median": 76.0,
+              "conditional_delta_mean": 0.41633680393747524,
+              "conditional_delta_median": 0.5046479149385417,
+              "conditional_oracle_fraction_mean": 1.0,
+              "conditional_oracle_fraction_median": 1.0,
+              "qualified_trial_count": 1040,
+              "qualified_with_oracle_count": 967,
+              "replicate_any_practical_failure_rate": 0.140625,
+              "replicate_any_qualification_rate": 0.96875,
+              "replicate_any_violation_rate": 0.140625,
+              "replicate_count": 512
+            },
+            "conditional_violation_rate": 0.06923076923076923,
+            "evaluation_changes_mean": 114.58203125,
+            "evaluation_delta_mean": 0.28189471099933217,
+            "evaluation_delta_median": 0.3288089887640449,
+            "false_qualification_rate": 0.046875,
+            "oracle_fraction_mean": 0.6295572916666666,
+            "oracle_fraction_median": 1.0,
+            "practical_failure_rate": 0.046875,
+            "practical_failures": 72,
+            "qualification_rate": 0.6770833333333334,
+            "qualified": 1040,
+            "trials": 1536,
+            "violations": 72
+          }
+        },
+        "oracle_opportunity_rate": 0.900390625
+      }
+    }
+  }
+}
