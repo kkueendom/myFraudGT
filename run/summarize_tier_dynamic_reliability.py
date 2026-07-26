@@ -288,6 +288,12 @@ def aggregate_pair(dataset, selection, manifests):
         "normal_shuffled_gap_lt_0_01_events": sum(
             value < 0.01 for value in shuffle_gap
         ),
+        "normal_off_gap_ge_0_01_events": sum(
+            value >= 0.01 for value in off_gap
+        ),
+        "normal_off_gap_lt_0_01_events": sum(
+            value < 0.01 for value in off_gap
+        ),
         "sensitivity_threshold_crossing": threshold_crossing,
         "utility_sign_crossing": utility_sign_crossing,
         "single_event_conclusion_reversal": (

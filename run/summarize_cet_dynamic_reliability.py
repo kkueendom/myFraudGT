@@ -211,8 +211,20 @@ def aggregate_pair(dataset, variant, manifests):
         "positive_same_batch_delta_events": sum(
             value > 0 for value in paired_delta
         ),
+        "nonpositive_same_batch_delta_events": sum(
+            value <= 0 for value in paired_delta
+        ),
         "normal_shuffled_gap_ge_0_01_events": sum(
             value >= 0.01 for value in shuffle_gap
+        ),
+        "normal_shuffled_gap_lt_0_01_events": sum(
+            value < 0.01 for value in shuffle_gap
+        ),
+        "normal_off_gap_ge_0_01_events": sum(
+            value >= 0.01 for value in off_gap
+        ),
+        "normal_off_gap_lt_0_01_events": sum(
+            value < 0.01 for value in off_gap
         ),
         "sensitivity_threshold_crossing": threshold_crossing,
         "utility_sign_crossing": utility_sign_crossing,
@@ -367,4 +379,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

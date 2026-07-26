@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -52,8 +53,15 @@ def summarize_family(name, units):
         row for row in units
         if row["mechanism_classification"] in MISMATCH_LABELS
     ]
-    mismatch_datasets = sorted({
+    mean_mismatch_datasets = sorted({
         row["dataset"] for row in mismatch
+    })
+    repeatable = [
+        row for row in mismatch
+        if unit_has_repeatable_mismatch(row)
+    ]
+    repeatable_datasets = sorted({
+        row["dataset"] for row in repeatable
     })
     all_datasets = sorted({row["dataset"] for row in units})
     return {
@@ -63,11 +71,13 @@ def summarize_family(name, units):
         "datasets": all_datasets,
         "classification_counts": labels,
         "mismatch_unit_count": len(mismatch),
-        "mismatch_datasets": mismatch_datasets,
-        "repeatable_mismatch": bool(mismatch),
+        "mean_mismatch_datasets": mean_mismatch_datasets,
+        "repeatable_mismatch_unit_count": len(repeatable),
+        "repeatable_mismatch_datasets": repeatable_datasets,
+        "repeatable_mismatch": bool(repeatable),
         "cross_scale_mismatch": (
-            "Small-LI" in mismatch_datasets
-            and "Large-LI" in mismatch_datasets
+            "Small-LI" in repeatable_datasets
+            and "Large-LI" in repeatable_datasets
         ),
         "useful_aligned_unit_count": labels.get(
             "useful_aligned_evidence", 0
@@ -78,6 +88,30 @@ def summarize_family(name, units):
             for row in units
         ),
     }
+
+
+def unit_has_repeatable_mismatch(row):
+    event_count = int(row["events"])
+    required = math.ceil(0.75 * event_count)
+    label = row["mechanism_classification"]
+    harmful_events = max(
+        int(row["nonpositive_same_batch_delta_events"]),
+        int(row["corrected_le_broken_events"]),
+    )
+    if label == "sensitive_but_harmful":
+        return (
+            int(row["normal_shuffled_gap_ge_0_01_events"])
+            >= required
+            and harmful_events >= required
+        )
+    if label == "used_but_unaligned":
+        return (
+            int(row["normal_off_gap_ge_0_01_events"]) >= required
+            and int(row["normal_shuffled_gap_lt_0_01_events"])
+            >= required
+            and harmful_events >= required
+        )
+    return False
 
 
 def a2_single_run_reversal(a2):
@@ -204,15 +238,18 @@ def render_markdown(aggregate, paths):
         "## Family-Level Results",
         "",
         "| Family | Units | Events | Mismatch units | Mismatch datasets | "
-        "Useful aligned | Inactive | Cross-scale mismatch | Event reversal |",
-        "|---|---:|---:|---:|---|---:|---:|---|---:|",
+        "Repeatable mismatch units | Repeatable datasets | Useful aligned | "
+        "Inactive | Cross-scale repeatable mismatch | Event reversal |",
+        "|---|---:|---:|---:|---|---:|---|---:|---:|---|---:|",
     ]
     for name in ("CET", "TIER", "COSTAR"):
         row = aggregate["families"][name]
         lines.append(
             f"| {name} | {row['unit_count']} | {row['event_count']} | "
             f"{row['mismatch_unit_count']} | "
-            f"{', '.join(row['mismatch_datasets']) or 'none'} | "
+            f"{', '.join(row['mean_mismatch_datasets']) or 'none'} | "
+            f"{row['repeatable_mismatch_unit_count']} | "
+            f"{', '.join(row['repeatable_mismatch_datasets']) or 'none'} | "
             f"{row['useful_aligned_unit_count']} | "
             f"{row['inactive_unit_count']} | "
             f"{str(row['cross_scale_mismatch']).lower()} | "
@@ -222,7 +259,10 @@ def render_markdown(aggregate, paths):
         "",
         "Mismatch includes `sensitive_but_harmful` and "
         "`used_but_unaligned`. It does not relabel inactive evidence as a "
-        "sensitivity-versus-utility mismatch.",
+        "sensitivity-versus-utility mismatch. A family counts toward the "
+        "advancement gate only when at least one mismatch unit satisfies its "
+        "sensitivity and harmful-utility conditions in at least 75% of "
+        "dynamic events.",
         "",
         "## Advancement Gate",
         "",
@@ -351,4 +391,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -6,6 +6,7 @@ from pathlib import Path
 from run.summarize_multi_model_dynamic_reliability import (
     a2_single_run_reversal,
     summarize_family,
+    unit_has_repeatable_mismatch,
 )
 
 
@@ -17,18 +18,40 @@ class SummarizeMultiModelDynamicReliabilityTest(unittest.TestCase):
                 "events": 8,
                 "mechanism_classification": "sensitive_but_harmful",
                 "single_event_conclusion_reversal": False,
+                "normal_shuffled_gap_ge_0_01_events": 8,
+                "normal_shuffled_gap_lt_0_01_events": 0,
+                "normal_off_gap_ge_0_01_events": 8,
+                "nonpositive_same_batch_delta_events": 8,
+                "corrected_le_broken_events": 8,
             },
             {
                 "dataset": "Large-LI",
                 "events": 8,
                 "mechanism_classification": "inactive_evidence",
                 "single_event_conclusion_reversal": False,
+                "normal_shuffled_gap_ge_0_01_events": 0,
+                "normal_shuffled_gap_lt_0_01_events": 8,
+                "normal_off_gap_ge_0_01_events": 0,
+                "nonpositive_same_batch_delta_events": 0,
+                "corrected_le_broken_events": 0,
             },
         ]
         row = summarize_family("example", units)
         self.assertEqual(row["mismatch_unit_count"], 1)
         self.assertFalse(row["cross_scale_mismatch"])
         self.assertEqual(row["inactive_unit_count"], 1)
+        self.assertEqual(row["repeatable_mismatch_unit_count"], 1)
+
+    def test_mean_mismatch_is_not_repeatable_below_event_threshold(self):
+        row = {
+            "events": 16,
+            "mechanism_classification": "used_but_unaligned",
+            "normal_off_gap_ge_0_01_events": 9,
+            "normal_shuffled_gap_lt_0_01_events": 16,
+            "nonpositive_same_batch_delta_events": 12,
+            "corrected_le_broken_events": 12,
+        }
+        self.assertFalse(unit_has_repeatable_mismatch(row))
 
     def test_a2_reversal_requires_both_sides_of_warning_band(self):
         a2 = {
@@ -71,4 +94,3 @@ class SummarizeMultiModelDynamicReliabilityTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
