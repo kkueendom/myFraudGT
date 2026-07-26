@@ -5,6 +5,7 @@ REPO="${GT_PSF1_REPO:?set GT_PSF1_REPO}"
 OUTPUT="${GT_PSF1_OUTPUT:?set GT_PSF1_OUTPUT}"
 PYTHON="${GT_PSF1_PYTHON:-/d/miniconda3/envs/fraudGT/bin/python}"
 COMMIT="$(git -C "${REPO}" rev-parse HEAD)"
+export PYTHONDONTWRITEBYTECODE=1
 
 mkdir -p "${OUTPUT}/logs"
 
