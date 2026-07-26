@@ -2,6 +2,7 @@
 """Repeated dynamic-random stability audit for fixed initial-A2 checkpoints."""
 
 import argparse
+import hashlib
 import json
 import statistics
 import subprocess
@@ -193,6 +194,8 @@ def evaluate(model, loader, split, device, step_cap=None):
         "samples": int(labels.numel()),
         "unique_edges": unique_edges,
         "unique_edge_rate": unique_edges / max(int(labels.numel()), 1),
+        "edge_id_sha256": hashlib.sha256(
+            edge_ids.contiguous().numpy().tobytes()).hexdigest(),
         "elapsed_seconds": time.monotonic() - started,
     }
 
@@ -320,16 +323,22 @@ def run_audit(spec, task, args):
             "test_unique_edges": test["unique_edges"],
             "val_unique_edge_rate": val["unique_edge_rate"],
             "test_unique_edge_rate": test["unique_edge_rate"],
+            "val_edge_id_sha256": val["edge_id_sha256"],
+            "test_edge_id_sha256": test["edge_id_sha256"],
             "val_elapsed_seconds": val["elapsed_seconds"],
             "test_elapsed_seconds": test["elapsed_seconds"],
         }
         append_jsonl(trajectory, event)
         events.append(event)
     manifest = {
-        "experiment": "initial_a2_dynamic_sampling_stability",
+        "experiment": spec.get(
+            "experiment", "initial_a2_dynamic_sampling_stability"),
         "dataset": task["dataset"],
-        "model": "initial-A2-fixed-checkpoint",
-        "variant": "a2_multi",
+        "model": task.get(
+            "model", spec.get(
+                "model", "initial-A2-fixed-checkpoint")),
+        "variant": task.get(
+            "variant", spec.get("variant", "a2_multi")),
         "experiment_label": task["experiment_label"],
         "model_seed": int(task["model_seed"]),
         "audit_seed": int(task["audit_seed"]),
@@ -358,11 +367,13 @@ def run_audit(spec, task, args):
         "raw_best_repeated_test_f1": max(
             row["test"]["f1"] for row in events),
         "elapsed_seconds": time.monotonic() - started,
-        "sampling_variation_note": (
-            "descriptive_repeated_dynamic_sampling_audit_not_a_new_baseline"
+        "sampling_variation_note": spec.get(
+            "sampling_variation_note",
+            "descriptive_repeated_dynamic_sampling_audit_not_a_new_baseline",
         ),
     }
-    manifest_path = output_dir / "a2_stability_manifest.json"
+    manifest_path = output_dir / spec.get(
+        "manifest_filename", "a2_stability_manifest.json")
     manifest_path.write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     print(json.dumps({

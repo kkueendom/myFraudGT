@@ -1,0 +1,61 @@
+{
+  "name": "Evidence-gate v4 nested model-seed and dynamic-sampling stability",
+  "experiment": "v4_nested_dynamic_sampling_stability",
+  "manifest_filename": "nested_stability_manifest.json",
+  "expected_branch": "paper/temporal-evidence-reliability-benchmark",
+  "sampling_protocol": "dynamic_random",
+  "model": "evidence-gate-v4-fixed-checkpoint",
+  "variant": "evidence_gate_v4_residual",
+  "checkpoint_epoch": 499,
+  "audit_seeds": [93001, 93002],
+  "repeats": 4,
+  "expected_val_iter_per_epoch": 256,
+  "datasets": [
+    {
+      "dataset": "Small-LI",
+      "run_dir": "/e/yky/FraudGT_evidence_gate_v4/results/evidence_gate_v4_formal/AML-Small-LI-gpu0",
+      "model_seeds": [42, 43, 44],
+      "expected_batch_size": 2048
+    },
+    {
+      "dataset": "Small-HI",
+      "run_dir": "/e/yky/FraudGT_evidence_gate_v4/results/evidence_gate_v4_formal/AML-Small-HI-gpu0",
+      "model_seeds": [42, 43, 44],
+      "expected_batch_size": 2048
+    },
+    {
+      "dataset": "Medium-LI",
+      "run_dir": "/e/yky/FraudGT_evidence_gate_v4/results/evidence_gate_v4_formal/AML-Medium-LI-gpu0",
+      "model_seeds": [42, 43, 44],
+      "expected_batch_size": 1024
+    },
+    {
+      "dataset": "Medium-HI",
+      "run_dir": "/e/yky/FraudGT_evidence_gate_v4/results/evidence_gate_v4_formal/AML-Medium-HI-gpu0",
+      "model_seeds": [42, 43, 44],
+      "expected_batch_size": 1024
+    },
+    {
+      "dataset": "Large-LI",
+      "run_dir": "/e/yky/FraudGT_evidence_gate_v4/results/evidence_gate_v4_formal/AML-Large-LI-gpu0",
+      "model_seeds": [42, 43, 44],
+      "expected_batch_size": 1024
+    },
+    {
+      "dataset": "Large-HI",
+      "run_dir": "/e/yky/FraudGT_evidence_gate_v4/results/evidence_gate_v4_formal/AML-Large-HI-gpu0",
+      "model_seeds": [42, 43, 44],
+      "expected_batch_size": 1024
+    }
+  ],
+  "task_count": 36,
+  "event_count": 144,
+  "comparison_note": "Historical initial A2 is diagnostic only; model family and checkpoint differ.",
+  "readiness_gate": {
+    "minimum_datasets_sampling_ge_model_variance": 2,
+    "minimum_datasets_with_seed_rank_reversal": 1,
+    "minimum_datasets_with_a2_delta_sign_reversal": 2,
+    "minimum_datasets_raw_max_inflation_ge_0.01": 4,
+    "gate_logic": "at_least_one_empirical_condition"
+  }
+}
