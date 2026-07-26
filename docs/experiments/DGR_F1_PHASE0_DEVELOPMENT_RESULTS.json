@@ -1,0 +1,1162 @@
+{
+  "decision": "STOP_DGR_F1",
+  "experiment": "DGR_F1_Phase0_controlled_development",
+  "gate": {
+    "cross_scale_iid_power": true,
+    "exact_f1_identity_zero_failures": true,
+    "false_harm_control": true,
+    "false_improvement_control": true,
+    "nontrivial_unstable_benchmark": true,
+    "passed": false,
+    "positive_power_all_scenarios_both_templates": true,
+    "simultaneous_mean_coverage": false,
+    "stable_harm_power": false,
+    "stable_iid_median_stop_by_32": true,
+    "unstable_scenarios_abstain": true
+  },
+  "git_commit": "e43b6b5eb42657960351631cc833f3f66abea259",
+  "harm_power": {
+    "Large-LI": 0.294921875,
+    "Small-LI": 1.0
+  },
+  "identity_failures": 0,
+  "manifest_count": 7,
+  "mode": "development",
+  "positive_power": {
+    "Large-LI": {
+      "stable_graph_improvement": 1.0,
+      "stable_iid_improvement": 1.0,
+      "stable_temporal_improvement": 1.0
+    },
+    "Small-LI": {
+      "stable_graph_improvement": 1.0,
+      "stable_iid_improvement": 1.0,
+      "stable_temporal_improvement": 1.0
+    }
+  },
+  "replicates_per_scenario": 512,
+  "simultaneous_mean_coverage": {
+    "Large-LI": {
+      "base_ratio_sign_reversal": 0.986328125,
+      "null_intervention": 0.8671875
+    },
+    "Small-LI": {
+      "base_ratio_sign_reversal": 0.978515625,
+      "null_intervention": 0.98828125
+    }
+  },
+  "units": {
+    "base_ratio_sign_reversal": {
+      "Large-LI": {
+        "endpoint_delta": 0.004166666666666667,
+        "identity_failures": 0,
+        "methods": {
+          "dgr_f1": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 512,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 0
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 0.0,
+            "insufficient_rate": 1.0,
+            "median_stopping_checkpoint": null
+          },
+          "mean_only": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 252,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 260
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 0.5078125,
+            "insufficient_rate": 0.4921875,
+            "median_stopping_checkpoint": 64.0
+          },
+          "one_stream": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 148,
+              "REPLICABLE_HARM": 149,
+              "REPLICABLE_IMPROVEMENT": 215
+            },
+            "harm_rate": 0.291015625,
+            "improvement_rate": 0.419921875,
+            "insufficient_rate": 0.2890625,
+            "median_stopping_checkpoint": 1.0
+          },
+          "replication_only": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 512,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 0
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 0.0,
+            "insufficient_rate": 1.0,
+            "median_stopping_checkpoint": null
+          },
+          "row_iid": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 496,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 16
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 0.03125,
+            "insufficient_rate": 0.96875,
+            "median_stopping_checkpoint": 1.0
+          }
+        },
+        "population_target": {
+          "decision": "INSUFFICIENT_INFORMATION",
+          "mean_delta": 0.008278045633495695,
+          "practical_harm_probability": 0.27040863037109375,
+          "practical_improvement_probability": 0.425445556640625
+        },
+        "reference_identity_failures": 0,
+        "registered_target": "INSUFFICIENT_INFORMATION",
+        "simultaneous_mean_coverage_rate": 0.986328125,
+        "template": "Large-LI",
+        "template_counts": {
+          "fn": 22,
+          "fp": 54,
+          "tn": 34708,
+          "tp": 2
+        }
+      },
+      "Small-LI": {
+        "endpoint_delta": 0.004166666666666667,
+        "identity_failures": 0,
+        "methods": {
+          "dgr_f1": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 512,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 0
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 0.0,
+            "insufficient_rate": 1.0,
+            "median_stopping_checkpoint": null
+          },
+          "mean_only": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 477,
+              "REPLICABLE_HARM": 8,
+              "REPLICABLE_IMPROVEMENT": 27
+            },
+            "harm_rate": 0.015625,
+            "improvement_rate": 0.052734375,
+            "insufficient_rate": 0.931640625,
+            "median_stopping_checkpoint": 32.0
+          },
+          "one_stream": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 66,
+              "REPLICABLE_HARM": 233,
+              "REPLICABLE_IMPROVEMENT": 213
+            },
+            "harm_rate": 0.455078125,
+            "improvement_rate": 0.416015625,
+            "insufficient_rate": 0.12890625,
+            "median_stopping_checkpoint": 1.0
+          },
+          "replication_only": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 512,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 0
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 0.0,
+            "insufficient_rate": 1.0,
+            "median_stopping_checkpoint": null
+          },
+          "row_iid": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 485,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 27
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 0.052734375,
+            "insufficient_rate": 0.947265625,
+            "median_stopping_checkpoint": 1.0
+          }
+        },
+        "population_target": {
+          "decision": "INSUFFICIENT_INFORMATION",
+          "mean_delta": 0.0015448512028876228,
+          "practical_harm_probability": 0.436004638671875,
+          "practical_improvement_probability": 0.44283294677734375
+        },
+        "reference_identity_failures": 0,
+        "registered_target": "INSUFFICIENT_INFORMATION",
+        "simultaneous_mean_coverage_rate": 0.978515625,
+        "template": "Small-LI",
+        "template_counts": {
+          "fn": 65,
+          "fp": 15,
+          "tn": 174525,
+          "tp": 15
+        }
+      }
+    },
+    "null_intervention": {
+      "Large-LI": {
+        "endpoint_delta": 0.004166666666666667,
+        "identity_failures": 0,
+        "methods": {
+          "dgr_f1": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 512,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 0
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 0.0,
+            "insufficient_rate": 1.0,
+            "median_stopping_checkpoint": null
+          },
+          "mean_only": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 509,
+              "REPLICABLE_HARM": 2,
+              "REPLICABLE_IMPROVEMENT": 1
+            },
+            "harm_rate": 0.00390625,
+            "improvement_rate": 0.001953125,
+            "insufficient_rate": 0.994140625,
+            "median_stopping_checkpoint": 32.0
+          },
+          "one_stream": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 512,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 0
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 0.0,
+            "insufficient_rate": 1.0,
+            "median_stopping_checkpoint": 1.0
+          },
+          "replication_only": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 512,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 0
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 0.0,
+            "insufficient_rate": 1.0,
+            "median_stopping_checkpoint": null
+          },
+          "row_iid": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 512,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 0
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 0.0,
+            "insufficient_rate": 1.0,
+            "median_stopping_checkpoint": 1.0
+          }
+        },
+        "population_target": {
+          "decision": "INSUFFICIENT_INFORMATION",
+          "mean_delta": 1.1115778370242455e-07,
+          "practical_harm_probability": 0.0,
+          "practical_improvement_probability": 0.0
+        },
+        "reference_identity_failures": 0,
+        "registered_target": "INSUFFICIENT_INFORMATION",
+        "simultaneous_mean_coverage_rate": 0.8671875,
+        "template": "Large-LI",
+        "template_counts": {
+          "fn": 22,
+          "fp": 54,
+          "tn": 34708,
+          "tp": 2
+        }
+      },
+      "Small-LI": {
+        "endpoint_delta": 0.004166666666666667,
+        "identity_failures": 0,
+        "methods": {
+          "dgr_f1": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 512,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 0
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 0.0,
+            "insufficient_rate": 1.0,
+            "median_stopping_checkpoint": null
+          },
+          "mean_only": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 494,
+              "REPLICABLE_HARM": 10,
+              "REPLICABLE_IMPROVEMENT": 8
+            },
+            "harm_rate": 0.01953125,
+            "improvement_rate": 0.015625,
+            "insufficient_rate": 0.96484375,
+            "median_stopping_checkpoint": 48.0
+          },
+          "one_stream": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 512,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 0
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 0.0,
+            "insufficient_rate": 1.0,
+            "median_stopping_checkpoint": 1.0
+          },
+          "replication_only": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 512,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 0
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 0.0,
+            "insufficient_rate": 1.0,
+            "median_stopping_checkpoint": null
+          },
+          "row_iid": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 512,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 0
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 0.0,
+            "insufficient_rate": 1.0,
+            "median_stopping_checkpoint": 1.0
+          }
+        },
+        "population_target": {
+          "decision": "INSUFFICIENT_INFORMATION",
+          "mean_delta": 1.5064462895622941e-06,
+          "practical_harm_probability": 0.0,
+          "practical_improvement_probability": 0.0
+        },
+        "reference_identity_failures": 0,
+        "registered_target": "INSUFFICIENT_INFORMATION",
+        "simultaneous_mean_coverage_rate": 0.98828125,
+        "template": "Small-LI",
+        "template_counts": {
+          "fn": 65,
+          "fp": 15,
+          "tn": 174525,
+          "tp": 15
+        }
+      }
+    },
+    "positive_mean_low_replication": {
+      "Large-LI": {
+        "endpoint_delta": 0.004166666666666667,
+        "identity_failures": 0,
+        "methods": {
+          "dgr_f1": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 512,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 0
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 0.0,
+            "insufficient_rate": 1.0,
+            "median_stopping_checkpoint": null
+          },
+          "mean_only": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 512
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 1.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 16.0
+          },
+          "one_stream": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 73,
+              "REPLICABLE_HARM": 106,
+              "REPLICABLE_IMPROVEMENT": 333
+            },
+            "harm_rate": 0.20703125,
+            "improvement_rate": 0.650390625,
+            "insufficient_rate": 0.142578125,
+            "median_stopping_checkpoint": 1.0
+          },
+          "replication_only": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 512,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 0
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 0.0,
+            "insufficient_rate": 1.0,
+            "median_stopping_checkpoint": null
+          },
+          "row_iid": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 191,
+              "REPLICABLE_HARM": 3,
+              "REPLICABLE_IMPROVEMENT": 318
+            },
+            "harm_rate": 0.005859375,
+            "improvement_rate": 0.62109375,
+            "insufficient_rate": 0.373046875,
+            "median_stopping_checkpoint": 1.0
+          }
+        },
+        "population_target": {
+          "decision": "INSUFFICIENT_INFORMATION",
+          "mean_delta": 0.16942977339149037,
+          "practical_harm_probability": 0.20441436767578125,
+          "practical_improvement_probability": 0.6357650756835938
+        },
+        "reference_identity_failures": 0,
+        "registered_target": "INSUFFICIENT_INFORMATION",
+        "simultaneous_mean_coverage_rate": 0.98046875,
+        "template": "Large-LI",
+        "template_counts": {
+          "fn": 22,
+          "fp": 54,
+          "tn": 34708,
+          "tp": 2
+        }
+      },
+      "Small-LI": {
+        "endpoint_delta": 0.004166666666666667,
+        "identity_failures": 0,
+        "methods": {
+          "dgr_f1": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 512,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 0
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 0.0,
+            "insufficient_rate": 1.0,
+            "median_stopping_checkpoint": null
+          },
+          "mean_only": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 512
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 1.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 16.0
+          },
+          "one_stream": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 185,
+              "REPLICABLE_IMPROVEMENT": 327
+            },
+            "harm_rate": 0.361328125,
+            "improvement_rate": 0.638671875,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 1.0
+          },
+          "replication_only": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 512,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 0
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 0.0,
+            "insufficient_rate": 1.0,
+            "median_stopping_checkpoint": null
+          },
+          "row_iid": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 45,
+              "REPLICABLE_HARM": 142,
+              "REPLICABLE_IMPROVEMENT": 325
+            },
+            "harm_rate": 0.27734375,
+            "improvement_rate": 0.634765625,
+            "insufficient_rate": 0.087890625,
+            "median_stopping_checkpoint": 1.0
+          }
+        },
+        "population_target": {
+          "decision": "INSUFFICIENT_INFORMATION",
+          "mean_delta": 0.21588489467292613,
+          "practical_harm_probability": 0.39498138427734375,
+          "practical_improvement_probability": 0.6028060913085938
+        },
+        "reference_identity_failures": 0,
+        "registered_target": "INSUFFICIENT_INFORMATION",
+        "simultaneous_mean_coverage_rate": 0.984375,
+        "template": "Small-LI",
+        "template_counts": {
+          "fn": 65,
+          "fp": 15,
+          "tn": 174525,
+          "tp": 15
+        }
+      }
+    },
+    "stable_graph_improvement": {
+      "Large-LI": {
+        "endpoint_delta": 0.004166666666666667,
+        "identity_failures": 0,
+        "methods": {
+          "dgr_f1": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 512
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 1.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 32.0
+          },
+          "mean_only": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 512
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 1.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 8.0
+          },
+          "one_stream": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 5,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 507
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 0.990234375,
+            "insufficient_rate": 0.009765625,
+            "median_stopping_checkpoint": 1.0
+          },
+          "replication_only": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 512
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 1.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 32.0
+          },
+          "row_iid": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 78,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 434
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 0.84765625,
+            "insufficient_rate": 0.15234375,
+            "median_stopping_checkpoint": 1.0
+          }
+        },
+        "population_target": {
+          "decision": "REPLICABLE_IMPROVEMENT",
+          "mean_delta": 0.2429799233243405,
+          "practical_harm_probability": 0.0011138916015625,
+          "practical_improvement_probability": 0.9845199584960938
+        },
+        "reference_identity_failures": 0,
+        "registered_target": "REPLICABLE_IMPROVEMENT",
+        "simultaneous_mean_coverage_rate": 0.9609375,
+        "template": "Large-LI",
+        "template_counts": {
+          "fn": 22,
+          "fp": 54,
+          "tn": 34708,
+          "tp": 2
+        }
+      },
+      "Small-LI": {
+        "endpoint_delta": 0.004166666666666667,
+        "identity_failures": 0,
+        "methods": {
+          "dgr_f1": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 512
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 1.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 32.0
+          },
+          "mean_only": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 512
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 1.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 8.0
+          },
+          "one_stream": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 2,
+              "REPLICABLE_IMPROVEMENT": 510
+            },
+            "harm_rate": 0.00390625,
+            "improvement_rate": 0.99609375,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 1.0
+          },
+          "replication_only": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 512
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 1.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 32.0
+          },
+          "row_iid": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 26,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 486
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 0.94921875,
+            "insufficient_rate": 0.05078125,
+            "median_stopping_checkpoint": 1.0
+          }
+        },
+        "population_target": {
+          "decision": "REPLICABLE_IMPROVEMENT",
+          "mean_delta": 0.34831979793604273,
+          "practical_harm_probability": 0.0036163330078125,
+          "practical_improvement_probability": 0.9947280883789062
+        },
+        "reference_identity_failures": 0,
+        "registered_target": "REPLICABLE_IMPROVEMENT",
+        "simultaneous_mean_coverage_rate": 0.974609375,
+        "template": "Small-LI",
+        "template_counts": {
+          "fn": 65,
+          "fp": 15,
+          "tn": 174525,
+          "tp": 15
+        }
+      }
+    },
+    "stable_harm": {
+      "Large-LI": {
+        "endpoint_delta": 0.004166666666666667,
+        "identity_failures": 0,
+        "methods": {
+          "dgr_f1": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 361,
+              "REPLICABLE_HARM": 151,
+              "REPLICABLE_IMPROVEMENT": 0
+            },
+            "harm_rate": 0.294921875,
+            "improvement_rate": 0.0,
+            "insufficient_rate": 0.705078125,
+            "median_stopping_checkpoint": 64.0
+          },
+          "mean_only": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 512,
+              "REPLICABLE_IMPROVEMENT": 0
+            },
+            "harm_rate": 1.0,
+            "improvement_rate": 0.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 8.0
+          },
+          "one_stream": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 43,
+              "REPLICABLE_HARM": 455,
+              "REPLICABLE_IMPROVEMENT": 14
+            },
+            "harm_rate": 0.888671875,
+            "improvement_rate": 0.02734375,
+            "insufficient_rate": 0.083984375,
+            "median_stopping_checkpoint": 1.0
+          },
+          "replication_only": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 361,
+              "REPLICABLE_HARM": 151,
+              "REPLICABLE_IMPROVEMENT": 0
+            },
+            "harm_rate": 0.294921875,
+            "improvement_rate": 0.0,
+            "insufficient_rate": 0.705078125,
+            "median_stopping_checkpoint": 64.0
+          },
+          "row_iid": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 445,
+              "REPLICABLE_HARM": 67,
+              "REPLICABLE_IMPROVEMENT": 0
+            },
+            "harm_rate": 0.130859375,
+            "improvement_rate": 0.0,
+            "insufficient_rate": 0.869140625,
+            "median_stopping_checkpoint": 1.0
+          }
+        },
+        "population_target": {
+          "decision": "REPLICABLE_HARM",
+          "mean_delta": -0.04611777667444266,
+          "practical_harm_probability": 0.8780288696289062,
+          "practical_improvement_probability": 0.018096923828125
+        },
+        "reference_identity_failures": 0,
+        "registered_target": "REPLICABLE_HARM",
+        "simultaneous_mean_coverage_rate": 0.966796875,
+        "template": "Large-LI",
+        "template_counts": {
+          "fn": 22,
+          "fp": 54,
+          "tn": 34708,
+          "tp": 2
+        }
+      },
+      "Small-LI": {
+        "endpoint_delta": 0.004166666666666667,
+        "identity_failures": 0,
+        "methods": {
+          "dgr_f1": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 512,
+              "REPLICABLE_IMPROVEMENT": 0
+            },
+            "harm_rate": 1.0,
+            "improvement_rate": 0.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 32.0
+          },
+          "mean_only": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 512,
+              "REPLICABLE_IMPROVEMENT": 0
+            },
+            "harm_rate": 1.0,
+            "improvement_rate": 0.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 8.0
+          },
+          "one_stream": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 512,
+              "REPLICABLE_IMPROVEMENT": 0
+            },
+            "harm_rate": 1.0,
+            "improvement_rate": 0.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 1.0
+          },
+          "replication_only": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 512,
+              "REPLICABLE_IMPROVEMENT": 0
+            },
+            "harm_rate": 1.0,
+            "improvement_rate": 0.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 32.0
+          },
+          "row_iid": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 17,
+              "REPLICABLE_HARM": 495,
+              "REPLICABLE_IMPROVEMENT": 0
+            },
+            "harm_rate": 0.966796875,
+            "improvement_rate": 0.0,
+            "insufficient_rate": 0.033203125,
+            "median_stopping_checkpoint": 1.0
+          }
+        },
+        "population_target": {
+          "decision": "REPLICABLE_HARM",
+          "mean_delta": -0.2434177302829517,
+          "practical_harm_probability": 0.9996337890625,
+          "practical_improvement_probability": 0.0001678466796875
+        },
+        "reference_identity_failures": 0,
+        "registered_target": "REPLICABLE_HARM",
+        "simultaneous_mean_coverage_rate": 0.978515625,
+        "template": "Small-LI",
+        "template_counts": {
+          "fn": 65,
+          "fp": 15,
+          "tn": 174525,
+          "tp": 15
+        }
+      }
+    },
+    "stable_iid_improvement": {
+      "Large-LI": {
+        "endpoint_delta": 0.004166666666666667,
+        "identity_failures": 0,
+        "methods": {
+          "dgr_f1": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 512
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 1.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 32.0
+          },
+          "mean_only": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 512
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 1.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 8.0
+          },
+          "one_stream": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 512
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 1.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 1.0
+          },
+          "replication_only": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 512
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 1.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 32.0
+          },
+          "row_iid": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 7,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 505
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 0.986328125,
+            "insufficient_rate": 0.013671875,
+            "median_stopping_checkpoint": 1.0
+          }
+        },
+        "population_target": {
+          "decision": "REPLICABLE_IMPROVEMENT",
+          "mean_delta": 0.2382343789741777,
+          "practical_harm_probability": 0.0,
+          "practical_improvement_probability": 0.9999008178710938
+        },
+        "reference_identity_failures": 0,
+        "registered_target": "REPLICABLE_IMPROVEMENT",
+        "simultaneous_mean_coverage_rate": 0.98828125,
+        "template": "Large-LI",
+        "template_counts": {
+          "fn": 22,
+          "fp": 54,
+          "tn": 34708,
+          "tp": 2
+        }
+      },
+      "Small-LI": {
+        "endpoint_delta": 0.004166666666666667,
+        "identity_failures": 0,
+        "methods": {
+          "dgr_f1": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 512
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 1.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 32.0
+          },
+          "mean_only": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 512
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 1.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 8.0
+          },
+          "one_stream": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 512
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 1.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 1.0
+          },
+          "replication_only": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 512
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 1.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 32.0
+          },
+          "row_iid": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 512
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 1.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 1.0
+          }
+        },
+        "population_target": {
+          "decision": "REPLICABLE_IMPROVEMENT",
+          "mean_delta": 0.3657580830810314,
+          "practical_harm_probability": 0.0,
+          "practical_improvement_probability": 1.0
+        },
+        "reference_identity_failures": 0,
+        "registered_target": "REPLICABLE_IMPROVEMENT",
+        "simultaneous_mean_coverage_rate": 0.99609375,
+        "template": "Small-LI",
+        "template_counts": {
+          "fn": 65,
+          "fp": 15,
+          "tn": 174525,
+          "tp": 15
+        }
+      }
+    },
+    "stable_temporal_improvement": {
+      "Large-LI": {
+        "endpoint_delta": 0.004166666666666667,
+        "identity_failures": 0,
+        "methods": {
+          "dgr_f1": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 512
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 1.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 32.0
+          },
+          "mean_only": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 512
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 1.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 8.0
+          },
+          "one_stream": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 512
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 1.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 1.0
+          },
+          "replication_only": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 512
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 1.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 32.0
+          },
+          "row_iid": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 51,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 461
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 0.900390625,
+            "insufficient_rate": 0.099609375,
+            "median_stopping_checkpoint": 1.0
+          }
+        },
+        "population_target": {
+          "decision": "REPLICABLE_IMPROVEMENT",
+          "mean_delta": 0.2100546977414796,
+          "practical_harm_probability": 0.00016021728515625,
+          "practical_improvement_probability": 0.9962997436523438
+        },
+        "reference_identity_failures": 0,
+        "registered_target": "REPLICABLE_IMPROVEMENT",
+        "simultaneous_mean_coverage_rate": 0.978515625,
+        "template": "Large-LI",
+        "template_counts": {
+          "fn": 22,
+          "fp": 54,
+          "tn": 34708,
+          "tp": 2
+        }
+      },
+      "Small-LI": {
+        "endpoint_delta": 0.004166666666666667,
+        "identity_failures": 0,
+        "methods": {
+          "dgr_f1": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 512
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 1.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 32.0
+          },
+          "mean_only": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 512
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 1.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 8.0
+          },
+          "one_stream": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 512
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 1.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 1.0
+          },
+          "replication_only": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 0,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 512
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 1.0,
+            "insufficient_rate": 0.0,
+            "median_stopping_checkpoint": 32.0
+          },
+          "row_iid": {
+            "decision_counts": {
+              "INSUFFICIENT_INFORMATION": 8,
+              "REPLICABLE_HARM": 0,
+              "REPLICABLE_IMPROVEMENT": 504
+            },
+            "harm_rate": 0.0,
+            "improvement_rate": 0.984375,
+            "insufficient_rate": 0.015625,
+            "median_stopping_checkpoint": 1.0
+          }
+        },
+        "population_target": {
+          "decision": "REPLICABLE_IMPROVEMENT",
+          "mean_delta": 0.3372663761394934,
+          "practical_harm_probability": 0.00012969970703125,
+          "practical_improvement_probability": 0.9997024536132812
+        },
+        "reference_identity_failures": 0,
+        "registered_target": "REPLICABLE_IMPROVEMENT",
+        "simultaneous_mean_coverage_rate": 0.984375,
+        "template": "Small-LI",
+        "template_counts": {
+          "fn": 65,
+          "fp": 15,
+          "tn": 174525,
+          "tp": 15
+        }
+      }
+    }
+  },
+  "unstable_abstention": {
+    "Large-LI": {
+      "base_ratio_sign_reversal": 1.0,
+      "positive_mean_low_replication": 1.0
+    },
+    "Small-LI": {
+      "base_ratio_sign_reversal": 1.0,
+      "positive_mean_low_replication": 1.0
+    }
+  },
+  "unstable_naive_claim_rates": {
+    "Large-LI": {
+      "base_ratio_sign_reversal": 0.7109375,
+      "positive_mean_low_replication": 1.0
+    },
+    "Small-LI": {
+      "base_ratio_sign_reversal": 0.87109375,
+      "positive_mean_low_replication": 1.0
+    }
+  }
+}
