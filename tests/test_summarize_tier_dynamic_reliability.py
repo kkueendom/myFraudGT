@@ -49,6 +49,14 @@ class SummarizeTierDynamicReliabilityTest(unittest.TestCase):
             "useful_aligned_evidence",
         )
 
+    def test_useful_threshold_scales_with_event_count(self):
+        self.assertEqual(
+            classify_mechanism(
+                0.02, 0.03, 0.01, 3, 1, 60, 4
+            ),
+            "useful_aligned_evidence",
+        )
+
     def test_classifies_sensitive_but_harmful(self):
         self.assertEqual(
             self.classify(0.02, 0.03, -0.01, 4, 12, 80),

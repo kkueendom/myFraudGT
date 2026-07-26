@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import math
 import statistics
 import sys
 from pathlib import Path
@@ -128,7 +129,8 @@ def classify_mechanism(
     if (
         normal_minus_shuffled_mean >= 0.01
         and same_batch_delta_mean > 0
-        and corrected_gt_broken_events >= 12
+        and corrected_gt_broken_events
+        >= math.ceil(0.75 * event_count)
         and mean_changed >= 50
     ):
         return "useful_aligned_evidence"
