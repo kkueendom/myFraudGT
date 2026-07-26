@@ -5,6 +5,7 @@
 - Origin Skill: academic-research-suite / experiment-agent
 - Status: completed
 - Audit commit: `33aab60f`
+- Machine aggregation commit: `a08f901`
 - Model checkpoint commit: `cd72ba5b`
 - Sampling protocol: `dynamic_random`
 - Remote results:
@@ -12,6 +13,8 @@
 - Local results:
   `/Users/kun/FraudGT_experiment_workspace/cet_dynamic_reliability_33aab60`
 - Evaluation events: 28
+- Machine-readable aggregate:
+  `docs/experiments/CET_DYNAMIC_RELIABILITY_RESULTS.json`
 
 ## Design
 
@@ -117,6 +120,14 @@ net correction. Support count alone is therefore not a reliability estimate.
 6. CET v1 cannot be repaired by objective-weight ablations because its failure
    is cross-scale, decision-level and reliability-related.
 
+The machine-validated mechanism classification is:
+
+- sensitive-but-harmful: `3/4` dataset/variant pairs;
+- used-but-unaligned: `1/4` (`Small-LI fusion`);
+- useful-aligned: `0/4`;
+- pairs whose single-event conclusion can reverse: `1/4`
+  (`Large-LI fusion`).
+
 ## Decision
 
 `CONFIRM_STOP_CET_V1`.
@@ -145,4 +156,3 @@ reliability framework with:
 This is an evaluation and reliability-method direction, not another decoder or
 fusion-head variant. It requires a new literature and novelty review before
 additional model training.
-
