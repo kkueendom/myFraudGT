@@ -44,11 +44,16 @@ def parse_args():
     parser.add_argument("--device", required=True)
     parser.add_argument("--variant", choices=("event_only", "dual_view"),
                         required=True)
+    parser.add_argument(
+        "--experiment-label",
+        choices=("event_only", "dual_view", "full_cdvt"),
+        required=True,
+    )
     parser.add_argument("--lambda-cons", type=float, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--max-epochs", type=int, default=120)
-    parser.add_argument("--early-stop-min-epoch", type=int, default=40)
-    parser.add_argument("--early-stop-patience-evals", type=int, default=6)
+    parser.add_argument("--max-epochs", type=int, default=500)
+    parser.add_argument("--early-stop-min-epoch", type=int, default=80)
+    parser.add_argument("--early-stop-patience-evals", type=int, default=10)
     return parser.parse_args()
 
 
@@ -79,6 +84,16 @@ def configure(args):
     cfg.val.fixed_target_panel = False
     if args.variant == "event_only" and args.lambda_cons != 0:
         raise ValueError("event-only does not use account-view consistency")
+    expected = {
+        "event_only": ("event_only", False),
+        "dual_view": ("dual_view", False),
+        "full_cdvt": ("dual_view", True),
+    }
+    expected_variant, requires_consistency = expected[args.experiment_label]
+    if args.variant != expected_variant:
+        raise ValueError("experiment label and architecture variant differ")
+    if requires_consistency != (args.lambda_cons > 0):
+        raise ValueError("experiment label and consistency setting differ")
     if args.lambda_cons < 0:
         raise ValueError("lambda_cons must be non-negative")
     return config
@@ -362,6 +377,10 @@ def main():
     loader_audit = audit_loaders(loaders)
     device = torch.device(args.device)
     model = create_model(dataset=dataset).to(device)
+    parameter_count = sum(
+        parameter.numel() for parameter in model.parameters())
+    if device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats(device)
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=float(cfg.optim.base_lr),
@@ -422,7 +441,8 @@ def main():
         "phase": "CDVT_phase1",
         "sampling_protocol": "dynamic_random",
         "dataset": str(cfg.dataset.name),
-        "variant": args.variant,
+        "variant": args.experiment_label,
+        "architecture_variant": args.variant,
         "lambda_cons": float(args.lambda_cons),
         "seed": int(cfg.seed),
         "git_commit": commit,
@@ -441,6 +461,11 @@ def main():
         "events": len(events),
         "epochs_completed": int(events[-1]["epoch"] + 1),
         "elapsed_seconds": time.monotonic() - started,
+        "parameter_count": int(parameter_count),
+        "peak_gpu_memory_bytes": (
+            int(torch.cuda.max_memory_allocated(device))
+            if device.type == "cuda" else 0
+        ),
         "loader_audit": loader_audit,
         "config_snapshot": config_snapshot,
     }
