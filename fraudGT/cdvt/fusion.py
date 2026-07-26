@@ -23,11 +23,6 @@ class DualViewFusionClassifier(nn.Module):
         if variant not in self.VARIANTS:
             raise ValueError(f"unknown CDVT variant: {variant}")
         self.variant = variant
-        self.account_projection = nn.Sequential(
-            nn.Linear(account_dim, hidden_dim),
-            nn.GELU(),
-            nn.LayerNorm(hidden_dim),
-        )
         self.event_encoder = CausalEventTransformer(
             num_currencies=num_currencies,
             num_payment_formats=num_payment_formats,
@@ -36,26 +31,32 @@ class DualViewFusionClassifier(nn.Module):
             num_layers=num_layers,
             dropout=dropout,
         )
-        self.cross_attention = nn.MultiheadAttention(
-            hidden_dim,
-            num_heads,
-            dropout=dropout,
-            batch_first=True,
-        )
-        self.cross_projection = nn.Linear(hidden_dim, hidden_dim)
-        self.fusion_norm = nn.LayerNorm(hidden_dim)
-        self.classifier = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, 1),
-        )
         self.event_classifier = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim),
             nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, 1),
         )
+        if variant == "dual_view":
+            self.account_projection = nn.Sequential(
+                nn.Linear(account_dim, hidden_dim),
+                nn.GELU(),
+                nn.LayerNorm(hidden_dim),
+            )
+            self.cross_attention = nn.MultiheadAttention(
+                hidden_dim,
+                num_heads,
+                dropout=dropout,
+                batch_first=True,
+            )
+            self.cross_projection = nn.Linear(hidden_dim, hidden_dim)
+            self.fusion_norm = nn.LayerNorm(hidden_dim)
+            self.classifier = nn.Sequential(
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.GELU(),
+                nn.Dropout(dropout),
+                nn.Linear(hidden_dim, 1),
+            )
 
     def forward(self, account_features, event_graph):
         event_states, target_events, event_diagnostics = (
@@ -98,4 +99,3 @@ class DualViewFusionClassifier(nn.Module):
             "cross_attention": attention,
         })
         return logits, diagnostics
-

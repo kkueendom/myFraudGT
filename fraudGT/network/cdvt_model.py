@@ -18,7 +18,12 @@ class CDVTModel(nn.Module):
         super().__init__()
         if not getattr(cfg.dataset, "tier_evidence", False):
             raise ValueError("CDVT requires dataset.tier_evidence=True")
-        self.account_encoder = GTModel(dim_in, dim_out, dataset)
+        self.variant = str(cfg.cdvt.variant)
+        self.account_encoder = (
+            None
+            if self.variant == "event_only"
+            else GTModel(dim_in, dim_out, dataset)
+        )
         full_store = dataset["test"][self.TASK]
         if not hasattr(full_store, "raw_edge_attr"):
             raise ValueError("CDVT requires immutable raw_edge_attr")
@@ -67,6 +72,18 @@ class CDVTModel(nn.Module):
         raise ValueError(f"unknown event condition: {condition}")
 
     def prepare_views(self, batch):
+        if self.variant == "event_only":
+            store = batch[self.TASK]
+            if not hasattr(store, "target_edge_id"):
+                raise ValueError(
+                    "event-only CDVT requires sampler target_edge_id")
+            mask = torch.isin(store.e_id, store.target_edge_id)
+            edge_ids = store.e_id[mask]
+            labels = store.y[mask]
+            account_features = store.edge_attr.new_empty(
+                (edge_ids.numel(), 0))
+            graph = self._event_graph(edge_ids)
+            return account_features, labels, edge_ids, graph
         encoded = self.account_encoder.encode_batch(batch)
         head = self.account_encoder.post_gt
         mask = head._edge_mask(encoded)

@@ -58,6 +58,8 @@ class CDVTModelComponentsTest(unittest.TestCase):
             dropout=0.0,
         )
         model.eval()
+        self.assertFalse(hasattr(model, "account_projection"))
+        self.assertFalse(hasattr(model, "cross_attention"))
         first, _ = model(torch.randn(2, 48), self.graph)
         second, _ = model(torch.randn(2, 48), self.graph)
         self.assertTrue(torch.equal(first, second))
