@@ -112,6 +112,12 @@ The full model is additionally evaluated with normal, shuffled, and off event
 graphs. Distinct scientific variants may run concurrently; duplicate runs may
 not be launched merely to occupy GPUs.
 
+The later module ablation uses a separate `causal_event_add` variant between
+account-only and cross-attention CDVT. It adds the encoded target-event state
+to the projected account representation without cross-attention. Therefore
+`causal_event_add -> dual_view` isolates the contribution of cross-view
+attention while keeping both encoders and the classifier location fixed.
+
 The original dynamic-random A2 reference is 0.46247 on Small-LI and 0.30108 on
 Large-LI for val-selected test F1. A matched account-only run is retained as an
 implementation control, while advancement is judged against the preregistered

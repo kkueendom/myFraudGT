@@ -44,12 +44,17 @@ def parse_args():
     parser.add_argument("--device", required=True)
     parser.add_argument(
         "--variant",
-        choices=("account_only", "event_only", "dual_view"),
+        choices=(
+            "account_only", "event_only", "additive_view", "dual_view"
+        ),
         required=True,
     )
     parser.add_argument(
         "--experiment-label",
-        choices=("account_only", "event_only", "dual_view", "full_cdvt"),
+        choices=(
+            "account_only", "event_only", "causal_event_add",
+            "dual_view", "full_cdvt"
+        ),
         required=True,
     )
     parser.add_argument("--lambda-cons", type=float, required=True)
@@ -92,6 +97,7 @@ def configure(args):
     expected = {
         "account_only": ("account_only", False),
         "event_only": ("event_only", False),
+        "causal_event_add": ("additive_view", False),
         "dual_view": ("dual_view", False),
         "full_cdvt": ("dual_view", True),
     }

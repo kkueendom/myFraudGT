@@ -6,7 +6,7 @@ from fraudGT.cdvt.temporal_transformer import CausalEventTransformer
 
 
 class DualViewFusionClassifier(nn.Module):
-    VARIANTS = {"event_only", "dual_view"}
+    VARIANTS = {"event_only", "additive_view", "dual_view"}
 
     def __init__(
         self,
@@ -37,19 +37,12 @@ class DualViewFusionClassifier(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, 1),
         )
-        if variant == "dual_view":
+        if variant in {"additive_view", "dual_view"}:
             self.account_projection = nn.Sequential(
                 nn.Linear(account_dim, hidden_dim),
                 nn.GELU(),
                 nn.LayerNorm(hidden_dim),
             )
-            self.cross_attention = nn.MultiheadAttention(
-                hidden_dim,
-                num_heads,
-                dropout=dropout,
-                batch_first=True,
-            )
-            self.cross_projection = nn.Linear(hidden_dim, hidden_dim)
             self.fusion_norm = nn.LayerNorm(hidden_dim)
             self.classifier = nn.Sequential(
                 nn.Linear(hidden_dim, hidden_dim),
@@ -57,6 +50,14 @@ class DualViewFusionClassifier(nn.Module):
                 nn.Dropout(dropout),
                 nn.Linear(hidden_dim, 1),
             )
+        if variant == "dual_view":
+            self.cross_attention = nn.MultiheadAttention(
+                hidden_dim,
+                num_heads,
+                dropout=dropout,
+                batch_first=True,
+            )
+            self.cross_projection = nn.Linear(hidden_dim, hidden_dim)
 
     def forward(self, account_features, event_graph):
         event_states, target_events, event_diagnostics = (
@@ -78,6 +79,18 @@ class DualViewFusionClassifier(nn.Module):
         ):
             raise ValueError("account and event graph rows must align")
         account = self.account_projection(account_features)
+        if self.variant == "additive_view":
+            fused = self.fusion_norm(account + target_events)
+            logits = self.classifier(fused).squeeze(-1)
+            diagnostics = dict(event_diagnostics)
+            diagnostics.update({
+                "account_norm": account.norm(dim=-1),
+                "fusion_norm": fused.norm(dim=-1),
+                "fusion_gain_norm": (fused - account).norm(dim=-1),
+                "cross_attention": event_states.new_zeros(
+                    (event_graph.num_graphs, 1, 1)),
+            })
+            return logits, diagnostics
         dense_events, event_mask = to_dense_batch(
             event_states, event_graph.node_graph)
         context, attention = self.cross_attention(

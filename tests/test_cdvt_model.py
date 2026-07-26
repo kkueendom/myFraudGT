@@ -64,6 +64,27 @@ class CDVTModelComponentsTest(unittest.TestCase):
         second, _ = model(torch.randn(2, 48), self.graph)
         self.assertTrue(torch.equal(first, second))
 
+    def test_additive_view_is_a_no_cross_attention_ablation(self):
+        model = DualViewFusionClassifier(
+            account_dim=48,
+            num_currencies=2,
+            num_payment_formats=2,
+            variant="additive_view",
+            hidden_dim=32,
+            num_heads=4,
+            num_layers=1,
+            dropout=0.0,
+        )
+        self.assertTrue(hasattr(model, "account_projection"))
+        self.assertFalse(hasattr(model, "cross_attention"))
+        account = torch.randn(2, 48, requires_grad=True)
+        logits, diagnostics = model(account, self.graph)
+        logits.sum().backward()
+        self.assertIsNotNone(account.grad)
+        self.assertIsNotNone(
+            model.event_encoder.layers[0].edge_key.weight.grad)
+        self.assertGreater(float(diagnostics["fusion_gain_norm"].sum()), 0)
+
     def test_normal_shuffled_and_off_are_distinct_interventions(self):
         model = DualViewFusionClassifier(
             account_dim=48,
