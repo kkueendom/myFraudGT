@@ -11,7 +11,7 @@ class CausalPredictiveSurpriseEncoder(nn.Module):
     RAW_DIM = 4
     ROLE_DIM = 5
     MOTIF_DIM = 3
-    FEATURE_DIM = 29
+    FEATURE_DIM = 31
 
     def __init__(
         self,
@@ -183,4 +183,3 @@ class CausalPredictiveSurpriseEncoder(nn.Module):
         if features.size(1) != self.FEATURE_DIM:
             raise AssertionError("unexpected CPSE feature dimension")
         return features
-
