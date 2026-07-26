@@ -1,0 +1,104 @@
+{
+  "checkpoints": [8, 16, 32, 64],
+  "delta": 0.05,
+  "epsilon": 0.005,
+  "pi0": 0.75,
+  "reference_streams": 131072,
+  "replicates": 512,
+  "streams": 64,
+  "templates": {
+    "Small-LI": {"tp": 15, "fp": 15, "fn": 65, "tn": 174525},
+    "Large-LI": {"tp": 2, "fp": 54, "fn": 22, "tn": 34708}
+  },
+  "scenarios": {
+    "stable_iid_improvement": {
+      "mode": "standard",
+      "parameters": {
+        "count_log_sd": 0.20,
+        "dependence_strength": 0.0,
+        "add_corrected_rate": 0.45,
+        "add_broken_rate": 0.000005,
+        "remove_corrected_rate": 0.15,
+        "remove_broken_rate": 0.01
+      }
+    },
+    "stable_graph_improvement": {
+      "mode": "standard",
+      "parameters": {
+        "count_log_sd": 0.35,
+        "dependence_strength": 0.65,
+        "add_corrected_rate": 0.40,
+        "add_broken_rate": 0.000008,
+        "remove_corrected_rate": 0.12,
+        "remove_broken_rate": 0.01
+      }
+    },
+    "stable_temporal_improvement": {
+      "mode": "temporal",
+      "parameters": {
+        "count_log_sd": 0.30,
+        "dependence_strength": 0.30,
+        "ratio_drift_strength": 0.55,
+        "utility_drift_strength": 0.20,
+        "add_corrected_rate": 0.38,
+        "add_broken_rate": 0.000007,
+        "remove_corrected_rate": 0.10,
+        "remove_broken_rate": 0.01
+      }
+    },
+    "positive_mean_low_replication": {
+      "mode": "mixture",
+      "parameters": {
+        "count_log_sd": 0.25,
+        "positive_probability": 0.60,
+        "positive_add_rate": 0.55,
+        "positive_add_broken_rate": 0.000003,
+        "positive_remove_corrected_rate": 0.20,
+        "positive_remove_broken_rate": 0.00,
+        "negative_add_rate": 0.01,
+        "negative_add_broken_rate": 0.000030,
+        "negative_remove_corrected_rate": 0.01,
+        "negative_remove_broken_rate": 0.45
+      }
+    },
+    "base_ratio_sign_reversal": {
+      "mode": "ratio_reversal",
+      "parameters": {
+        "count_log_sd": 0.30,
+        "high_ratio_probability": 0.50,
+        "tp_high_multiplier": 3.00,
+        "tp_low_multiplier": 0.35,
+        "remove_corrected_rate": 0.50,
+        "remove_broken_count": 1
+      }
+    },
+    "null_intervention": {
+      "mode": "null",
+      "parameters": {
+        "count_log_sd": 0.30,
+        "add_corrected_rate": 0.20,
+        "remove_corrected_rate": 0.20
+      }
+    },
+    "stable_harm": {
+      "mode": "standard",
+      "parameters": {
+        "count_log_sd": 0.25,
+        "dependence_strength": 0.20,
+        "add_corrected_rate": 0.01,
+        "add_broken_rate": 0.000040,
+        "remove_corrected_rate": 0.01,
+        "remove_broken_rate": 0.55
+      }
+    }
+  },
+  "tasks": [
+    {"gpu": 0, "scenario": "stable_iid_improvement", "seed": 76001},
+    {"gpu": 1, "scenario": "stable_graph_improvement", "seed": 76002},
+    {"gpu": 2, "scenario": "stable_temporal_improvement", "seed": 76003},
+    {"gpu": 3, "scenario": "positive_mean_low_replication", "seed": 76004},
+    {"gpu": 4, "scenario": "base_ratio_sign_reversal", "seed": 76005},
+    {"gpu": 5, "scenario": "null_intervention", "seed": 76006},
+    {"gpu": 6, "scenario": "stable_harm", "seed": 76007}
+  ]
+}
