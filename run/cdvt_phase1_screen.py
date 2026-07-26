@@ -346,6 +346,16 @@ def main():
     args = parse_args()
     config_snapshot = configure(args)
     commit = git_output("rev-parse", "HEAD")
+    protected_outputs = (
+        args.output_dir / "manifest.json",
+        args.output_dir / "trajectory.jsonl",
+        args.output_dir / "best_val.ckpt",
+    )
+    existing = [str(path) for path in protected_outputs if path.exists()]
+    if existing:
+        raise FileExistsError(
+            f"refusing to overwrite experiment artifacts: {existing}")
+    args.output_dir.mkdir(parents=True, exist_ok=True)
     seed_everything(int(cfg.seed))
     dataset = create_dataset()
     loaders = create_loader(dataset=dataset, shuffle=True)
@@ -360,9 +370,6 @@ def main():
     scheduler = cosine_schedule(
         optimizer, int(args.max_epochs), int(cfg.optim.num_warmup_epochs))
 
-    if args.output_dir.exists() and any(args.output_dir.iterdir()):
-        raise FileExistsError(f"output is not empty: {args.output_dir}")
-    args.output_dir.mkdir(parents=True, exist_ok=True)
     trajectory_path = args.output_dir / "trajectory.jsonl"
     checkpoint_path = args.output_dir / "best_val.ckpt"
     best_val = -1.0
