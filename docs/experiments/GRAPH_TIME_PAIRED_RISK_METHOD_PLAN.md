@@ -46,7 +46,8 @@ Rows are linked in a dependency graph when they share a source or destination
 entity, refer to the same unique target transaction, or fall within a
 preregistered temporal dependence window. GTPRC selects the least restrictive
 policy whose dependency-adjusted upper confidence bound on break risk is at
-most \(\alpha\), then maximizes corrective coverage.
+most \(\alpha=0.40\), then maximizes corrective coverage. The registered
+confidence failure probability is \(\delta=0.05\).
 
 Add and remove policies are fitted and calibrated separately. Validation and
 test labels never define policies, thresholds, blocks, or confidence bounds.
@@ -98,7 +99,7 @@ to occupy GPUs.
 
 GTPRC advances only if:
 
-- violation probability is at most \(\alpha + 0.02\) in every dependent
+- violation probability is at most \(\delta + 0.02=0.07\) in every dependent
   regime;
 - false qualification is at most 0.05 in shuffled and harmful controls;
 - median coverage is at least 60% of oracle coverage in at least five of seven
@@ -234,4 +235,3 @@ Every task must record:
 - Use all free GPUs only for distinct preregistered tasks.
 - Poll infrequently and keep logs concise.
 - Stop immediately when a hard gate fails.
-
