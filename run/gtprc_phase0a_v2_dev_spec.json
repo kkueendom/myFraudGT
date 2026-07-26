@@ -5,17 +5,17 @@
   "delta": 0.05,
   "min_coverage": 0.01,
   "mode": "development",
-  "policy_count": 16,
+  "policy_count": 64,
   "replicates": 64,
   "stress_version": 2,
   "tasks": [
-    {"gpu": 0, "regime": "iid", "seed": 62001},
-    {"gpu": 1, "regime": "entity_cluster", "seed": 62002},
-    {"gpu": 2, "regime": "temporal_autocorrelation", "seed": 62003},
-    {"gpu": 3, "regime": "entity_temporal", "seed": 62004},
-    {"gpu": 4, "regime": "prevalence_drift", "seed": 62005},
-    {"gpu": 5, "regime": "alignment_drift", "seed": 62006},
-    {"gpu": 6, "regime": "rare_duplicate", "seed": 62007}
+    {"gpu": 0, "regime": "iid", "seed": 63001},
+    {"gpu": 1, "regime": "entity_cluster", "seed": 63002},
+    {"gpu": 2, "regime": "temporal_autocorrelation", "seed": 63003},
+    {"gpu": 3, "regime": "entity_temporal", "seed": 63004},
+    {"gpu": 4, "regime": "prevalence_drift", "seed": 63005},
+    {"gpu": 5, "regime": "alignment_drift", "seed": 63006},
+    {"gpu": 6, "regime": "rare_duplicate", "seed": 63007}
   ],
   "test_rows": 16384
 }

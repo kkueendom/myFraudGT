@@ -118,6 +118,7 @@ V2_REGIMES = {
         "score_correct_weight": 1.55,
         "score_break_weight": 1.25,
         "score_noise": 1.35,
+        "score_shared_weight": 0.0,
     },
     "entity_cluster": {
         "graph_group_size": 128,
@@ -132,6 +133,7 @@ V2_REGIMES = {
         "score_correct_weight": 1.55,
         "score_break_weight": 1.25,
         "score_noise": 1.35,
+        "score_shared_weight": 0.0,
     },
     "temporal_autocorrelation": {
         "graph_group_size": 128,
@@ -146,6 +148,7 @@ V2_REGIMES = {
         "score_correct_weight": 1.55,
         "score_break_weight": 1.25,
         "score_noise": 1.35,
+        "score_shared_weight": 0.0,
     },
     "entity_temporal": {
         "graph_group_size": 256,
@@ -160,6 +163,7 @@ V2_REGIMES = {
         "score_correct_weight": 1.55,
         "score_break_weight": 1.25,
         "score_noise": 1.35,
+        "score_shared_weight": 0.0,
     },
     "prevalence_drift": {
         "graph_group_size": 128,
@@ -174,6 +178,7 @@ V2_REGIMES = {
         "score_correct_weight": 1.55,
         "score_break_weight": 1.25,
         "score_noise": 1.35,
+        "score_shared_weight": 0.0,
     },
     "alignment_drift": {
         "graph_group_size": 128,
@@ -188,6 +193,7 @@ V2_REGIMES = {
         "score_correct_weight": 1.55,
         "score_break_weight": 1.25,
         "score_noise": 1.35,
+        "score_shared_weight": 0.0,
     },
     "rare_duplicate": {
         "graph_group_size": 256,
@@ -202,6 +208,7 @@ V2_REGIMES = {
         "score_correct_weight": 1.70,
         "score_break_weight": 1.30,
         "score_noise": 1.25,
+        "score_shared_weight": 0.0,
     },
 }
 
@@ -303,7 +310,7 @@ def simulate_potential_outcomes(
             - float(config.get("score_break_weight", 2.2))
             * broken.to(torch.float32)
         )
-        - 0.35 * shared
+        - float(config.get("score_shared_weight", 0.35)) * shared
         + float(config.get("score_noise", 0.85)) * score_noise
     )
     permutation = torch.randperm(
@@ -404,6 +411,7 @@ def empty_accumulator(methods):
             "coverage": [],
             "oracle_fraction": [],
             "net_count": [],
+            "risk": [],
         }
         for method in methods
     }
@@ -501,6 +509,8 @@ def run_simulation(
                 fraction.detach().cpu().tolist())
             row["net_count"].extend(
                 evaluated["net_count"].detach().cpu().tolist())
+            row["risk"].extend(
+                evaluated["risk"].detach().cpu().tolist())
 
         for control in ("shuffled", "harmful"):
             control_thresholds = candidate_thresholds(
@@ -532,6 +542,7 @@ def run_simulation(
         oracle_fraction = torch.tensor(
             row.pop("oracle_fraction"), dtype=torch.float64)
         net_count = torch.tensor(row.pop("net_count"), dtype=torch.float64)
+        risk = torch.tensor(row.pop("risk"), dtype=torch.float64)
         summaries[method] = {
             **row,
             "qualification_rate": row["qualified"] / row["replicates"],
@@ -543,6 +554,8 @@ def run_simulation(
             "oracle_fraction_median": float(
                 oracle_fraction.median().item()),
             "net_count_mean": float(net_count.mean().item()),
+            "selected_test_risk_mean": float(risk.mean().item()),
+            "selected_test_risk_median": float(risk.median().item()),
         }
     controls = {
         key: {
