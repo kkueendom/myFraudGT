@@ -18,6 +18,20 @@ method screen, not a hyperparameter search.
 - Every run records dataset, variant, seed, commit, config, checkpoint,
   selected epoch, both F1 metrics, runtime, and `sampling_protocol`.
 
+### Original-paper verification
+
+FraudGT Section 4.1.3 (PDF page 6) states that test performance is
+reported using the learned parameters with the highest validation
+performance. The public configuration sets `metric_best: f1`, and
+`fraudGT/train/custom_train.py::get_best_epoch` applies `argmax` to the
+validation F1 trajectory. CDVT therefore reports test F1 from the epoch
+selected by validation F1 and keeps raw-best test F1 secondary.
+
+The original paper reports standard deviations over five random-seed runs.
+This project's formal target is the separately preregistered three real seeds
+42, 43, and 44. Results must describe this as a three-seed CDVT evaluation,
+not as an exact reproduction of the paper's five-run uncertainty estimate.
+
 ## Model contract
 
 ### Account view
