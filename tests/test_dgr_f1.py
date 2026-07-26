@@ -34,7 +34,8 @@ class DGRF1Test(unittest.TestCase):
         stable = np.full(64, 0.03)
         result = dgr_f1_trajectory(stable)
         self.assertEqual(result["decision"], DECISION_IMPROVEMENT)
-        mixed = np.asarray([0.03] * 40 + [-0.01] * 24)
+        mixed = np.asarray(
+            ([0.03] * 5 + [-0.01] * 3) * 8)
         self.assertEqual(
             mean_only_trajectory(mixed)["decision"],
             DECISION_IMPROVEMENT,
