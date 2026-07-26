@@ -60,6 +60,12 @@ def gradient_norm(module):
     return float(torch.stack(values).norm().cpu())
 
 
+def clone_batch(raw_batch, device):
+    batch = raw_batch.clone()
+    batch.split = "train"
+    return batch.to(device)
+
+
 def main():
     args = parse_args()
     raw_config = configure(args.config.resolve(), args.device)
@@ -78,9 +84,8 @@ def main():
     device = torch.device(args.device)
     model = create_model(dataset=dataset).to(device)
     model.train()
-    batch = next(iter(loaders[0]))
-    batch.split = "train"
-    batch.to(device)
+    raw_batch = next(iter(loaders[0]))
+    batch = clone_batch(raw_batch, device)
     logits, labels, diagnostics = model.forward_details(batch, "normal")
     loss, _ = compute_loss(logits, labels)
     loss.backward()
@@ -92,9 +97,12 @@ def main():
 
     model.eval()
     with torch.no_grad():
-        normal, _, normal_diagnostics = model.forward_details(batch, "normal")
-        shuffled, _, _ = model.forward_details(batch, "shuffled")
-        off, _, off_diagnostics = model.forward_details(batch, "off")
+        normal, _, normal_diagnostics = model.forward_details(
+            clone_batch(raw_batch, device), "normal")
+        shuffled, _, _ = model.forward_details(
+            clone_batch(raw_batch, device), "shuffled")
+        off, _, off_diagnostics = model.forward_details(
+            clone_batch(raw_batch, device), "off")
     if torch.equal(normal, shuffled) or torch.equal(normal, off):
         raise AssertionError("event interventions must alter predictions")
 
