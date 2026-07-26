@@ -1,0 +1,20 @@
+{
+  "alpha": 0.4,
+  "batch_size": 8,
+  "calibration_rows": 8192,
+  "delta": 0.05,
+  "min_coverage": 0.01,
+  "policy_count": 16,
+  "replicates": 512,
+  "tasks": [
+    {"gpu": 0, "regime": "iid", "seed": 61001},
+    {"gpu": 1, "regime": "entity_cluster", "seed": 61002},
+    {"gpu": 2, "regime": "temporal_autocorrelation", "seed": 61003},
+    {"gpu": 3, "regime": "entity_temporal", "seed": 61004},
+    {"gpu": 4, "regime": "prevalence_drift", "seed": 61005},
+    {"gpu": 5, "regime": "alignment_drift", "seed": 61006},
+    {"gpu": 6, "regime": "rare_duplicate", "seed": 61007}
+  ],
+  "test_rows": 16384
+}
+
