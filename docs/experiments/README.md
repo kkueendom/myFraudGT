@@ -56,6 +56,11 @@ Current read order for another model or reviewer:
 8. `EXTERNAL_RELIABILITY_VALIDATION_FEASIBILITY.md`
    External dataset/task/resource comparison and remaining access blockers.
 
+Publication figures are generated deterministically by
+`run/plot_temporal_reliability_results.py`. The script reads the authoritative
+nested-result JSON plus all 36 manifests and records SHA-256 hashes for every
+source artifact used in the plots.
+
 - Primary: candidate Val-selected Test F1 versus initial A2 Val-selected Test F1.
 - Supplementary: candidate Raw-best Test F1 versus initial A2 Raw-best Test F1.
 - Never compare across the two metric columns.
