@@ -344,7 +344,11 @@ def run_audit(spec, task, args):
         "audit_seed": int(task["audit_seed"]),
         "git_commit": commit,
         "checkpoint_git_commit": checkpoint.get("git_commit"),
-        "checkpoint_epoch": checkpoint.get("epoch"),
+        "checkpoint_epoch": (
+            checkpoint.get("epoch")
+            if checkpoint.get("epoch") is not None
+            else int(Path(task["checkpoint"]).stem)
+        ),
         "config": str(config_path),
         "dropped_runtime_config_keys": dropped_config_keys,
         "normalized_archived_config_values": normalized_config_values,
