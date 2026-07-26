@@ -15,5 +15,5 @@ def set_cfg_cdvt(cfg):
     cfg.cdvt.history_hops = 2
     cfg.cdvt.max_events = 48
     cfg.cdvt.time_window = -1
+    cfg.cdvt.event_cache_size = 8192
     cfg.cdvt.lambda_cons = 0.0
-

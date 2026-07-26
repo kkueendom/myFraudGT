@@ -78,6 +78,7 @@ cdvt:
   history_hops: 2
   max_events: 48
   time_window: -1
+  event_cache_size: 8192
   lambda_cons: 0.0
 optim:
   batch_accumulation: 8

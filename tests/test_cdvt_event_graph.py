@@ -67,6 +67,17 @@ class CausalEventGraphIndexTest(unittest.TestCase):
         self.assertEqual(graph.node_raw.size(1), 4)
         self.assertFalse(hasattr(graph, "labels"))
 
+    def test_bounded_cache_reuses_only_identical_queries(self):
+        index = CausalEventGraphIndex(
+            self.edges, self.times, self.raw, cache_size=1)
+        first = index.query(torch.tensor([4]), k=2, hops=1)
+        second = index.query(torch.tensor([4]), k=2, hops=1)
+        self.assertTrue(torch.equal(first.node_edge_ids, second.node_edge_ids))
+        self.assertEqual(len(index._query_cache), 1)
+        index.query(torch.tensor([6]), k=2, hops=1)
+        self.assertEqual(len(index._query_cache), 1)
+        self.assertEqual(next(iter(index._query_cache))[0], 6)
+
 
 if __name__ == "__main__":
     unittest.main()

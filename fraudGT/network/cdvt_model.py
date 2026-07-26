@@ -31,6 +31,7 @@ class CDVTModel(nn.Module):
             edge_index=full_store.edge_index,
             timestamps=full_store.timestamps,
             raw_edge_attr=full_store.raw_edge_attr,
+            cache_size=int(cfg.cdvt.event_cache_size),
         )
         raw = full_store.raw_edge_attr
         account_dim = int(cfg.gt.dim_hidden) * 3

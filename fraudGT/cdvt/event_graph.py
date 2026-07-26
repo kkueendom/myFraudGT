@@ -1,3 +1,4 @@
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Optional
 
@@ -96,7 +97,9 @@ class CausalEventGraphIndex:
     OUT_IN = 2
     IN_OUT = 3
 
-    def __init__(self, edge_index, timestamps, raw_edge_attr):
+    def __init__(
+        self, edge_index, timestamps, raw_edge_attr, cache_size=0
+    ):
         if edge_index.dim() != 2 or edge_index.size(0) != 2:
             raise ValueError("edge_index must have shape [2, num_edges]")
         num_edges = int(edge_index.size(1))
@@ -112,6 +115,8 @@ class CausalEventGraphIndex:
             raise ValueError("transactions must be timestamp sorted")
         if not torch.isfinite(raw_edge_attr.float()).all():
             raise ValueError("raw_edge_attr must be finite")
+        if cache_size < 0:
+            raise ValueError("cache_size must be non-negative")
 
         self.edge_index = edge_index.detach().cpu().long().contiguous()
         self.timestamps = timestamps.detach().cpu().long().contiguous()
@@ -119,6 +124,8 @@ class CausalEventGraphIndex:
         self.num_edges = num_edges
         self.num_accounts = (
             int(self.edge_index.max()) + 1 if num_edges else 0)
+        self.cache_size = int(cache_size)
+        self._query_cache = OrderedDict()
         self._build_incident_index()
 
     def _build_incident_index(self):
@@ -273,6 +280,22 @@ class CausalEventGraphIndex:
         target_delta = target_time - self.timestamps[node_ids]
         return node_ids, target_delta.float(), edge_index, edge_attr, relation
 
+    def _cached_build_one(
+        self, target_id, k, hops, max_events, time_window
+    ):
+        key = (int(target_id), int(k), int(hops), int(max_events), time_window)
+        if key in self._query_cache:
+            row = self._query_cache.pop(key)
+            self._query_cache[key] = row
+            return row
+        row = self._build_one(
+            target_id, k, hops, max_events, time_window)
+        if self.cache_size:
+            self._query_cache[key] = row
+            while len(self._query_cache) > self.cache_size:
+                self._query_cache.popitem(last=False)
+        return row
+
     def query(
         self,
         target_edge_ids: torch.Tensor,
@@ -294,7 +317,7 @@ class CausalEventGraphIndex:
             raise ValueError("time_window must be non-negative")
 
         output_device = target_edge_ids.device
-        rows = [self._build_one(
+        rows = [self._cached_build_one(
             int(target), k, hops, max_events, time_window)
             for target in target_edge_ids.detach().cpu().tolist()]
         node_ids = []
