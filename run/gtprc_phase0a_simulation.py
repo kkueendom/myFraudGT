@@ -18,6 +18,7 @@ if str(REPO_ROOT) not in sys.path:
 from fraudGT.evidence.gtprc import (  # noqa: E402
     gather_policy,
     grouped_empirical_bernstein_upper,
+    grouped_hoeffding_upper,
     row_wilson_upper,
     select_max_coverage_policy,
 )
@@ -103,6 +104,107 @@ REGIMES = {
     },
 }
 
+V2_REGIMES = {
+    "iid": {
+        "graph_group_size": 1,
+        "entity_group_size": 1,
+        "time_group_size": 1,
+        "shared_strength": 0.0,
+        "time_drift": 0.0,
+        "alignment_drift": 0.0,
+        "correct_logit": -1.75,
+        "break_logit": -0.15,
+        "duplicate_strength": 0.0,
+        "score_correct_weight": 1.55,
+        "score_break_weight": 1.25,
+        "score_noise": 1.35,
+    },
+    "entity_cluster": {
+        "graph_group_size": 128,
+        "entity_group_size": 128,
+        "time_group_size": 1,
+        "shared_strength": 1.55,
+        "time_drift": 0.0,
+        "alignment_drift": 0.0,
+        "correct_logit": -1.75,
+        "break_logit": -0.15,
+        "duplicate_strength": 0.0,
+        "score_correct_weight": 1.55,
+        "score_break_weight": 1.25,
+        "score_noise": 1.35,
+    },
+    "temporal_autocorrelation": {
+        "graph_group_size": 128,
+        "entity_group_size": 1,
+        "time_group_size": 128,
+        "shared_strength": 1.55,
+        "time_drift": 0.0,
+        "alignment_drift": 0.0,
+        "correct_logit": -1.75,
+        "break_logit": -0.15,
+        "duplicate_strength": 0.0,
+        "score_correct_weight": 1.55,
+        "score_break_weight": 1.25,
+        "score_noise": 1.35,
+    },
+    "entity_temporal": {
+        "graph_group_size": 256,
+        "entity_group_size": 16,
+        "time_group_size": 16,
+        "shared_strength": 1.75,
+        "time_drift": 0.0,
+        "alignment_drift": 0.0,
+        "correct_logit": -1.75,
+        "break_logit": -0.15,
+        "duplicate_strength": 0.0,
+        "score_correct_weight": 1.55,
+        "score_break_weight": 1.25,
+        "score_noise": 1.35,
+    },
+    "prevalence_drift": {
+        "graph_group_size": 128,
+        "entity_group_size": 8,
+        "time_group_size": 32,
+        "shared_strength": 1.35,
+        "time_drift": 1.15,
+        "alignment_drift": 0.0,
+        "correct_logit": -1.85,
+        "break_logit": -0.20,
+        "duplicate_strength": 0.0,
+        "score_correct_weight": 1.55,
+        "score_break_weight": 1.25,
+        "score_noise": 1.35,
+    },
+    "alignment_drift": {
+        "graph_group_size": 128,
+        "entity_group_size": 8,
+        "time_group_size": 32,
+        "shared_strength": 1.35,
+        "time_drift": 0.0,
+        "alignment_drift": 1.10,
+        "correct_logit": -1.75,
+        "break_logit": -0.15,
+        "duplicate_strength": 0.0,
+        "score_correct_weight": 1.55,
+        "score_break_weight": 1.25,
+        "score_noise": 1.35,
+    },
+    "rare_duplicate": {
+        "graph_group_size": 256,
+        "entity_group_size": 32,
+        "time_group_size": 32,
+        "shared_strength": 1.85,
+        "time_drift": 0.0,
+        "alignment_drift": 0.0,
+        "correct_logit": -2.65,
+        "break_logit": -0.45,
+        "duplicate_strength": 0.9,
+        "score_correct_weight": 1.70,
+        "score_break_weight": 1.30,
+        "score_noise": 1.25,
+    },
+}
+
 
 METHOD_GROUP_KEYS = {
     "row_iid": None,
@@ -136,9 +238,15 @@ def verify_repository(expected_commit):
     return commit
 
 
-def expand_group_effect(batch_size, row_count, group_size, device):
+def expand_group_effect(
+        batch_size, row_count, group_size, device, generator):
     group_count = row_count // int(group_size)
-    effects = torch.randn(batch_size, group_count, device=device)
+    effects = torch.randn(
+        batch_size,
+        group_count,
+        device=device,
+        generator=generator,
+    )
     return effects.repeat_interleave(int(group_size), dim=1)
 
 
@@ -148,7 +256,7 @@ def simulate_potential_outcomes(
     if row_count % group_size != 0:
         raise ValueError("row_count must be divisible by graph group size")
     shared = expand_group_effect(
-        batch_size, row_count, group_size, device)
+        batch_size, row_count, group_size, device, generator)
     position = torch.linspace(
         -1.0, 1.0, row_count, device=device)[None, :]
     individual = torch.randn(
@@ -190,11 +298,13 @@ def simulate_potential_outcomes(
     )
     aligned_score = (
         alignment * (
-            2.7 * corrected.to(torch.float32)
-            - 2.2 * broken.to(torch.float32)
+            float(config.get("score_correct_weight", 2.7))
+            * corrected.to(torch.float32)
+            - float(config.get("score_break_weight", 2.2))
+            * broken.to(torch.float32)
         )
         - 0.35 * shared
-        + 0.85 * score_noise
+        + float(config.get("score_noise", 0.85)) * score_noise
     )
     permutation = torch.randperm(
         row_count, device=device, generator=generator)
@@ -228,12 +338,19 @@ def policy_tensors(scores, broken, corrected, thresholds):
     return selected, coverage, net
 
 
-def method_upper(method, selected, broken, config, family_size, delta):
+def method_upper(
+        method, selected, broken, config, family_size, delta,
+        stress_version):
     group_key = METHOD_GROUP_KEYS[method]
     if group_key is None:
         return row_wilson_upper(
             selected, broken, family_size, delta)
-    return grouped_empirical_bernstein_upper(
+    bound = (
+        grouped_hoeffding_upper
+        if int(stress_version) == 2
+        else grouped_empirical_bernstein_upper
+    )
+    return bound(
         selected,
         broken,
         int(config[group_key]),
@@ -303,16 +420,19 @@ def run_simulation(
         alpha,
         delta,
         min_coverage,
-        device):
-    config = REGIMES[regime]
+        device,
+        stress_version=1):
+    regime_table = V2_REGIMES if int(stress_version) == 2 else REGIMES
+    config = regime_table[regime]
     methods = list(METHOD_GROUP_KEYS)
     accumulator = empty_accumulator(methods)
     control_qualified = {"shuffled": 0, "harmful": 0}
     completed = 0
     generator = torch.Generator(device=device)
     generator.manual_seed(int(seed))
+    quantile_start = 0.0 if int(stress_version) == 2 else 0.50
     quantiles = torch.linspace(
-        0.50, 0.995, policy_count, device=device)
+        quantile_start, 0.995, policy_count, device=device)
 
     while completed < replicates:
         current = min(batch_size, replicates - completed)
@@ -352,6 +472,7 @@ def run_simulation(
                 config,
                 policy_count,
                 delta,
+                stress_version,
             )
             indices = select_max_coverage_policy(
                 coverage, net, upper, alpha, min_coverage)
@@ -397,6 +518,7 @@ def run_simulation(
                 config,
                 policy_count,
                 delta,
+                stress_version,
             )
             c_indices = select_max_coverage_policy(
                 c_coverage, c_net, c_upper, alpha, min_coverage)
@@ -435,6 +557,8 @@ def run_simulation(
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--regime", choices=sorted(REGIMES), required=True)
+    parser.add_argument("--stress-version", type=int, choices=(1, 2),
+                        default=1)
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--expected-commit")
@@ -471,11 +595,13 @@ def main():
         delta=args.delta,
         min_coverage=args.min_coverage,
         device=device,
+        stress_version=args.stress_version,
     )
     args.output_dir.mkdir(parents=True, exist_ok=False)
     manifest = {
         "experiment": "gtprc_phase0a_controlled_dependence",
         "regime": args.regime,
+        "stress_version": args.stress_version,
         "seed": args.seed,
         "git_commit": commit,
         "experiment_protocol": "controlled_graph_time_simulation",
@@ -489,7 +615,9 @@ def main():
         "delta": args.delta,
         "min_coverage": args.min_coverage,
         "device": str(device),
-        "regime_config": REGIMES[args.regime],
+        "regime_config": (
+            V2_REGIMES if args.stress_version == 2 else REGIMES
+        )[args.regime],
         "methods": summaries,
         "controls": controls,
         "runtime_seconds": time.time() - started,

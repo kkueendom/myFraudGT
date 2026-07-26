@@ -5,6 +5,7 @@ import torch
 from fraudGT.evidence.gtprc import (
     gather_policy,
     grouped_empirical_bernstein_upper,
+    grouped_hoeffding_upper,
     row_wilson_upper,
     select_max_coverage_policy,
 )
@@ -39,6 +40,15 @@ class GTPRCTest(unittest.TestCase):
         self.assertEqual(chosen.item(), 1)
         gathered = gather_policy(coverage, chosen)
         self.assertAlmostEqual(gathered.item(), 0.3, places=6)
+
+    def test_hoeffding_bound_uses_independent_group_count(self):
+        selected = torch.ones((1, 1, 1024), dtype=torch.bool)
+        broken = torch.zeros((1, 1024), dtype=torch.bool)
+        many_groups = grouped_hoeffding_upper(
+            selected, broken, 4, 1, 0.05)
+        few_groups = grouped_hoeffding_upper(
+            selected, broken, 128, 1, 0.05)
+        self.assertGreater(few_groups.item(), many_groups.item())
 
     def test_aggregate_requires_all_seven_regimes(self):
         with self.assertRaises(ValueError):

@@ -30,6 +30,8 @@ for task in "${TASKS[@]}"; do
   CUDA_VISIBLE_DEVICES="${gpu}" "${PYTHON_BIN}" \
     "${REPO}/run/gtprc_phase0a_simulation.py" \
     --regime "${regime}" \
+    --stress-version "$("${PYTHON_BIN}" -c \
+      "import json; print(json.load(open('${SPEC}')).get('stress_version', 1))")" \
     --seed "${seed}" \
     --output-dir "${task_dir}" \
     --expected-commit "${COMMIT}" \
@@ -64,6 +66,20 @@ if [[ "${status}" -ne 0 ]]; then
   exit "${status}"
 fi
 
-"${PYTHON_BIN}" "${REPO}/run/summarize_gtprc_phase0a.py" \
-  --input-root "${OUTPUT}" \
-  --output-json "${OUTPUT}/gtprc_phase0a_aggregate.json"
+stress_version="$("${PYTHON_BIN}" -c \
+  "import json; print(json.load(open('${SPEC}')).get('stress_version', 1))")"
+if [[ "${stress_version}" == "2" ]]; then
+  mode="$("${PYTHON_BIN}" -c \
+    "import json; print(json.load(open('${SPEC}'))['mode'])")"
+  expected_replicates="$("${PYTHON_BIN}" -c \
+    "import json; print(json.load(open('${SPEC}'))['replicates'])")"
+  "${PYTHON_BIN}" "${REPO}/run/summarize_gtprc_phase0a_v2.py" \
+    --input-root "${OUTPUT}" \
+    --output-json "${OUTPUT}/gtprc_phase0a_v2_aggregate.json" \
+    --mode "${mode}" \
+    --expected-replicates "${expected_replicates}"
+else
+  "${PYTHON_BIN}" "${REPO}/run/summarize_gtprc_phase0a.py" \
+    --input-root "${OUTPUT}" \
+    --output-json "${OUTPUT}/gtprc_phase0a_aggregate.json"
+fi

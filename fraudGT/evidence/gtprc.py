@@ -88,6 +88,43 @@ def grouped_empirical_bernstein_upper(
     )
 
 
+def grouped_hoeffding_upper(
+        selected, broken, group_size, family_size, delta):
+    """Bonferroni-adjusted Hoeffding bound over group break rates."""
+    if selected.ndim != 3 or broken.ndim != 2:
+        raise ValueError("expected selected [R,K,N] and broken [R,N]")
+    replicate_count, policy_count, row_count = selected.shape
+    if row_count % int(group_size) != 0:
+        raise ValueError("row count must be divisible by group_size")
+    group_count = row_count // int(group_size)
+    grouped_selected = selected.reshape(
+        replicate_count, policy_count, group_count, int(group_size))
+    selected_count = grouped_selected.sum(dim=-1).to(torch.float64)
+    grouped_broken = (
+        grouped_selected
+        & broken[:, None, :].expand(
+            -1, policy_count, -1
+        ).reshape(
+            replicate_count, policy_count, group_count, int(group_size)
+        )
+    ).sum(dim=-1).to(torch.float64)
+    active = selected_count > 0
+    active_count = active.sum(dim=-1).to(torch.float64)
+    rates = grouped_broken / selected_count.clamp_min(1.0)
+    means = (
+        rates * active.to(torch.float64)
+    ).sum(dim=-1) / active_count.clamp_min(1.0)
+    log_term = math.log(
+        max(int(family_size), 1) / float(delta))
+    upper = means + torch.sqrt(
+        log_term / (2.0 * active_count.clamp_min(1.0)))
+    return torch.where(
+        active_count > 0,
+        upper.clamp(max=1.0),
+        torch.ones_like(upper),
+    )
+
+
 def select_max_coverage_policy(
         coverage, net_utility, upper_bound, alpha, min_coverage):
     """Select the highest-coverage policy satisfying locked constraints."""

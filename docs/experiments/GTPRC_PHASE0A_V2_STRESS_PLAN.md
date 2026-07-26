@@ -75,8 +75,8 @@ The screen passes only if:
   regimes;
 - in IID, GTPRC median coverage is at least 80% of row-IID coverage;
 - shuffled and harmful false qualification is at most 0.05 in every regime;
-- at least three dependent regimes produce different selected coverage for
-  row-IID and GTPRC.
+- at least three dependent regimes produce a median coverage difference of at
+  least 0.02 between row-IID and GTPRC.
 
 Failure means the stress test is still non-identifying. Record the failure and
 redesign before any formal run.
@@ -104,4 +104,3 @@ GTPRC even if a weaker machine gate passes.
 - Formal fail: `STOP_OR_REDESIGN_GTPRC`; do not start CPSE.
 - Formal pass: proceed to CPSE train-only OOF feasibility, while treating the
   graph-dependence theorem as unfinished work.
-
