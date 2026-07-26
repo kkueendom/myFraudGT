@@ -63,6 +63,12 @@ class CDVTModel(nn.Module):
         ).to(edge_ids.device)
 
     @staticmethod
+    def _target_mask(store):
+        if not hasattr(store, "target_edge_id"):
+            raise ValueError("CDVT requires sampler target_edge_id")
+        return torch.isin(store.e_id, store.target_edge_id)
+
+    @staticmethod
     def _intervene(graph, condition):
         if condition == "normal":
             return graph
@@ -75,10 +81,7 @@ class CDVTModel(nn.Module):
     def prepare_views(self, batch):
         if self.variant == "event_only":
             store = batch[self.TASK]
-            if not hasattr(store, "target_edge_id"):
-                raise ValueError(
-                    "event-only CDVT requires sampler target_edge_id")
-            mask = torch.isin(store.e_id, store.target_edge_id)
+            mask = self._target_mask(store)
             edge_ids = store.e_id[mask]
             labels = store.y[mask]
             account_features = store.edge_attr.new_empty(
@@ -86,10 +89,16 @@ class CDVTModel(nn.Module):
             graph = self._event_graph(edge_ids)
             return account_features, labels, edge_ids, graph
         encoded = self.account_encoder.encode_batch(batch)
-        head = self.account_encoder.post_gt
-        mask = head._edge_mask(encoded)
-        edge_ids = encoded[self.TASK].e_id[mask]
-        account_features, labels = head._apply_index(encoded)
+        store = encoded[self.TASK]
+        mask = self._target_mask(store)
+        edge_ids = store.e_id[mask]
+        edge_index = store.edge_index
+        account_features = torch.cat((
+            encoded[self.TASK[0]].x[edge_index[0, mask]],
+            encoded[self.TASK[2]].x[edge_index[1, mask]],
+            store.edge_attr[mask],
+        ), dim=-1)
+        labels = store.y[mask]
         if edge_ids.numel() != labels.numel():
             raise AssertionError("target edge IDs and labels are not aligned")
         graph = self._event_graph(edge_ids)

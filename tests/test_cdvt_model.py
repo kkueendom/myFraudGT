@@ -1,9 +1,11 @@
 import unittest
+from types import SimpleNamespace
 
 import torch
 
 from fraudGT.cdvt.event_graph import CausalEventGraphIndex
 from fraudGT.cdvt.fusion import DualViewFusionClassifier
+from fraudGT.network.cdvt_model import CDVTModel
 
 
 class CDVTModelComponentsTest(unittest.TestCase):
@@ -152,6 +154,16 @@ class CDVTModelComponentsTest(unittest.TestCase):
         logits, diagnostics = model(torch.empty(0, 48), graph)
         self.assertEqual(logits.shape, (0,))
         self.assertEqual(diagnostics["cross_attention"].shape, (0, 1, 0))
+
+    def test_target_mask_uses_sampler_global_ids_not_local_input_ids(self):
+        store = SimpleNamespace(
+            e_id=torch.tensor([10, 20, 30, 40]),
+            target_edge_id=torch.tensor([30, 10]),
+            input_id=torch.tensor([0, 1]),
+        )
+        mask = CDVTModel._target_mask(store)
+        self.assertTrue(torch.equal(
+            store.e_id[mask], torch.tensor([10, 30])))
 
 
 if __name__ == "__main__":
