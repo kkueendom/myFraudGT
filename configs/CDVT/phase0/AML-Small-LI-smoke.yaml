@@ -28,7 +28,7 @@ train:
   neighbor_sizes: [5, 5]
   add_ego_id: True
   iter_per_epoch: 1
-  batch_size: 512
+  batch_size: 2048
   eval_period: 1
   persistent_workers: False
   pin_memory: False
