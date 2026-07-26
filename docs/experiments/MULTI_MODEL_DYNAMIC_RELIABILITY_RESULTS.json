@@ -1,0 +1,110 @@
+{
+  "a2_single_run_reversal_datasets": [
+    "Large-HI",
+    "Large-LI",
+    "Medium-LI",
+    "Small-LI"
+  ],
+  "advancement_gate": {
+    "all_pass": false,
+    "at_least_three_mismatch_families": false,
+    "concepts_reported_separately": true,
+    "dynamic_sampling_changes_single_run_conclusion": true,
+    "mismatch_repeats_across_scales": true,
+    "same_batch_protocol_complete": true
+  },
+  "cross_scale_mismatch_family_count": 2,
+  "decision": "STOP_PAPER_LEVEL_MULTI_MODEL_GENERALITY_CLAIM",
+  "evidence_family_count": 3,
+  "evidence_single_run_reversal_unit_count": 3,
+  "evidence_unit_count": 10,
+  "experiment": "multi_model_dynamic_evidence_reliability",
+  "families": {
+    "CET": {
+      "classification_counts": {
+        "sensitive_but_harmful": 3,
+        "used_but_unaligned": 1
+      },
+      "cross_scale_mismatch": true,
+      "datasets": [
+        "Large-LI",
+        "Small-LI"
+      ],
+      "event_count": 28,
+      "family": "CET",
+      "inactive_unit_count": 0,
+      "mean_mismatch_datasets": [
+        "Large-LI",
+        "Small-LI"
+      ],
+      "mismatch_unit_count": 4,
+      "repeatable_mismatch": true,
+      "repeatable_mismatch_datasets": [
+        "Large-LI",
+        "Small-LI"
+      ],
+      "repeatable_mismatch_unit_count": 3,
+      "single_event_reversal_unit_count": 1,
+      "unit_count": 4,
+      "useful_aligned_unit_count": 0
+    },
+    "COSTAR": {
+      "classification_counts": {
+        "inactive_evidence": 1,
+        "used_but_unaligned": 1
+      },
+      "cross_scale_mismatch": false,
+      "datasets": [
+        "Large-LI",
+        "Small-LI"
+      ],
+      "event_count": 32,
+      "family": "COSTAR",
+      "inactive_unit_count": 1,
+      "mean_mismatch_datasets": [
+        "Large-LI"
+      ],
+      "mismatch_unit_count": 1,
+      "repeatable_mismatch": false,
+      "repeatable_mismatch_datasets": [],
+      "repeatable_mismatch_unit_count": 0,
+      "single_event_reversal_unit_count": 2,
+      "unit_count": 2,
+      "useful_aligned_unit_count": 0
+    },
+    "TIER": {
+      "classification_counts": {
+        "sensitive_but_harmful": 4
+      },
+      "cross_scale_mismatch": true,
+      "datasets": [
+        "Large-LI",
+        "Small-LI"
+      ],
+      "event_count": 64,
+      "family": "TIER",
+      "inactive_unit_count": 0,
+      "mean_mismatch_datasets": [
+        "Large-LI",
+        "Small-LI"
+      ],
+      "mismatch_unit_count": 4,
+      "repeatable_mismatch": true,
+      "repeatable_mismatch_datasets": [
+        "Large-LI",
+        "Small-LI"
+      ],
+      "repeatable_mismatch_unit_count": 4,
+      "single_event_reversal_unit_count": 0,
+      "unit_count": 4,
+      "useful_aligned_unit_count": 0
+    }
+  },
+  "inactive_unit_count": 1,
+  "mismatch_family_count": 2,
+  "mismatch_unit_count": 9,
+  "sampling_protocol": "dynamic_random",
+  "total_event_count": 220,
+  "total_manifest_count": 31,
+  "useful_aligned_unit_count": 0
+}

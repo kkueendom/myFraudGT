@@ -32,6 +32,11 @@ same-batch anchor comparison is negative and its repeated-event range crosses
 zero. The apparent historical gain cannot be attributed to the COSTAR
 correction.
 
+Large-LI's aggregate mean is `used_but_unaligned`, but this result is not
+event-consistent: the normal-off gap reaches `0.01` in only `9/16` events,
+below the preregistered `12/16` threshold. COSTAR therefore contributes zero
+repeatable mismatch units to the cross-model gate.
+
 ## Protocol Audit
 
 All four tasks use `shuffle=True`, `val.fixed_target_panel=False`, no dedicated evaluation generator, no sampler RNG restoration, no evaluation step cap, and exactly 2,048 validation plus 2,048 test iterations per stream. Every normal/shuffled/off/A2-anchor comparison has an identical paired sample count.
@@ -68,6 +73,7 @@ The A2 anchor is the same-batch pre-COSTAR margin. Comparing normal to this anch
 - Sensitive-but-harmful datasets: 0/2
 - Used-but-unaligned datasets: 1/2
 - Inactive datasets: 1/2
+- Datasets with an event-consistent mismatch at the 75% threshold: 0/2
 - Datasets with a single-event conclusion reversal: 2/2
 
 Final paper-level interpretation must combine this fixed-checkpoint block with A2, CET and TIER rather than selecting one favorable dataset.

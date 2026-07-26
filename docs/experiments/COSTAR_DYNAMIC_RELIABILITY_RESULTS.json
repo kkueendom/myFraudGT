@@ -122,6 +122,8 @@
         "q975": 0.003043549874579783,
         "std": 0.0016682586513061249
       },
+      "normal_off_gap_ge_0_01_events": 9,
+      "normal_off_gap_lt_0_01_events": 7,
       "normal_shuffled_gap_ge_0_01_events": 0,
       "normal_shuffled_gap_lt_0_01_events": 16,
       "normal_test_f1": {
@@ -323,6 +325,8 @@
         "q975": 0.00345327456909042,
         "std": 0.0030788631186567344
       },
+      "normal_off_gap_ge_0_01_events": 3,
+      "normal_off_gap_lt_0_01_events": 13,
       "normal_shuffled_gap_ge_0_01_events": 0,
       "normal_shuffled_gap_lt_0_01_events": 16,
       "normal_test_f1": {

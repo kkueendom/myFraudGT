@@ -111,6 +111,7 @@
       "historical_initial_a2_f1": 0.30108,
       "mechanism_classification": "sensitive_but_harmful",
       "model_seed": 44,
+      "nonpositive_same_batch_delta_events": 4,
       "normal_minus_off_f1": {
         "count": 4,
         "max": 0.09272979671619083,
@@ -131,7 +132,10 @@
         "q975": 0.0827154710112088,
         "std": 0.015955108877243915
       },
+      "normal_off_gap_ge_0_01_events": 4,
+      "normal_off_gap_lt_0_01_events": 0,
       "normal_shuffled_gap_ge_0_01_events": 4,
+      "normal_shuffled_gap_lt_0_01_events": 0,
       "normal_test_f1": {
         "count": 4,
         "max": 0.09558823529411764,
@@ -295,6 +299,7 @@
       "historical_initial_a2_f1": 0.30108,
       "mechanism_classification": "sensitive_but_harmful",
       "model_seed": 44,
+      "nonpositive_same_batch_delta_events": 8,
       "normal_minus_off_f1": {
         "count": 12,
         "max": 0.03655462184873948,
@@ -315,7 +320,10 @@
         "q975": 0.3622604511641967,
         "std": 0.05110933714794712
       },
+      "normal_off_gap_ge_0_01_events": 5,
+      "normal_off_gap_lt_0_01_events": 7,
       "normal_shuffled_gap_ge_0_01_events": 12,
+      "normal_shuffled_gap_lt_0_01_events": 0,
       "normal_test_f1": {
         "count": 12,
         "max": 0.38323353293413176,
@@ -477,6 +485,7 @@
       "historical_initial_a2_f1": 0.46247,
       "mechanism_classification": "sensitive_but_harmful",
       "model_seed": 42,
+      "nonpositive_same_batch_delta_events": 4,
       "normal_minus_off_f1": {
         "count": 4,
         "max": 0.05616144455022392,
@@ -497,7 +506,10 @@
         "q975": 0.06033781857058183,
         "std": 0.007321136047558058
       },
+      "normal_off_gap_ge_0_01_events": 4,
+      "normal_off_gap_lt_0_01_events": 0,
       "normal_shuffled_gap_ge_0_01_events": 4,
+      "normal_shuffled_gap_lt_0_01_events": 0,
       "normal_test_f1": {
         "count": 4,
         "max": 0.06415396952686447,
@@ -660,6 +672,7 @@
       "historical_initial_a2_f1": 0.46247,
       "mechanism_classification": "used_but_unaligned",
       "model_seed": 42,
+      "nonpositive_same_batch_delta_events": 8,
       "normal_minus_off_f1": {
         "count": 8,
         "max": 0.3079268292682927,
@@ -680,7 +693,10 @@
         "q975": 0.007541117582726474,
         "std": 0.004851643837209828
       },
+      "normal_off_gap_ge_0_01_events": 8,
+      "normal_off_gap_lt_0_01_events": 0,
       "normal_shuffled_gap_ge_0_01_events": 0,
+      "normal_shuffled_gap_lt_0_01_events": 8,
       "normal_test_f1": {
         "count": 8,
         "max": 0.3079268292682927,

@@ -125,8 +125,15 @@ The machine-validated mechanism classification is:
 - sensitive-but-harmful: `3/4` dataset/variant pairs;
 - used-but-unaligned: `1/4` (`Small-LI fusion`);
 - useful-aligned: `0/4`;
+- pairs satisfying their classification conditions in at least 75% of
+  dynamic events: `3/4`;
 - pairs whose single-event conclusion can reverse: `1/4`
   (`Large-LI fusion`).
+
+Large-LI fusion is the non-repeatable pair. Its aggregate mean is classified
+as sensitive-but-harmful, but the harmful-utility direction occurs in only
+`8/12` events, below the preregistered `9/12` threshold. The aggregate label
+must therefore not be treated as an event-consistent result.
 
 ## Decision
 

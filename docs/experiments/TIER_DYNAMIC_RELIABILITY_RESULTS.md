@@ -27,7 +27,9 @@ Across all 64 events:
 - positive same-batch TIER-versus-A2 F1 events: `0/64`;
 - events with corrected predictions greater than broken predictions: `4/64`;
 - useful-aligned model/dataset pairs: `0/4`;
-- sensitive-but-harmful pairs: `4/4`.
+- sensitive-but-harmful pairs by aggregate mean: `4/4`;
+- pairs satisfying both sensitivity and harmful-utility conditions in at
+  least 75% of events: `4/4`.
 
 This confirms the central mechanism failure: evidence contains discriminative
 information, but global evidence-only substitution is not aligned with A2
