@@ -1,0 +1,561 @@
+{
+  "decision": "REDESIGN_STRESS_TEST",
+  "experiment": "gtprc_phase0a_v2_boundary_stress",
+  "gate": {
+    "controls_rejected_all_regimes": true,
+    "coverage_differs_three_dependent_regimes": true,
+    "gtprc_controls_all_regimes": true,
+    "gtprc_retains_oracle_coverage_five_regimes": false,
+    "iid_coverage_retention": true,
+    "passed": false,
+    "row_iid_fails_three_dependent_regimes": false
+  },
+  "git_commit": "e7b04becc96d25562f7bd72ae08d5046a04a5eb6",
+  "iid_coverage_retention": 1.0,
+  "manifest_count": 7,
+  "manifest_paths": [
+    "/e/yky/FraudGT_cet_results/gtprc_phase0a_v2b_dev_e7b04bec/alignment_drift_seed63006_e7b04bec/gtprc_phase0a_manifest.json",
+    "/e/yky/FraudGT_cet_results/gtprc_phase0a_v2b_dev_e7b04bec/entity_cluster_seed63002_e7b04bec/gtprc_phase0a_manifest.json",
+    "/e/yky/FraudGT_cet_results/gtprc_phase0a_v2b_dev_e7b04bec/entity_temporal_seed63004_e7b04bec/gtprc_phase0a_manifest.json",
+    "/e/yky/FraudGT_cet_results/gtprc_phase0a_v2b_dev_e7b04bec/iid_seed63001_e7b04bec/gtprc_phase0a_manifest.json",
+    "/e/yky/FraudGT_cet_results/gtprc_phase0a_v2b_dev_e7b04bec/prevalence_drift_seed63005_e7b04bec/gtprc_phase0a_manifest.json",
+    "/e/yky/FraudGT_cet_results/gtprc_phase0a_v2b_dev_e7b04bec/rare_duplicate_seed63007_e7b04bec/gtprc_phase0a_manifest.json",
+    "/e/yky/FraudGT_cet_results/gtprc_phase0a_v2b_dev_e7b04bec/temporal_autocorrelation_seed63003_e7b04bec/gtprc_phase0a_manifest.json"
+  ],
+  "mode": "development",
+  "regimes": {
+    "alignment_drift": {
+      "controls": {
+        "harmful": {
+          "false_qualification_rate": 0.0,
+          "qualified": 0
+        },
+        "shuffled": {
+          "false_qualification_rate": 0.0,
+          "qualified": 0
+        }
+      },
+      "controls_pass": true,
+      "coverage_difference_at_least_0_02": true,
+      "gtprc_improvement_at_least_0_05": false,
+      "gtprc_oracle_fraction_at_least_0_30": false,
+      "gtprc_violation_at_most_0_07": true,
+      "methods": {
+        "entity_block": {
+          "coverage_mean": 0.2914390563964844,
+          "coverage_median": 0.27593994140625,
+          "net_count_mean": 56.078125,
+          "oracle_fraction_mean": 0.8786620017119361,
+          "oracle_fraction_median": 0.9437837837837838,
+          "qualification_rate": 1.0,
+          "qualified": 64,
+          "replicates": 64,
+          "selected_test_risk_mean": 0.27955800341007636,
+          "selected_test_risk_median": 0.2801851851851852,
+          "violation_rate": 0.0,
+          "violations": 0
+        },
+        "gtprc_graph_time": {
+          "coverage_mean": 0.003406524658203125,
+          "coverage_median": 0.0,
+          "net_count_mean": 19.546875,
+          "oracle_fraction_mean": 0.011378511722664762,
+          "oracle_fraction_median": 0.0,
+          "qualification_rate": 0.125,
+          "qualified": 8,
+          "replicates": 64,
+          "selected_test_risk_mean": 0.018696741894415732,
+          "selected_test_risk_median": 0.0,
+          "violation_rate": 0.0,
+          "violations": 0
+        },
+        "row_iid": {
+          "coverage_mean": 0.29172420501708984,
+          "coverage_median": 0.27593994140625,
+          "net_count_mean": 56.0,
+          "oracle_fraction_mean": 0.8795787746711197,
+          "oracle_fraction_median": 0.9437837837837838,
+          "qualification_rate": 1.0,
+          "qualified": 64,
+          "replicates": 64,
+          "selected_test_risk_mean": 0.27969397100528304,
+          "selected_test_risk_median": 0.2801851851851852,
+          "violation_rate": 0.0,
+          "violations": 0
+        },
+        "time_block": {
+          "coverage_mean": 0.20339488983154297,
+          "coverage_median": 0.19598388671875,
+          "net_count_mean": 207.9375,
+          "oracle_fraction_mean": 0.6424272744414434,
+          "oracle_fraction_median": 0.5998144425545076,
+          "qualification_rate": 0.984375,
+          "qualified": 63,
+          "replicates": 64,
+          "selected_test_risk_mean": 0.25027773575415935,
+          "selected_test_risk_median": 0.25170954086616737,
+          "violation_rate": 0.0,
+          "violations": 0
+        }
+      },
+      "row_iid_violation_over_0_10": false
+    },
+    "entity_cluster": {
+      "controls": {
+        "harmful": {
+          "false_qualification_rate": 0.0,
+          "qualified": 0
+        },
+        "shuffled": {
+          "false_qualification_rate": 0.0,
+          "qualified": 0
+        }
+      },
+      "controls_pass": true,
+      "coverage_difference_at_least_0_02": true,
+      "gtprc_improvement_at_least_0_05": false,
+      "gtprc_oracle_fraction_at_least_0_30": true,
+      "gtprc_violation_at_most_0_07": true,
+      "methods": {
+        "entity_block": {
+          "coverage_mean": 0.3126659393310547,
+          "coverage_median": 0.30511474609375,
+          "net_count_mean": 1538.9375,
+          "oracle_fraction_mean": 0.5013137874947542,
+          "oracle_fraction_median": 0.4922997416020672,
+          "qualification_rate": 1.0,
+          "qualified": 64,
+          "replicates": 64,
+          "selected_test_risk_mean": 0.12749597829490694,
+          "selected_test_risk_median": 0.1258893280632411,
+          "violation_rate": 0.0,
+          "violations": 0
+        },
+        "gtprc_graph_time": {
+          "coverage_mean": 0.3126659393310547,
+          "coverage_median": 0.30511474609375,
+          "net_count_mean": 1538.9375,
+          "oracle_fraction_mean": 0.5013137874947542,
+          "oracle_fraction_median": 0.4922997416020672,
+          "qualification_rate": 1.0,
+          "qualified": 64,
+          "replicates": 64,
+          "selected_test_risk_mean": 0.12749597829490694,
+          "selected_test_risk_median": 0.1258893280632411,
+          "violation_rate": 0.0,
+          "violations": 0
+        },
+        "row_iid": {
+          "coverage_mean": 0.6149415969848633,
+          "coverage_median": 0.6202392578125,
+          "net_count_mean": 121.890625,
+          "oracle_fraction_mean": 0.9620151849760468,
+          "oracle_fraction_median": 1.0,
+          "qualification_rate": 1.0,
+          "qualified": 64,
+          "replicates": 64,
+          "selected_test_risk_mean": 0.25791439796964144,
+          "selected_test_risk_median": 0.2607458292443572,
+          "violation_rate": 0.0,
+          "violations": 0
+        },
+        "time_block": {
+          "coverage_mean": 0.6149415969848633,
+          "coverage_median": 0.6202392578125,
+          "net_count_mean": 121.890625,
+          "oracle_fraction_mean": 0.9620151849760468,
+          "oracle_fraction_median": 1.0,
+          "qualification_rate": 1.0,
+          "qualified": 64,
+          "replicates": 64,
+          "selected_test_risk_mean": 0.25791439796964144,
+          "selected_test_risk_median": 0.2607458292443572,
+          "violation_rate": 0.0,
+          "violations": 0
+        }
+      },
+      "row_iid_violation_over_0_10": false
+    },
+    "entity_temporal": {
+      "controls": {
+        "harmful": {
+          "false_qualification_rate": 0.0,
+          "qualified": 0
+        },
+        "shuffled": {
+          "false_qualification_rate": 0.0,
+          "qualified": 0
+        }
+      },
+      "controls_pass": true,
+      "coverage_difference_at_least_0_02": true,
+      "gtprc_improvement_at_least_0_05": false,
+      "gtprc_oracle_fraction_at_least_0_30": false,
+      "gtprc_violation_at_most_0_07": true,
+      "methods": {
+        "entity_block": {
+          "coverage_mean": 0.642277717590332,
+          "coverage_median": 0.6256103515625,
+          "net_count_mean": 31.609375,
+          "oracle_fraction_mean": 0.9498514026947489,
+          "oracle_fraction_median": 1.0,
+          "qualification_rate": 1.0,
+          "qualified": 64,
+          "replicates": 64,
+          "selected_test_risk_mean": 0.2611360184381091,
+          "selected_test_risk_median": 0.2608741778060683,
+          "violation_rate": 0.0,
+          "violations": 0
+        },
+        "gtprc_graph_time": {
+          "coverage_mean": 0.1176309585571289,
+          "coverage_median": 0.112548828125,
+          "net_count_mean": 1134.515625,
+          "oracle_fraction_mean": 0.1832384197242613,
+          "oracle_fraction_median": 0.18158831241805581,
+          "qualification_rate": 1.0,
+          "qualified": 64,
+          "replicates": 64,
+          "selected_test_risk_mean": 0.04310878382408126,
+          "selected_test_risk_median": 0.043630892678034106,
+          "violation_rate": 0.0,
+          "violations": 0
+        },
+        "row_iid": {
+          "coverage_mean": 0.642277717590332,
+          "coverage_median": 0.6256103515625,
+          "net_count_mean": 31.609375,
+          "oracle_fraction_mean": 0.9498514026947489,
+          "oracle_fraction_median": 1.0,
+          "qualification_rate": 1.0,
+          "qualified": 64,
+          "replicates": 64,
+          "selected_test_risk_mean": 0.2611360184381091,
+          "selected_test_risk_median": 0.2608741778060683,
+          "violation_rate": 0.0,
+          "violations": 0
+        },
+        "time_block": {
+          "coverage_mean": 0.642277717590332,
+          "coverage_median": 0.6256103515625,
+          "net_count_mean": 31.609375,
+          "oracle_fraction_mean": 0.9498514026947489,
+          "oracle_fraction_median": 1.0,
+          "qualification_rate": 1.0,
+          "qualified": 64,
+          "replicates": 64,
+          "selected_test_risk_mean": 0.2611360184381091,
+          "selected_test_risk_median": 0.2608741778060683,
+          "violation_rate": 0.0,
+          "violations": 0
+        }
+      },
+      "row_iid_violation_over_0_10": false
+    },
+    "iid": {
+      "controls": {
+        "harmful": {
+          "false_qualification_rate": 0.0,
+          "qualified": 0
+        },
+        "shuffled": {
+          "false_qualification_rate": 0.0,
+          "qualified": 0
+        }
+      },
+      "controls_pass": true,
+      "coverage_difference_at_least_0_02": false,
+      "gtprc_improvement_at_least_0_05": false,
+      "gtprc_oracle_fraction_at_least_0_30": true,
+      "gtprc_violation_at_most_0_07": true,
+      "methods": {
+        "entity_block": {
+          "coverage_mean": 0.5323705673217773,
+          "coverage_median": 0.53131103515625,
+          "net_count_mean": 45.203125,
+          "oracle_fraction_mean": 0.9850579133179019,
+          "oracle_fraction_median": 1.0,
+          "qualification_rate": 1.0,
+          "qualified": 64,
+          "replicates": 64,
+          "selected_test_risk_mean": 0.25911485019216063,
+          "selected_test_risk_median": 0.25795454545454544,
+          "violation_rate": 0.0,
+          "violations": 0
+        },
+        "gtprc_graph_time": {
+          "coverage_mean": 0.5323705673217773,
+          "coverage_median": 0.53131103515625,
+          "net_count_mean": 45.203125,
+          "oracle_fraction_mean": 0.9850579133179019,
+          "oracle_fraction_median": 1.0,
+          "qualification_rate": 1.0,
+          "qualified": 64,
+          "replicates": 64,
+          "selected_test_risk_mean": 0.25911485019216063,
+          "selected_test_risk_median": 0.25795454545454544,
+          "violation_rate": 0.0,
+          "violations": 0
+        },
+        "row_iid": {
+          "coverage_mean": 0.5323705673217773,
+          "coverage_median": 0.53131103515625,
+          "net_count_mean": 45.203125,
+          "oracle_fraction_mean": 0.9850579133179019,
+          "oracle_fraction_median": 1.0,
+          "qualification_rate": 1.0,
+          "qualified": 64,
+          "replicates": 64,
+          "selected_test_risk_mean": 0.25911485019216063,
+          "selected_test_risk_median": 0.25795454545454544,
+          "violation_rate": 0.0,
+          "violations": 0
+        },
+        "time_block": {
+          "coverage_mean": 0.5323705673217773,
+          "coverage_median": 0.53131103515625,
+          "net_count_mean": 45.203125,
+          "oracle_fraction_mean": 0.9850579133179019,
+          "oracle_fraction_median": 1.0,
+          "qualification_rate": 1.0,
+          "qualified": 64,
+          "replicates": 64,
+          "selected_test_risk_mean": 0.25911485019216063,
+          "selected_test_risk_median": 0.25795454545454544,
+          "violation_rate": 0.0,
+          "violations": 0
+        }
+      },
+      "row_iid_violation_over_0_10": false
+    },
+    "prevalence_drift": {
+      "controls": {
+        "harmful": {
+          "false_qualification_rate": 0.0,
+          "qualified": 0
+        },
+        "shuffled": {
+          "false_qualification_rate": 0.0,
+          "qualified": 0
+        }
+      },
+      "controls_pass": true,
+      "coverage_difference_at_least_0_02": true,
+      "gtprc_improvement_at_least_0_05": false,
+      "gtprc_oracle_fraction_at_least_0_30": true,
+      "gtprc_violation_at_most_0_07": true,
+      "methods": {
+        "entity_block": {
+          "coverage_mean": 0.620396614074707,
+          "coverage_median": 0.6224365234375,
+          "net_count_mean": -38.65625,
+          "oracle_fraction_mean": 0.9701495959500499,
+          "oracle_fraction_median": 1.0,
+          "qualification_rate": 1.0,
+          "qualified": 64,
+          "replicates": 64,
+          "selected_test_risk_mean": 0.2540228258773135,
+          "selected_test_risk_median": 0.25623735670937287,
+          "violation_rate": 0.0,
+          "violations": 0
+        },
+        "gtprc_graph_time": {
+          "coverage_mean": 0.32860565185546875,
+          "coverage_median": 0.32696533203125,
+          "net_count_mean": 1382.59375,
+          "oracle_fraction_mean": 0.5400633164056261,
+          "oracle_fraction_median": 0.5411718519972519,
+          "qualification_rate": 1.0,
+          "qualified": 64,
+          "replicates": 64,
+          "selected_test_risk_mean": 0.13291374180938478,
+          "selected_test_risk_median": 0.13488576449912126,
+          "violation_rate": 0.0,
+          "violations": 0
+        },
+        "row_iid": {
+          "coverage_mean": 0.620396614074707,
+          "coverage_median": 0.6224365234375,
+          "net_count_mean": -38.65625,
+          "oracle_fraction_mean": 0.9701495959500499,
+          "oracle_fraction_median": 1.0,
+          "qualification_rate": 1.0,
+          "qualified": 64,
+          "replicates": 64,
+          "selected_test_risk_mean": 0.2540228258773135,
+          "selected_test_risk_median": 0.25623735670937287,
+          "violation_rate": 0.0,
+          "violations": 0
+        },
+        "time_block": {
+          "coverage_mean": 0.6182155609130859,
+          "coverage_median": 0.620849609375,
+          "net_count_mean": -22.484375,
+          "oracle_fraction_mean": 0.967599365443134,
+          "oracle_fraction_median": 1.0,
+          "qualification_rate": 1.0,
+          "qualified": 64,
+          "replicates": 64,
+          "selected_test_risk_mean": 0.25308462136812504,
+          "selected_test_risk_median": 0.25593329057087877,
+          "violation_rate": 0.0,
+          "violations": 0
+        }
+      },
+      "row_iid_violation_over_0_10": false
+    },
+    "rare_duplicate": {
+      "controls": {
+        "harmful": {
+          "false_qualification_rate": 0.0,
+          "qualified": 0
+        },
+        "shuffled": {
+          "false_qualification_rate": 0.0,
+          "qualified": 0
+        }
+      },
+      "controls_pass": true,
+      "coverage_difference_at_least_0_02": true,
+      "gtprc_improvement_at_least_0_05": false,
+      "gtprc_oracle_fraction_at_least_0_30": false,
+      "gtprc_violation_at_most_0_07": true,
+      "methods": {
+        "entity_block": {
+          "coverage_mean": 0.5442485809326172,
+          "coverage_median": 0.55029296875,
+          "net_count_mean": -59.796875,
+          "oracle_fraction_mean": 0.9420922496658449,
+          "oracle_fraction_median": 1.0,
+          "qualification_rate": 1.0,
+          "qualified": 64,
+          "replicates": 64,
+          "selected_test_risk_mean": 0.18383396960533804,
+          "selected_test_risk_median": 0.18320292123109025,
+          "violation_rate": 0.0,
+          "violations": 0
+        },
+        "gtprc_graph_time": {
+          "coverage_mean": 0.11794185638427734,
+          "coverage_median": 0.11700439453125,
+          "net_count_mean": 828.109375,
+          "oracle_fraction_mean": 0.2211998991359882,
+          "oracle_fraction_median": 0.21984838042729152,
+          "qualification_rate": 1.0,
+          "qualified": 64,
+          "replicates": 64,
+          "selected_test_risk_mean": 0.0372836987026555,
+          "selected_test_risk_median": 0.03875968992248062,
+          "violation_rate": 0.0,
+          "violations": 0
+        },
+        "row_iid": {
+          "coverage_mean": 0.5442485809326172,
+          "coverage_median": 0.55029296875,
+          "net_count_mean": -59.796875,
+          "oracle_fraction_mean": 0.9420922496658449,
+          "oracle_fraction_median": 1.0,
+          "qualification_rate": 1.0,
+          "qualified": 64,
+          "replicates": 64,
+          "selected_test_risk_mean": 0.18383396960533804,
+          "selected_test_risk_median": 0.18320292123109025,
+          "violation_rate": 0.0,
+          "violations": 0
+        },
+        "time_block": {
+          "coverage_mean": 0.5442485809326172,
+          "coverage_median": 0.55029296875,
+          "net_count_mean": -59.796875,
+          "oracle_fraction_mean": 0.9420922496658449,
+          "oracle_fraction_median": 1.0,
+          "qualification_rate": 1.0,
+          "qualified": 64,
+          "replicates": 64,
+          "selected_test_risk_mean": 0.18383396960533804,
+          "selected_test_risk_median": 0.18320292123109025,
+          "violation_rate": 0.0,
+          "violations": 0
+        }
+      },
+      "row_iid_violation_over_0_10": false
+    },
+    "temporal_autocorrelation": {
+      "controls": {
+        "harmful": {
+          "false_qualification_rate": 0.0,
+          "qualified": 0
+        },
+        "shuffled": {
+          "false_qualification_rate": 0.0,
+          "qualified": 0
+        }
+      },
+      "controls_pass": true,
+      "coverage_difference_at_least_0_02": true,
+      "gtprc_improvement_at_least_0_05": false,
+      "gtprc_oracle_fraction_at_least_0_30": true,
+      "gtprc_violation_at_most_0_07": true,
+      "methods": {
+        "entity_block": {
+          "coverage_mean": 0.6452322006225586,
+          "coverage_median": 0.641357421875,
+          "net_count_mean": -7.171875,
+          "oracle_fraction_mean": 0.967481402402177,
+          "oracle_fraction_median": 1.0,
+          "qualification_rate": 1.0,
+          "qualified": 64,
+          "replicates": 64,
+          "selected_test_risk_mean": 0.2636944618815978,
+          "selected_test_risk_median": 0.26544021024967146,
+          "violation_rate": 0.0,
+          "violations": 0
+        },
+        "gtprc_graph_time": {
+          "coverage_mean": 0.3334188461303711,
+          "coverage_median": 0.32928466796875,
+          "net_count_mean": 1560.921875,
+          "oracle_fraction_mean": 0.523852560086566,
+          "oracle_fraction_median": 0.516254100805249,
+          "qualification_rate": 1.0,
+          "qualified": 64,
+          "replicates": 64,
+          "selected_test_risk_mean": 0.13170961773655016,
+          "selected_test_risk_median": 0.1283384119017745,
+          "violation_rate": 0.0,
+          "violations": 0
+        },
+        "row_iid": {
+          "coverage_mean": 0.6452322006225586,
+          "coverage_median": 0.641357421875,
+          "net_count_mean": -7.171875,
+          "oracle_fraction_mean": 0.967481402402177,
+          "oracle_fraction_median": 1.0,
+          "qualification_rate": 1.0,
+          "qualified": 64,
+          "replicates": 64,
+          "selected_test_risk_mean": 0.2636944618815978,
+          "selected_test_risk_median": 0.26544021024967146,
+          "violation_rate": 0.0,
+          "violations": 0
+        },
+        "time_block": {
+          "coverage_mean": 0.3334188461303711,
+          "coverage_median": 0.32928466796875,
+          "net_count_mean": 1560.921875,
+          "oracle_fraction_mean": 0.523852560086566,
+          "oracle_fraction_median": 0.516254100805249,
+          "qualification_rate": 1.0,
+          "qualified": 64,
+          "replicates": 64,
+          "selected_test_risk_mean": 0.13170961773655016,
+          "selected_test_risk_median": 0.1283384119017745,
+          "violation_rate": 0.0,
+          "violations": 0
+        }
+      },
+      "row_iid_violation_over_0_10": false
+    }
+  },
+  "replicate_count": 448
+}
