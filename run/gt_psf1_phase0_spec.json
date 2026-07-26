@@ -1,0 +1,109 @@
+{
+  "name": "GT-psF1 Phase 0 untouched development screen",
+  "status": "preregistered_not_started",
+  "sampling_protocol": "synthetic_graph_sampler_two_stage",
+  "fraudgt_loader_iterations": {
+    "train": 0,
+    "validation": 0,
+    "test": 0
+  },
+  "confidence_level": 0.95,
+  "one_sided_alpha": 0.05,
+  "desired_power": 0.8,
+  "practical_margin": 0.005,
+  "formal_experiments": 512,
+  "population_reference_experiments": 4096,
+  "formal_replicates": 4,
+  "allocation_replicate_grid": [2, 4, 8, 16],
+  "templates": {
+    "rare_sparse": {
+      "targets": 384,
+      "entities": 256,
+      "fraud_prevalence": 0.02
+    },
+    "moderate": {
+      "targets": 512,
+      "entities": 384,
+      "fraud_prevalence": 0.1
+    }
+  },
+  "tasks": [
+    {
+      "task_id": 0,
+      "gpu": 0,
+      "scenario": "iid_deterministic",
+      "seed": 88001,
+      "reference_seed": 98001
+    },
+    {
+      "task_id": 1,
+      "gpu": 1,
+      "scenario": "endpoint_dyadic",
+      "seed": 88002,
+      "reference_seed": 98002
+    },
+    {
+      "task_id": 2,
+      "gpu": 2,
+      "scenario": "two_hop_spillover",
+      "seed": 88003,
+      "reference_seed": 98003
+    },
+    {
+      "task_id": 3,
+      "gpu": 3,
+      "scenario": "temporal_ar1",
+      "seed": 88004,
+      "reference_seed": 98004
+    },
+    {
+      "task_id": 4,
+      "gpu": 4,
+      "scenario": "low_sampler_variance",
+      "seed": 88005,
+      "reference_seed": 98005
+    },
+    {
+      "task_id": 5,
+      "gpu": 5,
+      "scenario": "high_sampler_variance",
+      "seed": 88006,
+      "reference_seed": 98006
+    },
+    {
+      "task_id": 6,
+      "gpu": 6,
+      "scenario": "dense_hub_out_of_scope",
+      "seed": 88007,
+      "reference_seed": 98007
+    }
+  ],
+  "comparators": [
+    "row_iid",
+    "target_iid",
+    "endpoint_dyadic",
+    "graph_hac",
+    "gt_psf1"
+  ],
+  "diagnostics": {
+    "max_degree": "sqrt(target_count)",
+    "max_component_fraction": 0.5,
+    "minimum_effective_targets": 30,
+    "minimum_expected_positive_contributions": 10,
+    "minimum_sampler_replicates_for_allocation": 2
+  },
+  "gate": {
+    "null_coverage_min": 0.94,
+    "null_coverage_max": 0.97,
+    "false_directional_claim_max": 0.05,
+    "coverage_regret_max": 0.01,
+    "out_of_scope_rate_min": 0.9,
+    "alternative_power_min": 0.8,
+    "cross_template_power_gap_max": 0.15,
+    "naive_type1_error_min": 0.08,
+    "spillover_dyadic_coverage_loss_min": 0.03,
+    "allocation_cost_regret_max": 0.1,
+    "different_sampler_allocations_required": true
+  },
+  "stop_rule": "Any failed formal gate yields STOP_GT_PSF1; do not tune registered settings or reuse scenarios to select a replacement method."
+}
