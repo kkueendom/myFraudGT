@@ -17,7 +17,10 @@
 - Practical margin: `epsilon=0.005`.
 - Required replication probability: `pi0=0.75`.
 - Family confidence level: `1-delta=0.95`.
-- Four sequential checkpoints share the error budget by Bonferroni correction.
+- Four sequential checkpoints and three monitored endpoints (mean delta,
+  practical improvement probability and practical harm probability) share the
+  error budget by Bonferroni correction: each interval uses
+  `delta / (4 x 3)`.
 - Mean paired-stream intervals use a Studentized interval.
 - Practical replication intervals use exact Clopper-Pearson bounds.
 - `REPLICABLE_IMPROVEMENT` requires mean Delta F1 LCB above zero and practical
