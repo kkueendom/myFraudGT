@@ -153,18 +153,18 @@ def graph_time_groups(source, destination, timestamps, block_count=32):
 
 
 def grouped_upper(active, broken, groups, family_size=64, delta=0.05):
-    active_groups = torch.unique(groups[active])
-    if not active_groups.numel():
+    active_group_ids = groups[active]
+    if not active_group_ids.numel():
         return 1.0
-    rates = []
-    for group in active_groups.tolist():
-        selected = active & (groups == group)
-        rates.append(float(broken[selected].float().mean()))
-    mean = sum(rates) / len(rates)
+    _, inverse = torch.unique(active_group_ids, return_inverse=True)
+    counts = torch.bincount(inverse)
+    broken_counts = torch.bincount(
+        inverse, weights=broken[active].float())
+    mean = float((broken_counts / counts).mean())
     return min(
         1.0,
         mean + math.sqrt(
-            math.log(family_size / delta) / (2.0 * len(rates))),
+            math.log(family_size / delta) / (2.0 * counts.numel())),
     )
 
 
