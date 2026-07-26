@@ -250,28 +250,43 @@ Engineering quality is not the reason the mainline failed.
 
 ## Current Publishable Scope
 
-The current artifacts can support:
+The completed nested dynamic reliability benchmark now supports:
 
 > a reproducible negative benchmark showing that aligned temporal evidence,
 > local corrective counts and one-run F1 gains do not imply stable corrective
 > utility under dynamic fraud-graph sampling.
 
-This is potentially suitable for a benchmark, empirical-study or
-negative-results venue. It is not currently a strong methods-journal paper.
+Additional six-dataset evidence is recorded in
+`TEMPORAL_EVIDENCE_RELIABILITY_BENCHMARK_RESULTS.md`:
+
+- 36 fixed-checkpoint tasks and 144 complete dynamic events;
+- target-edge hashes aligned across three training seeds;
+- dynamic sampling accounts for 71.5%-100% of estimated variance;
+- one valid stream reverses a model-seed ranking on Medium-LI;
+- event-level differences versus historical A2 cross zero on all six
+  datasets;
+- median raw-event maximum inflation is 0.0133-0.0838.
+
+This is now suitable for drafting a benchmark, empirical-study or
+negative-results paper. It is not a successful predictive-method paper, and a
+strong methods-journal submission still requires external validation beyond
+the six AML simulator variants.
 
 ## Only Scientifically Distinct Next Paths
 
 ### Path A: Negative Reliability Benchmark
 
-No new model training is required. Consolidate:
+The preregistered benchmark-readiness gate has passed. No new AML model
+training is required. Consolidate:
 
 - A2 dynamic stability;
 - CET/TIER/COSTAR sensitivity-utility mismatch;
 - CPSE, GTF1C, TREFIC and DGR-F1 failure boundaries;
+- GT-psF1 validity and power boundary;
+- nested model-seed/stream/event variance decomposition;
 - a public reproducibility package and benchmark protocol.
 
-This path changes the venue/claim target and therefore requires explicit user
-approval.
+This is the active paper path under the objective's strict stopping rule.
 
 ### Path B: Independent Graph-Dependent F1 Inference
 

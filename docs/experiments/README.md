@@ -1,17 +1,43 @@
 # Experiment Results Directory
 
-## Current protocol (effective 2026-07-23)
+## Current protocol (effective 2026-07-26)
 
 All new screening, full-model, and ablation experiments must follow
 `DYNAMIC_RANDOM_A2_PROTOCOL.md`. The only baseline for new experiments is the
 initial A2 table in `run/dynamic_random_a2_baseline.json`.
 
-Current TIER research line:
+Current paper line:
 
-1. `TIER_METHOD_AND_EVIDENCE_QUALIFICATION_PLAN.md`
-2. `TIER_PHASE0_COVERAGE_AUDIT_PLAN.md`
-3. `TIER_PHASE0_COVERAGE_RESULTS.md`
-4. `tier_phase0_1d37669c/` for the raw Phase 0 JSONL and manifest
+> Temporal evidence reliability under dynamic fraud-graph sampling.
+
+The predictive decoder/encoder search and four registered reliability methods
+have stopped after failed advancement gates. The active deliverable is a
+negative reliability benchmark and reproducible evaluation protocol.
+
+Current read order for another model or reviewer:
+
+1. `TEMPORAL_EVIDENCE_RELIABILITY_BENCHMARK_RESULTS.md`
+   Six datasets, three model seeds, two dynamic streams and four events:
+   nested variance, target-edge hash alignment, ranking reversals and raw-max
+   inflation.
+
+2. `METHODS_JOURNAL_MAINLINE_COMPLETION_AUDIT.md`
+   Requirement-by-requirement audit of TIER, CET, CPSE, GTF1C, TREFIC,
+   DGR-F1 and GT-psF1.
+
+3. `MULTI_MODEL_DYNAMIC_RELIABILITY_RESULTS.md`
+   Cross-family normal/shuffled/off sensitivity-versus-utility benchmark.
+
+4. `A2_DYNAMIC_SAMPLING_STABILITY_RESULTS.md`
+   Fixed-checkpoint dynamic evaluation over all six datasets.
+
+5. `GT_PSF1_PHASE0_DEVELOPMENT_RESULTS.md`
+   Final independent statistical-method attempt and its preregistered stop
+   decision.
+
+6. `TEMPORAL_EVIDENCE_RELIABILITY_BENCHMARK_PLAN.md` and
+   `DYNAMIC_EVIDENCE_RELIABILITY_LITERATURE_AND_NOVELTY_REVIEW.md`
+   Protocol, research question and conservative novelty boundary.
 
 - Primary: candidate Val-selected Test F1 versus initial A2 Val-selected Test F1.
 - Supplementary: candidate Raw-best Test F1 versus initial A2 Raw-best Test F1.
@@ -24,7 +50,7 @@ The files dated `20260626` below are a historical evidence bundle from
 `snapshot/fraudgt-results-20260626`. They remain useful for diagnosis, but their
 old reporting convention is not the baseline or formal protocol for new runs.
 
-Read order for another model/reviewer:
+Historical 2026-06-26 read order:
 
 1. `fraudgt_current_results_for_model_review_20260626.md`  
    Main narrative summary: method, protocol, results, ablation interpretation, and recommended next direction.
