@@ -45,6 +45,19 @@ class CDVTPhase1ScreenTest(unittest.TestCase):
         self.assertIn("shuffle=True", source)
         self.assertIn('"sampling_protocol": "dynamic_random"', source)
 
+    def test_runner_limits_threads_and_writes_epoch_progress(self):
+        runner = Path("run/cdvt_phase1_screen.py").read_text()
+        launcher = Path("run/cdvt_phase1_6gpu.sh").read_text()
+        self.assertIn("torch.set_num_threads(int(cfg.num_threads))", runner)
+        self.assertIn("torch.set_num_interop_threads(1)", runner)
+        self.assertIn('args.output_dir / "progress.json"', runner)
+        self.assertIn("progress_tmp.replace(progress_path)", runner)
+        for variable in (
+            "OMP_NUM_THREADS", "MKL_NUM_THREADS",
+            "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS",
+        ):
+            self.assertEqual(launcher.count(variable), 2)
+
     def test_formal_launcher_has_eight_seed42_tasks_on_seven_gpus(self):
         source = Path("run/cdvt_phase1_6gpu.sh").read_text()
         launch_rows = [

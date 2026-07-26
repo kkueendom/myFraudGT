@@ -90,6 +90,10 @@ def configure(args):
     cfg.train.persistent_workers = False
     cfg.train.pin_memory = False
     cfg.val.fixed_target_panel = False
+    if int(cfg.num_threads) < 1:
+        raise ValueError("num_threads must be positive")
+    torch.set_num_threads(int(cfg.num_threads))
+    torch.set_num_interop_threads(1)
     if args.variant in {"account_only", "event_only"} \
             and args.lambda_cons != 0:
         raise ValueError(
@@ -406,6 +410,7 @@ def main():
         args.output_dir / "manifest.json",
         args.output_dir / "trajectory.jsonl",
         args.output_dir / "best_val.ckpt",
+        args.output_dir / "progress.json",
     )
     existing = [str(path) for path in protected_outputs if path.exists()]
     if existing:
@@ -432,6 +437,7 @@ def main():
 
     trajectory_path = args.output_dir / "trajectory.jsonl"
     checkpoint_path = args.output_dir / "best_val.ckpt"
+    progress_path = args.output_dir / "progress.json"
     best_val = -1.0
     best_event = None
     stale_evals = 0
@@ -442,6 +448,21 @@ def main():
             model, loaders[0], dataset["train"], optimizer, device,
             float(args.lambda_cons))
         scheduler.step()
+        progress = {
+            "architecture_variant": args.variant,
+            "dataset": str(cfg.dataset.name),
+            "elapsed_seconds": time.monotonic() - started,
+            "epoch": epoch,
+            "git_commit": commit,
+            "lambda_cons": float(args.lambda_cons),
+            "sampling_protocol": "dynamic_random",
+            "seed": int(cfg.seed),
+            "train": train,
+            "variant": args.experiment_label,
+        }
+        progress_tmp = progress_path.with_suffix(".tmp")
+        progress_tmp.write_text(json.dumps(progress, sort_keys=True))
+        progress_tmp.replace(progress_path)
         if (epoch + 1) % int(cfg.train.eval_period):
             continue
         event = evaluation_event(model, loaders, device, epoch, train)
@@ -503,6 +524,8 @@ def main():
         "epochs_completed": int(events[-1]["epoch"] + 1),
         "elapsed_seconds": time.monotonic() - started,
         "parameter_count": int(parameter_count),
+        "cpu_threads": torch.get_num_threads(),
+        "interop_threads": torch.get_num_interop_threads(),
         "peak_gpu_memory_bytes": (
             int(torch.cuda.max_memory_allocated(device))
             if device.type == "cuda" else 0

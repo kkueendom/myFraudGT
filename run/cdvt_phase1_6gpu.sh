@@ -6,6 +6,7 @@ python="${CDVT_PYTHON:-/d/miniconda3/envs/fraudGT/bin/python}"
 commit="$(git -C "$repo" rev-parse --short=8 HEAD)"
 branch="$(git -C "$repo" branch --show-current)"
 root="${CDVT_OUTPUT_ROOT:-/e/yky/FraudGT_cdvt_results/phase1_formal_${commit}}"
+cpu_threads=8
 
 if [[ "$branch" != "feature/cdvt-causal-dual-view" ]]; then
   echo "unexpected branch: $branch" >&2
@@ -38,6 +39,8 @@ launch() {
   local output="$root/$name"
   mkdir -p "$output"
   env CUDA_VISIBLE_DEVICES="$gpu" PYTHONDONTWRITEBYTECODE=1 \
+    OMP_NUM_THREADS="$cpu_threads" MKL_NUM_THREADS="$cpu_threads" \
+    OPENBLAS_NUM_THREADS="$cpu_threads" NUMEXPR_NUM_THREADS="$cpu_threads" \
     "$python" "$repo/run/cdvt_phase1_screen.py" \
       --config "$repo/$config" \
       --device cuda:0 \
@@ -69,6 +72,8 @@ run_account_task() {
   local output="$root/$name"
   mkdir -p "$output"
   env CUDA_VISIBLE_DEVICES=6 PYTHONDONTWRITEBYTECODE=1 \
+    OMP_NUM_THREADS="$cpu_threads" MKL_NUM_THREADS="$cpu_threads" \
+    OPENBLAS_NUM_THREADS="$cpu_threads" NUMEXPR_NUM_THREADS="$cpu_threads" \
     "$python" "$repo/run/cdvt_phase1_screen.py" \
       --config "$repo/$config" \
       --device cuda:0 \
