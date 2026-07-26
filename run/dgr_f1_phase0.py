@@ -106,6 +106,8 @@ def simulate_streams(
         shape, int(template["tn"]), dtype=torch.long, device=device)
 
     mode = scenario["mode"]
+    if "min_tp" in parameters:
+        tp = tp.clamp_min(int(parameters["min_tp"]))
     latent = torch.randn(
         shape, dtype=torch.float64, device=device, generator=generator)
     if mode == "ratio_reversal":

@@ -92,6 +92,8 @@ All conditions must pass:
    null and ratio-reversal scenarios;
 9. Large-LI positive power is not more than 0.15 below Small-LI power in the
    stable IID scenario.
+10. DGR-F1 harm-detection power is at least 0.80 by 64 streams in the stable
+    harmful scenario for both templates.
 
 ## Stop Rule
 

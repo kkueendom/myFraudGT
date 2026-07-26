@@ -85,10 +85,11 @@
       "parameters": {
         "count_log_sd": 0.25,
         "dependence_strength": 0.20,
+        "min_tp": 1,
         "add_corrected_rate": 0.01,
-        "add_broken_rate": 0.000040,
+        "add_broken_rate": 0.000100,
         "remove_corrected_rate": 0.01,
-        "remove_broken_rate": 0.55
+        "remove_broken_rate": 1.00
       }
     }
   },
