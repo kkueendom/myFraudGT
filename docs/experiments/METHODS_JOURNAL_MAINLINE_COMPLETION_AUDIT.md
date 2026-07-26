@@ -23,7 +23,8 @@ that passes the required two-scale gate. Therefore:
 > statistical-method journal claim.
 
 This is not an absence-of-testing conclusion. TIER OOF, CET-FraudGT, CPSE,
-GTF1C, TREFIC and DGR-F1 each failed a different preregistered requirement.
+GTF1C, TREFIC, DGR-F1 and GT-psF1 each failed a different preregistered
+requirement.
 The failures collectively rule out immediate continuation through decoder
 tuning, another history encoder with the same data, or another confidence
 interval selected on the same scenarios.
@@ -156,6 +157,20 @@ Decision: `STOP_TREFIC`.
 
 Decision: `STOP_DGR_F1`.
 
+#### GT-psF1
+
+- Seven untouched dependence regimes and two synthetic templates.
+- 512 formal experiments and 4096 population-reference experiments per
+  scenario/template/effect.
+- Null coverage gate: 4/12 in-scope units.
+- Positive and harmful power gate: 0/12 units in each direction.
+- Dense-hub abstention: 1.00.
+- Low/high sampler regimes selected 2 versus 4 repeats, but no registered
+  allocation cell reached 0.80 power.
+- No preregistered two-hop coverage advantage over endpoint-dyadic inference.
+
+Decision: `STOP_GT_PSF1`.
+
 Status: **the reliability question is established, but every proposed new
 method failed at least one registered validity or power gate**.
 
@@ -227,7 +242,7 @@ Engineering quality is not the reason the mainline failed.
 | Useful representation-level fusion | Directly contradicted | No |
 | Stable improvement over A2 | Missing because candidate gate failed | No |
 | Cross-scale mechanism | Directly contradicted | No |
-| Successful reliability method | Directly contradicted | No |
+| Successful reliability method | Directly contradicted, including GT-psF1 | No |
 | Six-dataset three-seed main table | Not authorized | No |
 | Coherent module ablation | Not authorized | No |
 | Strong methods-journal novelty | Missing | No |
@@ -260,18 +275,21 @@ approval.
 
 ### Path B: Independent Graph-Dependent F1 Inference
 
-This is not an immediate code-tuning task. Before new experiments it requires:
+The registered GT-psF1 development screen completed and failed coverage, power,
+allocation and nontrivial-value gates. A replacement interval cannot be
+selected on the same scenarios. Any future return to this path requires:
 
 1. a dependency model that extends paired-F1 inference beyond independent
    instances to shared entities, chronological overlap and stochastic
    neighborhoods;
-2. a derivation or proof supplied independently of the failed DGR scenarios;
+2. a derivation or proof supplied independently of the failed DGR-F1 and
+   GT-psF1 scenarios;
 3. new untouched simulations and at least one external graph benchmark;
 4. prospective power calculations before fixing stream budgets;
 5. comparison with psF1/psF1pair, cluster bootstrap and network bootstrap.
 
-The existing AML scenarios may be used only as a final external application,
-not to select the new estimator.
+The existing AML, DGR-F1 and GT-psF1 scenarios may be used only as final
+external applications, not to select the new estimator.
 
 ### Path C: New External Evidence
 
@@ -295,6 +313,8 @@ No further GPU task is currently justified:
 
 - TREFIC formal expansion is prohibited by its failed power gate.
 - DGR-F1 reruns or interval replacement are prohibited by its stop rule.
+- GT-psF1 reruns, effect enlargement or kernel replacement are prohibited by
+  its stop rule.
 - CET/CPSE additional seeds are prohibited by failed two-scale qualification.
 - Phase C/D six-dataset training is not authorized.
 
