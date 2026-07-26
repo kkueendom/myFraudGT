@@ -15,6 +15,8 @@
   `/e/yky/FraudGT_cet_results/a2_stability_formal_1ebda33`
 - Local result:
   `/Users/kun/FraudGT_experiment_workspace/a2_stability_formal_1ebda33`
+- Machine-readable aggregate:
+  `docs/experiments/A2_DYNAMIC_SAMPLING_STABILITY_RESULTS.json`
 - Formal baseline: registered historical initial A2 table
 
 ## Protocol Audit
