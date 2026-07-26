@@ -52,7 +52,7 @@ def git_commit():
     ).strip():
         raise RuntimeError("refusing to audit from a dirty worktree")
     return subprocess.check_output(
-        ["git", "rev-parse", "--short=8"],
+        ["git", "rev-parse", "--short=8", "HEAD"],
         cwd=REPO_ROOT,
         text=True,
     ).strip()
@@ -503,4 +503,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
