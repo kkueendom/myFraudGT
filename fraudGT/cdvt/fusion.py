@@ -91,6 +91,17 @@ class DualViewFusionClassifier(nn.Module):
                     (event_graph.num_graphs, 1, 1)),
             })
             return logits, diagnostics
+        if event_graph.num_graphs == 0:
+            fused = self.fusion_norm(account)
+            logits = self.classifier(fused).squeeze(-1)
+            diagnostics = dict(event_diagnostics)
+            diagnostics.update({
+                "account_norm": account.norm(dim=-1),
+                "fusion_norm": fused.norm(dim=-1),
+                "fusion_gain_norm": (fused - account).norm(dim=-1),
+                "cross_attention": account.new_zeros((0, 1, 0)),
+            })
+            return logits, diagnostics
         dense_events, event_mask = to_dense_batch(
             event_states, event_graph.node_graph)
         context, attention = self.cross_attention(

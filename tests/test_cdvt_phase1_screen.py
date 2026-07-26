@@ -15,6 +15,14 @@ class CDVTPhase1ScreenTest(unittest.TestCase):
             first[first_positions], second[second_positions]))
         self.assertEqual(set(first[first_positions].tolist()), {2, 4, 7})
 
+    def test_common_positions_accepts_an_empty_view(self):
+        nonempty = torch.tensor([2, 7])
+        empty = torch.empty(0, dtype=torch.long)
+        for first, second in ((nonempty, empty), (empty, nonempty)):
+            first_positions, second_positions = common_positions(first, second)
+            self.assertEqual(first_positions.numel(), 0)
+            self.assertEqual(second_positions.numel(), 0)
+
     def test_js_is_symmetric_zero_for_equal_and_positive_otherwise(self):
         first = torch.tensor([-2.0, 0.0, 2.0])
         same = bernoulli_js(first, first)

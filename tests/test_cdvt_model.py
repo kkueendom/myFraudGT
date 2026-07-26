@@ -134,6 +134,25 @@ class CDVTModelComponentsTest(unittest.TestCase):
         self.assertTrue(torch.isfinite(
             diagnostics["target_event_norm"]).all())
 
+    def test_dual_view_accepts_an_empty_sampled_target_batch(self):
+        graph = CausalEventGraphIndex(
+            torch.tensor([[0], [1]]),
+            torch.tensor([1]),
+            torch.tensor([[1.0, 2.0, 0.0, 0.0]]),
+        ).query(torch.empty(0, dtype=torch.long))
+        model = DualViewFusionClassifier(
+            account_dim=48,
+            num_currencies=1,
+            num_payment_formats=1,
+            hidden_dim=32,
+            num_heads=4,
+            num_layers=1,
+            dropout=0.0,
+        )
+        logits, diagnostics = model(torch.empty(0, 48), graph)
+        self.assertEqual(logits.shape, (0,))
+        self.assertEqual(diagnostics["cross_attention"].shape, (0, 1, 0))
+
 
 if __name__ == "__main__":
     unittest.main()

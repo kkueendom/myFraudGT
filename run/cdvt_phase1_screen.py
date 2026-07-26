@@ -169,6 +169,9 @@ def common_positions(first_ids, second_ids):
         or torch.unique(second_ids).numel() != second_ids.numel()
     ):
         raise AssertionError("target IDs must be unique within each view")
+    if first_ids.numel() == 0 or second_ids.numel() == 0:
+        empty = torch.empty(0, dtype=torch.long)
+        return empty, empty.clone()
     second_order = torch.argsort(second_ids)
     sorted_second = second_ids[second_order]
     positions = torch.searchsorted(sorted_second, first_ids)
