@@ -26,6 +26,7 @@ from fraudGT.evidence.tier_model import TransactionEvidenceEncoder
 from fraudGT.graphgym.config import cfg, load_cfg, set_cfg
 from fraudGT.graphgym.loader import create_dataset, create_loader
 from fraudGT.graphgym.model_builder import create_model
+from run.cdvt_protocol import INITIAL_A2
 
 
 TASK = ("node", "to", "node")
@@ -37,34 +38,6 @@ ROLE_NAMES = (
     "reverse",
 )
 MOTIF_NAMES = ("reciprocal", "relay", "cycle")
-INITIAL_A2 = {
-    "Small-LI": {
-        "val_selected_test_f1": 0.46247,
-        "raw_best_test_f1": 0.50667,
-    },
-    "Small-HI": {
-        "val_selected_test_f1": 0.77984,
-        "raw_best_test_f1": 0.79497,
-    },
-    "Medium-LI": {
-        "val_selected_test_f1": 0.51163,
-        "raw_best_test_f1": 0.59031,
-    },
-    "Medium-HI": {
-        "val_selected_test_f1": 0.77574,
-        "raw_best_test_f1": 0.78940,
-    },
-    "Large-LI": {
-        "val_selected_test_f1": 0.30108,
-        "raw_best_test_f1": 0.44720,
-    },
-    "Large-HI": {
-        "val_selected_test_f1": 0.72897,
-        "raw_best_test_f1": 0.76223,
-    },
-}
-
-
 def git_output(*args):
     result = subprocess.run(
         ["git", *args],

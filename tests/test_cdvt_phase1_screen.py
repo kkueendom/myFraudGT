@@ -58,6 +58,11 @@ class CDVTPhase1ScreenTest(unittest.TestCase):
         ):
             self.assertEqual(launcher.count(variable), 2)
 
+    def test_runner_records_explicit_experiment_phase(self):
+        source = Path("run/cdvt_phase1_screen.py").read_text()
+        self.assertIn('"phase": args.phase', source)
+        self.assertIn('default="CDVT_phase1"', source)
+
     def test_formal_launcher_has_eight_seed42_tasks_on_seven_gpus(self):
         source = Path("run/cdvt_phase1_6gpu.sh").read_text()
         launch_rows = [

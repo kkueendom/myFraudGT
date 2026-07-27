@@ -1,0 +1,29 @@
+"""Shared frozen protocol values for CDVT experiments."""
+
+
+INITIAL_A2 = {
+    "Small-LI": {
+        "val_selected_test_f1": 0.46247,
+        "raw_best_test_f1": 0.50667,
+    },
+    "Small-HI": {
+        "val_selected_test_f1": 0.77984,
+        "raw_best_test_f1": 0.79497,
+    },
+    "Medium-LI": {
+        "val_selected_test_f1": 0.51163,
+        "raw_best_test_f1": 0.59031,
+    },
+    "Medium-HI": {
+        "val_selected_test_f1": 0.77574,
+        "raw_best_test_f1": 0.78940,
+    },
+    "Large-LI": {
+        "val_selected_test_f1": 0.30108,
+        "raw_best_test_f1": 0.44720,
+    },
+    "Large-HI": {
+        "val_selected_test_f1": 0.72897,
+        "raw_best_test_f1": 0.76223,
+    },
+}

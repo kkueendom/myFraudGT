@@ -62,6 +62,11 @@ def parse_args():
     parser.add_argument("--max-epochs", type=int, default=500)
     parser.add_argument("--early-stop-min-epoch", type=int, default=80)
     parser.add_argument("--early-stop-patience-evals", type=int, default=10)
+    parser.add_argument(
+        "--phase",
+        choices=("CDVT_phase1", "CDVT_phase2", "CDVT_phase3", "CDVT_ablation"),
+        default="CDVT_phase1",
+    )
     return parser.parse_args()
 
 
@@ -500,7 +505,7 @@ def main():
         events, key=lambda event: event["test"]["normal"]["f1"])
     raw_best = raw_best_event["test"]["normal"]["f1"]
     manifest = {
-        "phase": "CDVT_phase1",
+        "phase": args.phase,
         "sampling_protocol": "dynamic_random",
         "dataset": str(cfg.dataset.name),
         "variant": args.experiment_label,
