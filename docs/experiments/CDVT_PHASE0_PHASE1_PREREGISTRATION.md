@@ -18,6 +18,23 @@ method screen, not a hyperparameter search.
 - Every run records dataset, variant, seed, commit, config, checkpoint,
   selected epoch, both F1 metrics, runtime, and `sampling_protocol`.
 
+### Retrospective record of a pre-execution protocol amendment
+
+The seed assignments written above preserve the original preregistration at
+commit `7433e36`. Before the formal Phase 1 launcher was created or any formal
+Phase 1 result was observed, commit `74bcac2` changed Large-LI from seed 44 to
+seed 42 while raising both screening configurations from 120 to 500 epochs.
+The purpose was to align the two-scale screen with the later six-dataset
+single-seed matrix and avoid confounding dataset scale with seed. The formal
+launcher, configs, result audit, and all recorded Phase 1 task names therefore
+use seed 42 on both Small-LI and Large-LI.
+
+This amendment should have been documented in commit `74bcac2`; this paragraph
+is a retrospective audit correction added after model freezing. It does not
+alter an experiment result or retroactively describe seed 44 as having been
+run. Git history remains the authoritative timestamped record of both the
+original plan and the pre-execution change.
+
 ### Original-paper verification
 
 FraudGT Section 4.1.3 (PDF page 6) states that test performance is

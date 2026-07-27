@@ -53,6 +53,11 @@ variant choice.
 Small-LI and Large-LI reuse their existing Phase 1 dual-view seed-42 runs.
 Only Small-HI, Medium-LI, Medium-HI, and Large-HI are newly trained in Phase 2.
 
+The original Phase 1 preregistration named seed 44 for Large-LI. Commit
+`74bcac2` changed that setting to seed 42 before the formal Phase 1 launcher and
+results, so both reused manifests are seed 42. The preregistration document
+retains its original text and records this pre-execution amendment explicitly.
+
 ## Decision Gate
 
 Phase 2 advances to the representative three-seed evaluation only if the
