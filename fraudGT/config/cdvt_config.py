@@ -17,3 +17,4 @@ def set_cfg_cdvt(cfg):
     cfg.cdvt.time_window = -1
     cfg.cdvt.event_cache_size = 8192
     cfg.cdvt.lambda_cons = 0.0
+    cfg.cdvt.use_relation_types = True

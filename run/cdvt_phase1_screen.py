@@ -53,7 +53,8 @@ def parse_args():
         "--experiment-label",
         choices=(
             "account_only", "event_only", "causal_event_add",
-            "dual_view", "full_cdvt"
+            "dual_view", "full_cdvt", "dual_view_no_relation",
+            "dual_view_k2"
         ),
         required=True,
     )
@@ -109,12 +110,21 @@ def configure(args):
         "causal_event_add": ("additive_view", False),
         "dual_view": ("dual_view", False),
         "full_cdvt": ("dual_view", True),
+        "dual_view_no_relation": ("dual_view", False),
+        "dual_view_k2": ("dual_view", False),
     }
     expected_variant, requires_consistency = expected[args.experiment_label]
     if args.variant != expected_variant:
         raise ValueError("experiment label and architecture variant differ")
     if requires_consistency != (args.lambda_cons > 0):
         raise ValueError("experiment label and consistency setting differ")
+    uses_relations = bool(cfg.cdvt.use_relation_types)
+    expected_relations = args.experiment_label != "dual_view_no_relation"
+    if uses_relations != expected_relations:
+        raise ValueError("experiment label and relation setting differ")
+    expected_k = 2 if args.experiment_label == "dual_view_k2" else 4
+    if int(cfg.cdvt.history_k) != expected_k:
+        raise ValueError("experiment label and history K differ")
     if args.variant == "account_only":
         cfg.model.type = "GTModel"
     if args.lambda_cons < 0:
@@ -460,9 +470,11 @@ def main():
             "epoch": epoch,
             "git_commit": commit,
             "lambda_cons": float(args.lambda_cons),
+            "history_k": int(cfg.cdvt.history_k),
             "sampling_protocol": "dynamic_random",
             "seed": int(cfg.seed),
             "train": train,
+            "use_relation_types": bool(cfg.cdvt.use_relation_types),
             "variant": args.experiment_label,
         }
         progress_tmp = progress_path.with_suffix(".tmp")
@@ -511,6 +523,8 @@ def main():
         "variant": args.experiment_label,
         "architecture_variant": args.variant,
         "lambda_cons": float(args.lambda_cons),
+        "history_k": int(cfg.cdvt.history_k),
+        "use_relation_types": bool(cfg.cdvt.use_relation_types),
         "seed": int(cfg.seed),
         "git_commit": commit,
         "config": str(args.config.resolve()),

@@ -18,6 +18,7 @@ class DualViewFusionClassifier(nn.Module):
         num_heads=4,
         num_layers=2,
         dropout=0.2,
+        use_relation_types=True,
     ):
         super().__init__()
         if variant not in self.VARIANTS:
@@ -30,6 +31,7 @@ class DualViewFusionClassifier(nn.Module):
             num_heads=num_heads,
             num_layers=num_layers,
             dropout=dropout,
+            use_relation_types=use_relation_types,
         )
         self.event_classifier = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim),

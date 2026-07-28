@@ -30,6 +30,7 @@ class RelationAwareTemporalLayer(nn.Module):
         edge_dim,
         num_relations,
         dropout,
+        use_relation_types=True,
     ):
         super().__init__()
         if hidden_dim % num_heads:
@@ -37,6 +38,7 @@ class RelationAwareTemporalLayer(nn.Module):
         self.hidden_dim = hidden_dim
         self.num_heads = num_heads
         self.head_dim = hidden_dim // num_heads
+        self.use_relation_types = bool(use_relation_types)
         self.query = nn.Linear(hidden_dim, hidden_dim)
         self.key = nn.Linear(hidden_dim, hidden_dim)
         self.value = nn.Linear(hidden_dim, hidden_dim)
@@ -64,16 +66,24 @@ class RelationAwareTemporalLayer(nn.Module):
             source, destination = edge_index
             query = self.query(node_states[destination]).view(
                 -1, self.num_heads, self.head_dim)
-            key = (
-                self.key(node_states[source])
-                + self.relation_key(edge_relation)
-                + self.edge_key(edge_attr)
-            ).view(-1, self.num_heads, self.head_dim)
-            value = (
-                self.value(node_states[source])
-                + self.relation_value(edge_relation)
-                + self.edge_value(edge_attr)
-            ).view(-1, self.num_heads, self.head_dim)
+            if self.use_relation_types:
+                key = (
+                    self.key(node_states[source])
+                    + self.relation_key(edge_relation)
+                    + self.edge_key(edge_attr)
+                )
+                value = (
+                    self.value(node_states[source])
+                    + self.relation_value(edge_relation)
+                    + self.edge_value(edge_attr)
+                )
+            else:
+                key = self.key(node_states[source]) + self.edge_key(edge_attr)
+                value = (
+                    self.value(node_states[source])
+                    + self.edge_value(edge_attr))
+            key = key.view(-1, self.num_heads, self.head_dim)
+            value = value.view(-1, self.num_heads, self.head_dim)
             scores = (query * key).sum(-1) / math.sqrt(self.head_dim)
             attention = pyg_softmax(
                 scores, destination, num_nodes=node_states.size(0))
@@ -106,6 +116,7 @@ class CausalEventTransformer(nn.Module):
         edge_dim=10,
         num_relations=4,
         dropout=0.2,
+        use_relation_types=True,
     ):
         super().__init__()
         if num_currencies < 1 or num_payment_formats < 1:
@@ -121,6 +132,7 @@ class CausalEventTransformer(nn.Module):
         self.temporal_position = TemporalPositionEncoding(hidden_dim)
         self.input_norm = nn.LayerNorm(hidden_dim)
         self.input_dropout = nn.Dropout(dropout)
+        self.use_relation_types = bool(use_relation_types)
         self.layers = nn.ModuleList([
             RelationAwareTemporalLayer(
                 hidden_dim=hidden_dim,
@@ -128,6 +140,7 @@ class CausalEventTransformer(nn.Module):
                 edge_dim=edge_dim,
                 num_relations=num_relations,
                 dropout=dropout,
+                use_relation_types=self.use_relation_types,
             )
             for _ in range(num_layers)
         ])
@@ -162,12 +175,17 @@ class CausalEventTransformer(nn.Module):
 
     def forward(self, graph: CausalEventGraphBatch):
         states = self._encode_nodes(graph)
+        edge_attr = graph.edge_attr
+        if not self.use_relation_types and edge_attr.numel():
+            edge_attr = edge_attr.clone()
+            edge_attr[:, 3:7] = 0
+            edge_attr[:, 9] = 0
         attentions = []
         for layer in self.layers:
             states, attention = layer(
                 states,
                 graph.edge_index,
-                graph.edge_attr,
+                edge_attr,
                 graph.edge_relation,
             )
             attentions.append(attention)
@@ -178,4 +196,3 @@ class CausalEventTransformer(nn.Module):
             "event_count": graph.graph_ptr[1:] - graph.graph_ptr[:-1],
         }
         return states, states[graph.target_nodes], diagnostics
-

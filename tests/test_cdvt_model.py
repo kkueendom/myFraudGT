@@ -87,6 +87,34 @@ class CDVTModelComponentsTest(unittest.TestCase):
             model.event_encoder.layers[0].edge_key.weight.grad)
         self.assertGreater(float(diagnostics["fusion_gain_norm"].sum()), 0)
 
+    def test_no_relation_ablation_masks_every_relation_pathway(self):
+        model = DualViewFusionClassifier(
+            account_dim=48,
+            num_currencies=2,
+            num_payment_formats=2,
+            hidden_dim=32,
+            num_heads=4,
+            num_layers=1,
+            dropout=0.0,
+            use_relation_types=False,
+        )
+        captured = []
+        layer = model.event_encoder.layers[0]
+        handle = layer.edge_key.register_forward_pre_hook(
+            lambda _module, inputs: captured.append(inputs[0].detach()))
+        account = torch.randn(2, 48, requires_grad=True)
+        logits, _ = model(account, self.graph)
+        handle.remove()
+        logits.sum().backward()
+        self.assertEqual(len(captured), 1)
+        self.assertTrue(torch.equal(
+            captured[0][:, 3:7], torch.zeros_like(captured[0][:, 3:7])))
+        self.assertTrue(torch.equal(
+            captured[0][:, 9], torch.zeros_like(captured[0][:, 9])))
+        self.assertIsNone(layer.relation_key.weight.grad)
+        self.assertIsNone(layer.relation_value.weight.grad)
+        self.assertIsNotNone(layer.edge_key.weight.grad)
+
     def test_normal_shuffled_and_off_are_distinct_interventions(self):
         model = DualViewFusionClassifier(
             account_dim=48,

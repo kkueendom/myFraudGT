@@ -49,6 +49,7 @@ class CDVTModel(nn.Module):
             num_heads=int(cfg.cdvt.num_heads),
             num_layers=int(cfg.cdvt.num_layers),
             dropout=float(cfg.cdvt.dropout),
+            use_relation_types=bool(cfg.cdvt.use_relation_types),
         )
         self.last_diagnostics = None
 
