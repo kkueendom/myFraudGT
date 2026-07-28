@@ -262,6 +262,20 @@ class CDVTFollowupTest(unittest.TestCase):
         self.assertIn("--max-batches 256", source)
         self.assertIn("CDVT_POLL_SECONDS:-300", source)
 
+    def test_unified_followup_queue_owns_all_gpu_assignment(self):
+        source = Path("run/cdvt_followup_queue.sh").read_text()
+        task_rows = [
+            line.strip() for line in source.splitlines()
+            if line.strip().startswith(("'phase3|", "'ablation|"))
+        ]
+        self.assertEqual(len(task_rows), 14)
+        self.assertEqual(len(set(task_rows)), 14)
+        self.assertIn('"training_tasks":14', source)
+        self.assertIn('"runtime_tasks":6', source)
+        self.assertIn("gpu_is_idle", source)
+        self.assertIn("cdvt_runtime_queue.sh", source)
+        self.assertNotIn("Small-LI|42|dual_view'", source)
+
 
 if __name__ == "__main__":
     unittest.main()

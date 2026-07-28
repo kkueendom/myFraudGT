@@ -113,6 +113,13 @@ ablation summary pass.
 No full grid search, duplicate final-model seed-42 training, or separate
 normal/shuffled/off training is permitted.
 
+For formal execution, `run/cdvt_followup_queue.sh` owns all 14 training tasks
+through one GPU allocation table. This avoids a race in which independent
+Phase 3 and ablation queues could observe the same GPU as idle. After all
+training manifests and both summaries are complete, the same orchestrator
+starts the six normal-only checkpoint benchmarks. The stage-specific queues
+remain available only for controlled recovery or isolated reruns.
+
 ## Expected Outputs
 
 - `phase3_summary.json` and `phase3_summary.md`;
@@ -120,4 +127,3 @@ normal/shuffled/off training is permitted.
 - `runtime_summary.json` and `runtime_summary.md`;
 - per-task materialized YAML, manifest, checkpoint, progress, and logs; and
 - queue manifests containing Git commit and `sampling_protocol=dynamic_random`.
-
