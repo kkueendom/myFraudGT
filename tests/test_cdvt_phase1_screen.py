@@ -3,10 +3,64 @@ from pathlib import Path
 
 import torch
 
-from run.cdvt_phase1_screen import bernoulli_js, common_positions
+from run.cdvt_phase1_screen import bernoulli_js, common_positions, evaluate
 
 
 class CDVTPhase1ScreenTest(unittest.TestCase):
+    def test_validation_skips_counterfactuals_but_test_keeps_them(self):
+        class Batch:
+            def to(self, _device):
+                return self
+
+        class Model:
+            def __init__(self):
+                self.normal_calls = 0
+                self.counterfactual_calls = 0
+
+            def eval(self):
+                return self
+
+            def _output(self, offset=0.0):
+                diagnostics = {
+                    "target_edge_ids": torch.tensor([3]),
+                    "event_count": torch.tensor([2]),
+                    "fusion_gain_norm": torch.tensor([0.25]),
+                }
+                return (
+                    torch.tensor([offset]), torch.tensor([1]), diagnostics,
+                )
+
+            def forward_details(self, _batch, condition):
+                self.normal_calls += 1
+                self.assert_normal(condition)
+                return self._output()
+
+            def forward_counterfactuals(self, _batch):
+                self.counterfactual_calls += 1
+                return {
+                    "normal": self._output(),
+                    "shuffled": self._output(0.5),
+                    "off": self._output(-0.5),
+                }
+
+            @staticmethod
+            def assert_normal(condition):
+                if condition != "normal":
+                    raise AssertionError(condition)
+
+        model = Model()
+        validation = evaluate(
+            model, [Batch()], torch.device("cpu"), "val", ("normal",))
+        self.assertEqual(set(validation["scores"]), {"normal"})
+        self.assertEqual(model.normal_calls, 1)
+        self.assertEqual(model.counterfactual_calls, 0)
+
+        test = evaluate(model, [Batch()], torch.device("cpu"), "test")
+        self.assertEqual(
+            set(test["scores"]), {"normal", "shuffled", "off"})
+        self.assertEqual(model.normal_calls, 1)
+        self.assertEqual(model.counterfactual_calls, 1)
+
     def test_common_positions_align_independently_ordered_views(self):
         first = torch.tensor([7, 2, 9, 4])
         second = torch.tensor([4, 7, 3, 2])

@@ -308,11 +308,14 @@ def train_epoch(model, loader, train_data, optimizer, device, lambda_cons):
 
 
 @torch.no_grad()
-def evaluate(model, loader, device, split):
+def evaluate(model, loader, device, split, conditions=CONDITIONS):
+    conditions = tuple(conditions)
+    if conditions not in (("normal",), CONDITIONS):
+        raise ValueError(f"unsupported evaluation conditions: {conditions}")
     model.eval()
     edge_ids = []
     labels = []
-    scores = {condition: [] for condition in CONDITIONS}
+    scores = {condition: [] for condition in conditions}
     event_counts = []
     fusion_gains = []
     started = time.monotonic()
@@ -320,18 +323,20 @@ def evaluate(model, loader, device, split):
     for raw_batch in loader:
         raw_batch.split = split
         raw_batch.to(device)
-        if hasattr(model, "forward_counterfactuals"):
+        if conditions == ("normal",):
+            outputs = {"normal": normal_forward(model, raw_batch)}
+        elif hasattr(model, "forward_counterfactuals"):
             outputs = model.forward_counterfactuals(raw_batch)
         else:
             normal_output = normal_forward(model, raw_batch)
             outputs = {
-                condition: normal_output for condition in CONDITIONS
+                condition: normal_output for condition in conditions
             }
         normal_logits, batch_labels, normal_diagnostics = outputs["normal"]
         edge_ids.append(
             normal_diagnostics["target_edge_ids"].detach().cpu())
         labels.append(batch_labels.detach().cpu().long())
-        for condition in CONDITIONS:
+        for condition in conditions:
             logits, condition_labels, diagnostics = outputs[condition]
             if not torch.equal(batch_labels, condition_labels):
                 raise AssertionError("counterfactual labels differ")
@@ -378,7 +383,7 @@ def intervention_row(labels, normal, counterfactual, threshold):
 
 
 def evaluation_event(model, loaders, device, epoch, train):
-    validation = evaluate(model, loaders[1], device, "val")
+    validation = evaluate(model, loaders[1], device, "val", ("normal",))
     test = evaluate(model, loaders[2], device, "test")
     _, val_labels, val_normal = unique_scores(validation, "normal")
     threshold, val_f1 = best_f1_threshold(val_labels, val_normal)
