@@ -12,9 +12,9 @@ def require_phase2_gate(phase1_root, phase2_root):
     summary = build_summary(Path(phase1_root), Path(phase2_root))
     gate = summary["phase2_gate"]
     if not gate["advance_to_phase3"]:
-        val = summary["val_selected_summary"]
+        val = summary["val_selected_vs_pe_fraudgt"]
         raise RuntimeError(
-            "Phase 2 gate failed: "
+            "Phase 2 gate failed against PE-FraudGT: "
             f"wins={val['wins']}, mean_delta={val['mean_delta']:+.5f}")
     return summary
 
@@ -31,8 +31,10 @@ def main():
     summary = require_phase2_gate(args.phase1_root, args.phase2_root)
     print(json.dumps({
         "advance_to_phase3": True,
-        "mean_delta": summary["val_selected_summary"]["mean_delta"],
-        "wins": summary["val_selected_summary"]["wins"],
+        "baseline": "PE-FraudGT paper Table 2",
+        "mean_delta": summary[
+            "val_selected_vs_pe_fraudgt"]["mean_delta"],
+        "wins": summary["val_selected_vs_pe_fraudgt"]["wins"],
     }, sort_keys=True))
 
 

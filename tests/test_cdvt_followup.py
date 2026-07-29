@@ -7,7 +7,7 @@ from pathlib import Path
 from run.cdvt_ablation_summary import build_summary as build_ablation
 from run.cdvt_phase3_gate import require_phase2_gate
 from run.cdvt_phase3_summary import build_summary as build_phase3
-from run.cdvt_protocol import INITIAL_A2
+from run.cdvt_protocol import INITIAL_A2, PE_FRAUDGT_PAPER
 from run.cdvt_runtime_summary import build_summary as build_runtime
 
 
@@ -114,14 +114,14 @@ class CDVTFollowupTest(unittest.TestCase):
     def populate_phase2(self, phase1, phase2, deltas):
         for dataset, delta in zip(ALL_DATASETS, deltas):
             root = phase1 if dataset in {"Small-LI", "Large-LI"} else phase2
-            baseline = INITIAL_A2[dataset]
+            a2 = INITIAL_A2[dataset]
             write_manifest(
                 root,
                 dataset,
                 "dual_view",
                 42,
-                baseline["val_selected_test_f1"] + delta,
-                baseline["raw_best_test_f1"] + delta,
+                PE_FRAUDGT_PAPER[dataset] + delta,
+                a2["raw_best_test_f1"] + delta,
                 phase=(
                     "CDVT_phase1" if root == phase1 else "CDVT_phase2"),
             )
@@ -167,7 +167,9 @@ class CDVTFollowupTest(unittest.TestCase):
                 self.assertTrue(math.isclose(
                     group["val_selected"]["sample_std"], 0.01))
                 self.assertTrue(math.isclose(
-                    group["val_selected"]["delta_mean"], 0.01))
+                    group["val_selected"]["delta_mean_vs_initial_a2"],
+                    0.01,
+                ))
 
     def test_ablation_summary_reuses_final_and_extracts_interventions(self):
         with tempfile.TemporaryDirectory() as directory:

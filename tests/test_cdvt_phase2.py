@@ -14,14 +14,39 @@ from run.cdvt_phase2_summary import (
     build_summary,
     markdown,
 )
-from run.cdvt_protocol import INITIAL_A2
+from run.cdvt_protocol import (
+    FRAUDGT_PAPER_REFERENCE,
+    INITIAL_A2,
+    MULTI_FRAUDGT_PAPER,
+    PE_FRAUDGT_PAPER,
+)
 
 
 class CDVTPhase2Test(unittest.TestCase):
+    def test_published_references_match_fraudgt_table2(self):
+        self.assertEqual(FRAUDGT_PAPER_REFERENCE["table"], 2)
+        self.assertEqual(FRAUDGT_PAPER_REFERENCE["runs"], 5)
+        self.assertEqual(PE_FRAUDGT_PAPER, {
+            "Small-LI": 0.4581,
+            "Small-HI": 0.7641,
+            "Medium-LI": 0.4353,
+            "Medium-HI": 0.7422,
+            "Large-LI": 0.3044,
+            "Large-HI": 0.6864,
+        })
+        self.assertEqual(MULTI_FRAUDGT_PAPER, {
+            "Small-LI": 0.4701,
+            "Small-HI": 0.7613,
+            "Medium-LI": 0.4406,
+            "Medium-HI": 0.7593,
+            "Large-LI": 0.3743,
+            "Large-HI": 0.7334,
+        })
+
     def write_result(self, root, dataset, delta):
         task = root / f"{dataset}_dual_view_seed42"
         task.mkdir(parents=True)
-        baseline = INITIAL_A2[dataset]
+        a2 = INITIAL_A2[dataset]
         payload = {
             "phase": "CDVT_phase2",
             "sampling_protocol": "dynamic_random",
@@ -35,9 +60,9 @@ class CDVTPhase2Test(unittest.TestCase):
             "checkpoint": str(task / "best_val.ckpt"),
             "val_selected_epoch": 80,
             "val_selected_test_f1": (
-                baseline["val_selected_test_f1"] + delta),
+                PE_FRAUDGT_PAPER[dataset] + delta),
             "raw_best_epoch": 84,
-            "raw_best_test_f1": baseline["raw_best_test_f1"] + delta,
+            "raw_best_test_f1": a2["raw_best_test_f1"] + delta,
             "parameter_count": 100,
             "peak_gpu_memory_bytes": 200,
             "elapsed_seconds": 10.0,
@@ -68,16 +93,17 @@ class CDVTPhase2Test(unittest.TestCase):
                 root = phase1 if dataset in PHASE1_DATASETS else phase2
                 self.write_result(root, dataset, delta)
             result = build_summary(phase1, phase2)
-            self.assertEqual(result["val_selected_summary"]["wins"], 4)
-            self.assertEqual(result["val_selected_summary"]["losses"], 2)
+            primary = result["val_selected_vs_pe_fraudgt"]
+            self.assertEqual(primary["wins"], 4)
+            self.assertEqual(primary["losses"], 2)
             self.assertEqual(
-                result["val_selected_summary"]["possible_sampling_variation"],
+                primary["possible_sampling_variation"],
                 2,
             )
-            self.assertAlmostEqual(
-                result["val_selected_summary"]["mean_delta"], 0.006)
+            self.assertAlmostEqual(primary["mean_delta"], 0.006)
             self.assertTrue(result["phase2_gate"]["advance_to_phase3"])
             self.assertIn("A2 raw-best", markdown(result))
+            self.assertIn("Multi-FraudGT", markdown(result))
 
     def test_incomplete_results_require_explicit_override(self):
         with tempfile.TemporaryDirectory() as directory:

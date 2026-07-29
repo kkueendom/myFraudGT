@@ -6,7 +6,12 @@ import json
 import statistics
 from pathlib import Path
 
-from run.cdvt_protocol import INITIAL_A2
+from run.cdvt_protocol import (
+    FRAUDGT_PAPER_REFERENCE,
+    INITIAL_A2,
+    MULTI_FRAUDGT_PAPER,
+    PE_FRAUDGT_PAPER,
+)
 
 
 DATASETS = ("Small-LI", "Medium-LI", "Large-LI")
@@ -85,7 +90,7 @@ def load_rows(
                 continue
             payload = json.loads(path.read_text())
             validate_manifest(payload, path, dataset, seed)
-            baseline = INITIAL_A2[dataset]
+            a2 = INITIAL_A2[dataset]
             val_f1 = float(payload["val_selected_test_f1"])
             raw_f1 = float(payload["raw_best_test_f1"])
             rows.append({
@@ -96,11 +101,16 @@ def load_rows(
                 "checkpoint": str(payload["checkpoint"]),
                 "val_selected_epoch": int(payload["val_selected_epoch"]),
                 "val_selected_test_f1": val_f1,
-                "delta_val_selected": (
-                    val_f1 - baseline["val_selected_test_f1"]),
+                "delta_val_selected_vs_pe_fraudgt": (
+                    val_f1 - PE_FRAUDGT_PAPER[dataset]),
+                "delta_val_selected_vs_multi_fraudgt": (
+                    val_f1 - MULTI_FRAUDGT_PAPER[dataset]),
+                "delta_val_selected_vs_initial_a2": (
+                    val_f1 - a2["val_selected_test_f1"]),
                 "raw_best_epoch": int(payload["raw_best_epoch"]),
                 "raw_best_test_f1": raw_f1,
-                "delta_raw_best": raw_f1 - baseline["raw_best_test_f1"],
+                "delta_raw_best_vs_initial_a2": (
+                    raw_f1 - a2["raw_best_test_f1"]),
                 "manifest": str(path.resolve()),
             })
     if missing and not allow_incomplete:
@@ -130,20 +140,47 @@ def build_summary(
     groups = []
     for dataset in DATASETS:
         dataset_rows = [row for row in rows if row["dataset"] == dataset]
-        baseline = INITIAL_A2[dataset]
+        a2 = INITIAL_A2[dataset]
+        val = metric_group(
+            dataset_rows,
+            "val_selected_test_f1",
+            PE_FRAUDGT_PAPER[dataset],
+        )
+        if val is not None:
+            val["delta_mean_vs_pe_fraudgt"] = val.pop("delta_mean")
+            val["delta_mean_vs_multi_fraudgt"] = (
+                val["mean"] - MULTI_FRAUDGT_PAPER[dataset])
+            val["delta_mean_vs_initial_a2"] = (
+                val["mean"] - a2["val_selected_test_f1"])
+        raw = metric_group(
+            dataset_rows,
+            "raw_best_test_f1",
+            a2["raw_best_test_f1"],
+        )
+        if raw is not None:
+            raw["delta_mean_vs_initial_a2"] = raw.pop("delta_mean")
         groups.append({
             "dataset": dataset,
             "seeds": [row["seed"] for row in dataset_rows],
-            "val_selected": metric_group(
-                dataset_rows, "val_selected_test_f1",
-                baseline["val_selected_test_f1"]),
-            "raw_best": metric_group(
-                dataset_rows, "raw_best_test_f1",
-                baseline["raw_best_test_f1"]),
+            "published_references": {
+                "pe_fraudgt": PE_FRAUDGT_PAPER[dataset],
+                "multi_fraudgt": MULTI_FRAUDGT_PAPER[dataset],
+            },
+            "initial_a2": a2,
+            "val_selected": val,
+            "raw_best": raw,
         })
     return {
         "model": "CDVT dual_view without sampling consistency",
         "sampling_protocol": "dynamic_random",
+        "primary_baseline": {
+            "name": "PE-FraudGT",
+            "source": FRAUDGT_PAPER_REFERENCE,
+        },
+        "published_strong_reference": {
+            "name": "Multi-FraudGT",
+            "source": FRAUDGT_PAPER_REFERENCE,
+        },
         "required_seeds": list(SEEDS),
         "rows": rows,
         "datasets": groups,
@@ -159,22 +196,25 @@ def markdown(summary):
         "All entries use independent seeds 42, 43, and 44 under the "
         "`dynamic_random` protocol.",
         "",
-        "| Dataset | Seed | Val-selected test F1 | Delta vs A2 | "
-        "Raw-best test F1 | Delta vs A2 |",
-        "|---|---:|---:|---:|---:|---:|",
+        "| Dataset | Seed | Val-selected test F1 | Delta vs PE | "
+        "Delta vs Multi | Delta vs A2 | Raw-best test F1 | Delta vs A2 |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for row in summary["rows"]:
         lines.append(
             f"| {row['dataset']} | {row['seed']} "
             f"| {row['val_selected_test_f1']:.5f} "
-            f"| {row['delta_val_selected']:+.5f} "
+            f"| {row['delta_val_selected_vs_pe_fraudgt']:+.5f} "
+            f"| {row['delta_val_selected_vs_multi_fraudgt']:+.5f} "
+            f"| {row['delta_val_selected_vs_initial_a2']:+.5f} "
             f"| {row['raw_best_test_f1']:.5f} "
-            f"| {row['delta_raw_best']:+.5f} |")
+            f"| {row['delta_raw_best_vs_initial_a2']:+.5f} |")
     lines.extend([
         "",
-        "| Dataset | Val-selected mean +/- std | Mean delta | "
-        "Raw-best mean +/- std | Mean delta |",
-        "|---|---:|---:|---:|---:|",
+        "| Dataset | Val-selected mean +/- std | Delta vs PE | "
+        "Delta vs Multi | Delta vs A2 | Raw-best mean +/- std | "
+        "Delta vs A2 |",
+        "|---|---:|---:|---:|---:|---:|---:|",
     ])
     for group in summary["datasets"]:
         val = group["val_selected"]
@@ -188,9 +228,11 @@ def markdown(summary):
         lines.append(
             f"| {group['dataset']} "
             f"| {val['mean']:.5f} +/- {val_std} "
-            f"| {val['delta_mean']:+.5f} "
+            f"| {val['delta_mean_vs_pe_fraudgt']:+.5f} "
+            f"| {val['delta_mean_vs_multi_fraudgt']:+.5f} "
+            f"| {val['delta_mean_vs_initial_a2']:+.5f} "
             f"| {raw['mean']:.5f} +/- {raw_std} "
-            f"| {raw['delta_mean']:+.5f} |")
+            f"| {raw['delta_mean_vs_initial_a2']:+.5f} |")
     if summary["missing_manifests"]:
         lines.extend([
             "",
