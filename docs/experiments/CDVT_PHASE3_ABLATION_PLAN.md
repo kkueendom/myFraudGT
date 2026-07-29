@@ -6,11 +6,13 @@ No task in this plan may start until the frozen six-dataset Phase 2 summary
 passes both preregistered conditions:
 
 1. at least four of six positive val-selected test F1 deltas; and
-2. a positive six-dataset mean val-selected delta against initial A2.
+2. a positive six-dataset mean val-selected delta against PE-FraudGT.
 
 `run/cdvt_phase3_gate.py` recomputes this decision from the authoritative Phase
 1 and Phase 2 manifests. Every follow-up queue calls the gate before creating
-its output root. Raw-best F1 is never used by the gate.
+its output root. Raw-best F1 is never used by the gate. Multi-FraudGT and
+initial A2 remain strong secondary references, as defined in
+`CDVT_BASELINE_POLICY_AMENDMENT.md`.
 
 ## Standard-Model Identity
 
@@ -26,21 +28,23 @@ The follow-up branch adds ablation and orchestration interfaces. When relation
 types are enabled, the temporal layer preserves the frozen operation order
 `base + relation + edge`; the standard forward calculation is unchanged.
 
-## Phase 3: Independent Seeds
+## Phase 3: Same-Seed Paired Replication
 
-Six new training tasks complete real seeds 42, 43, and 44 on representative
-scales:
+Twelve new training tasks pair CDVT with the FraudGT account-only control for
+seeds 43 and 44 on representative scales. Together with seed-42 controls, this
+produces real seeds 42, 43, and 44 for both models:
 
-| Dataset | Reused seed | New seeds |
-|---|---:|---:|
-| AML Small-LI | 42 from Phase 1 | 43, 44 |
-| AML Medium-LI | 42 from Phase 2 | 43, 44 |
-| AML Large-LI | 42 from Phase 1 | 43, 44 |
+| Dataset | Reused CDVT seed 42 | Account-only seed 42 | New paired seeds |
+|---|---|---|---|
+| AML Small-LI | Phase 1 | Phase 1 | 43, 44 |
+| AML Medium-LI | Phase 2 | Ablation queue | 43, 44 |
+| AML Large-LI | Phase 1 | Phase 1 | 43, 44 |
 
 `run/cdvt_phase3_queue.sh` materializes one immutable config per new task,
 uses every genuinely idle GPU, polls every 300 seconds, and refuses an existing
-result root. `run/cdvt_phase3_summary.py` verifies all nine manifests and
-reports every real seed plus sample mean and sample standard deviation.
+result root. `run/cdvt_phase3_summary.py` verifies all 18 model manifests,
+reports every real seed plus sample mean and sample standard deviation, and
+computes nine same-seed paired CDVT-minus-account deltas.
 
 ## Minimal Training Ablation
 
@@ -105,15 +109,15 @@ ablation summary pass.
 
 | Stage | New training tasks | Checkpoint-only tasks |
 |---|---:|---:|
-| Phase 3 real seeds | 6 | 0 |
+| Phase 3 paired seeds 43 and 44 | 12 | 0 |
 | Core/relation/K ablation | 8 | 0 |
 | Normal-only runtime | 0 | 6 |
-| Total | 14 | 6 |
+| Total | 20 | 6 |
 
 No full grid search, duplicate final-model seed-42 training, or separate
 normal/shuffled/off training is permitted.
 
-For formal execution, `run/cdvt_followup_queue.sh` owns all 14 training tasks
+For formal execution, `run/cdvt_followup_queue.sh` owns all 20 training tasks
 through one GPU allocation table. This avoids a race in which independent
 Phase 3 and ablation queues could observe the same GPU as idle. After all
 training manifests and both summaries are complete, the same orchestrator

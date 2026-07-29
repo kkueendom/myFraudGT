@@ -1,72 +1,56 @@
 # Experiment Results Directory
 
-## Current protocol (effective 2026-07-26)
+## Current protocol (effective 2026-07-29)
 
-All new screening, full-model, and ablation experiments must follow
-`DYNAMIC_RANDOM_A2_PROTOCOL.md`. The only baseline for new experiments is the
-initial A2 table in `run/dynamic_random_a2_baseline.json`.
+The active paper line is **Causal Dual-View Transaction Transformer (CDVT)**:
+an explicit causal transaction-event graph is encoded alongside FraudGT's
+account graph and fused before the classifier.
 
-Current paper line:
+Current scientific question:
 
-> Temporal evidence reliability under dynamic fraud-graph sampling.
+> Does a causal transaction-event view complement FraudGT's account-graph
+> representation under the original dynamic-random sampling protocol?
 
-The predictive decoder/encoder search and four registered reliability methods
-have stopped after failed advancement gates. The active deliverable is a
-negative reliability benchmark and reproducible evaluation protocol.
+The model is frozen as causal event graph plus representation-level dual-view
+fusion with `lambda_cons=0`. Decoder gates, scalar logit residuals, prototypes,
+support coefficients, routers, and rule scores are not part of this line.
 
-Current active experiment:
+Current read order:
 
-- `DYNAMIC_EVALUATION_BUDGET_CONVERGENCE_PLAN.md`
-  preregisters a paired 6-dataset x 3-model-seed x 2-stream evaluation-budget
-  audit. Seven nested budgets are extracted from each full dynamic trajectory,
-  so the experiment can recommend how many sampled batches are required
-  without confounding budget and target-edge draws.
-- `EXTERNAL_RELIABILITY_VALIDATION_FEASIBILITY.md`
-  compares DGraph-Fin and Elliptic for the mandatory external-validation
-  stage. It is a feasibility review, not permission to start an external run.
+1. `CDVT_BASELINE_POLICY_AMENDMENT.md`
+   Defines PE-FraudGT as the primary published baseline, Multi-FraudGT as the
+   strong published reference, A2 as an internal comparator, and account-only
+   as the matched multi-seed control.
 
-Current read order for another model or reviewer:
+2. `CDVT_FINAL_MODEL_FREEZE.md`
+   Records the validation-only selection of dual-view without consistency and
+   the frozen Phase 2 architecture. Its historical A2 gate is superseded by
+   the baseline amendment.
 
-1. `TEMPORAL_EVIDENCE_RELIABILITY_BENCHMARK_RESULTS.md`
-   Six datasets, three model seeds, two dynamic streams and four events:
-   nested variance, target-edge hash alignment, ranking reversals and raw-max
-   inflation.
+3. `CDVT_PHASE0_PHASE1_PREREGISTRATION.md`
+   Defines causal event construction, fusion, sampling protocol, Phase 0
+   checks, Phase 1 variants, and the pre-execution seed amendment.
 
-2. `METHODS_JOURNAL_MAINLINE_COMPLETION_AUDIT.md`
-   Requirement-by-requirement audit of TIER, CET, CPSE, GTF1C, TREFIC,
-   DGR-F1 and GT-psF1.
+4. `CDVT_PHASE2_EXECUTION_PLAN.md`
+   Defines the six-dataset seed-42 evaluation and immutable result manifests.
 
-3. `MULTI_MODEL_DYNAMIC_RELIABILITY_RESULTS.md`
-   Cross-family normal/shuffled/off sensitivity-versus-utility benchmark.
+5. `CDVT_PHASE3_ABLATION_PLAN.md`
+   Defines paired CDVT/account-only seeds, module ablations, relation and
+   history-size controls, and runtime benchmarks.
 
-4. `A2_DYNAMIC_SAMPLING_STABILITY_RESULTS.md`
-   Fixed-checkpoint dynamic evaluation over all six datasets.
+Current reporting rules:
 
-5. `GT_PSF1_PHASE0_DEVELOPMENT_RESULTS.md`
-   Final independent statistical-method attempt and its preregistered stop
-   decision.
-
-6. `TEMPORAL_EVIDENCE_RELIABILITY_BENCHMARK_PLAN.md` and
-   `DYNAMIC_EVIDENCE_RELIABILITY_LITERATURE_AND_NOVELTY_REVIEW.md`
-   Protocol, research question and conservative novelty boundary.
-
-7. `DYNAMIC_EVALUATION_BUDGET_CONVERGENCE_PLAN.md`
-   Preregistered actionability experiment for the current benchmark paper.
-
-8. `EXTERNAL_RELIABILITY_VALIDATION_FEASIBILITY.md`
-   External dataset/task/resource comparison and remaining access blockers.
-
-Publication figures are generated deterministically by
-`run/plot_temporal_reliability_results.py`. The script reads the authoritative
-nested-result JSON plus all 36 manifests and records SHA-256 hashes for every
-source artifact used in the plots.
-
-- Primary: candidate Val-selected Test F1 versus initial A2 Val-selected Test F1.
-- Supplementary: candidate Raw-best Test F1 versus initial A2 Raw-best Test F1.
-- Never compare across the two metric columns.
-- Never include Fixed-panel A2 in a new main result table.
+- Primary: Val-selected Test F1 against architecture-matched PE-FraudGT.
+- Strong references: Multi-FraudGT and the unpublished initial A2 result.
+- Representative multi-seed inference: same-seed paired CDVT minus account-only.
+- Supplementary Raw-best may only be compared with A2 Raw-best.
+- Never compare Val-selected and Raw-best across columns.
 - Mark `abs(delta_f1) < 0.005` as potentially within dynamic-sampling noise.
-- Record `sampling_protocol=dynamic_random` in every experiment manifest.
+- Record `sampling_protocol=dynamic_random` and full provenance in every
+  experiment manifest.
+
+Earlier decoder and dynamic-reliability experiments remain historical evidence.
+They are not the current paper line and must not be mixed into CDVT main tables.
 
 The files dated `20260626` below are a historical evidence bundle from
 `snapshot/fraudgt-results-20260626`. They remain useful for diagnosis, but their

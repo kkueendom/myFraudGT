@@ -25,6 +25,8 @@ def parse_args():
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--device", required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--overfit-steps", type=int, default=24)
+    parser.add_argument("--min-relative-loss-drop", type=float, default=0.05)
     return parser.parse_args()
 
 
@@ -97,14 +99,47 @@ def main():
 
     model.eval()
     with torch.no_grad():
+        initial_logits, initial_labels, _ = model.forward_details(
+            clone_batch(raw_batch, device), "normal")
+        initial_overfit_loss, _ = compute_loss(initial_logits, initial_labels)
+
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=float(cfg.optim.base_lr),
+        weight_decay=float(cfg.optim.weight_decay),
+    )
+    overfit_losses = []
+    model.train()
+    for _ in range(args.overfit_steps):
+        optimizer.zero_grad(set_to_none=True)
+        step_logits, step_labels, _ = model.forward_details(
+            clone_batch(raw_batch, device), "normal")
+        step_loss, _ = compute_loss(step_logits, step_labels)
+        step_loss.backward()
+        optimizer.step()
+        overfit_losses.append(float(step_loss.detach().cpu()))
+
+    model.eval()
+    with torch.no_grad():
         normal, _, normal_diagnostics = model.forward_details(
             clone_batch(raw_batch, device), "normal")
+        final_overfit_loss, _ = compute_loss(normal, initial_labels)
         shuffled, _, _ = model.forward_details(
             clone_batch(raw_batch, device), "shuffled")
         off, _, off_diagnostics = model.forward_details(
             clone_batch(raw_batch, device), "off")
     if torch.equal(normal, shuffled) or torch.equal(normal, off):
         raise AssertionError("event interventions must alter predictions")
+
+    initial_loss_value = float(initial_overfit_loss.detach().cpu())
+    final_loss_value = float(final_overfit_loss.detach().cpu())
+    relative_loss_drop = (
+        initial_loss_value - final_loss_value) / max(initial_loss_value, 1e-12)
+    if relative_loss_drop < args.min_relative_loss_drop:
+        raise AssertionError(
+            "tiny-batch overfit failed: "
+            f"relative loss drop {relative_loss_drop:.6f} is below "
+            f"{args.min_relative_loss_drop:.6f}")
 
     event_count = normal_diagnostics["event_count"].detach().cpu().float()
     row = {
@@ -132,6 +167,11 @@ def main():
             (normal - shuffled).abs().mean().cpu()),
         "normal_off_mean_abs_logit_delta": float(
             (normal - off).abs().mean().cpu()),
+        "overfit_steps": args.overfit_steps,
+        "overfit_initial_loss": initial_loss_value,
+        "overfit_final_loss": final_loss_value,
+        "overfit_relative_loss_drop": relative_loss_drop,
+        "overfit_training_losses": overfit_losses,
         "fixed_target_panel": False,
         "loader_shuffle": True,
         "config_snapshot": raw_config,
@@ -146,6 +186,8 @@ def main():
             "fusion_gradient_norm", "mean_event_count",
             "normal_shuffled_mean_abs_logit_delta",
             "normal_off_mean_abs_logit_delta",
+            "overfit_steps", "overfit_initial_loss",
+            "overfit_final_loss", "overfit_relative_loss_drop",
         )
     }, sort_keys=True))
 
