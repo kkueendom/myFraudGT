@@ -27,6 +27,7 @@ def parse_args():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--overfit-steps", type=int, default=24)
     parser.add_argument("--min-relative-loss-drop", type=float, default=0.05)
+    parser.add_argument("--max-batch-search", type=int, default=64)
     return parser.parse_args()
 
 
@@ -68,6 +69,12 @@ def clone_batch(raw_batch, device):
     return batch.to(device)
 
 
+def target_labels(raw_batch):
+    store = raw_batch[("node", "to", "node")]
+    mask = torch.isin(store.e_id, store.target_edge_id)
+    return store.y[mask]
+
+
 def main():
     args = parse_args()
     raw_config = configure(args.config.resolve(), args.device)
@@ -86,7 +93,22 @@ def main():
     device = torch.device(args.device)
     model = create_model(dataset=dataset).to(device)
     model.train()
-    raw_batch = next(iter(loaders[0]))
+    raw_batch = None
+    batch_search_index = None
+    for index, candidate in enumerate(loaders[0].loader):
+        labels = target_labels(candidate)
+        positives = int(labels.long().sum())
+        if 0 < positives < labels.numel():
+            raw_batch = candidate
+            batch_search_index = index
+            break
+        if index + 1 >= args.max_batch_search:
+            break
+    if raw_batch is None:
+        raise AssertionError(
+            "could not find a dynamic training batch containing both classes "
+            f"within {args.max_batch_search} draws")
+
     batch = clone_batch(raw_batch, device)
     logits, labels, diagnostics = model.forward_details(batch, "normal")
     loss, _ = compute_loss(logits, labels)
@@ -154,6 +176,10 @@ def main():
         "device": args.device,
         "batch_targets": int(labels.numel()),
         "positive_targets": int(labels.long().sum().cpu()),
+        "negative_targets": int(
+            labels.numel() - labels.long().sum().cpu()),
+        "batch_search_index": batch_search_index,
+        "max_batch_search": args.max_batch_search,
         "loss": float(loss.detach().cpu()),
         "account_gradient_norm": account_gradient,
         "event_gradient_norm": event_gradient,
