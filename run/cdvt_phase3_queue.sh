@@ -14,10 +14,14 @@ cpu_threads=8
 
 read -r -a gpus <<< "${CDVT_GPUS:-0 1 2 3 4 5 6}"
 tasks=(
-  Small-LI:43 Small-LI:44
-  Medium-LI:43 Medium-LI:44
-  Large-LI:43 Large-LI:44
+  Small-LI:43:dual_view Small-LI:43:account_only
+  Medium-LI:43:dual_view Medium-LI:43:account_only
+  Large-LI:43:dual_view Large-LI:43:account_only
+  Small-LI:44:dual_view Small-LI:44:account_only
+  Medium-LI:44:dual_view Medium-LI:44:account_only
+  Large-LI:44:dual_view Large-LI:44:account_only
 )
+ablation_root="${CDVT_ABLATION_ROOT:?CDVT_ABLATION_ROOT is required}"
 
 if [[ "$branch" != "feature/cdvt-phase3-experiments" ]]; then
   echo "unexpected branch: $branch" >&2
@@ -38,7 +42,7 @@ mkdir -p "$root/configs"
 printf '%s\n' "$gate" > "$root/phase2_gate.json"
 printf '{"commit":"%s","sampling_protocol":"dynamic_random",' "$commit" \
   > "$root/queue_manifest.json"
-printf '"variant":"dual_view","lambda_cons":0.0,"tasks":6,' \
+printf '"variants":["dual_view","account_only"],"lambda_cons":0.0,"tasks":12,' \
   >> "$root/queue_manifest.json"
 printf '"seeds":[43,44],"phase2_root":"%s"}\n' "$phase2_root" \
   >> "$root/queue_manifest.json"
@@ -60,13 +64,12 @@ base_config() {
 }
 
 for task in "${tasks[@]}"; do
-  dataset="${task%%:*}"
-  seed="${task##*:}"
+  IFS=':' read -r dataset seed variant <<< "$task"
   "$python" "$repo/run/cdvt_materialize_config.py" \
     --base "$(base_config "$dataset")" \
-    --output "$root/configs/AML-${dataset}-seed${seed}.yaml" \
+    --output "$root/configs/AML-${dataset}-${variant}-seed${seed}.yaml" \
     --seed "$seed" \
-    --variant dual_view
+    --variant "$variant"
 done
 
 declare -A pid_task=()
@@ -91,11 +94,11 @@ gpu_is_idle() {
 start_task() {
   local task="$1"
   local gpu="$2"
-  local dataset="${task%%:*}"
-  local seed="${task##*:}"
-  local name="${dataset}_dual_view_seed${seed}"
+  local dataset seed variant
+  IFS=':' read -r dataset seed variant <<< "$task"
+  local name="${dataset}_${variant}_seed${seed}"
   local output="$root/$name"
-  local config="$root/configs/AML-${dataset}-seed${seed}.yaml"
+  local config="$root/configs/AML-${dataset}-${variant}-seed${seed}.yaml"
   if [[ -e "$output" ]]; then
     echo "refusing to overwrite task artifacts: $output" >&2
     return 2
@@ -107,8 +110,8 @@ start_task() {
     "$python" "$repo/run/cdvt_phase1_screen.py" \
       --config "$config" \
       --device cuda:0 \
-      --variant dual_view \
-      --experiment-label dual_view \
+      --variant "$variant" \
+      --experiment-label "$variant" \
       --lambda-cons 0.0 \
       --output-dir "$output" \
       --max-epochs 500 \
@@ -138,10 +141,9 @@ while (( next_task < ${#tasks[@]} || ${#pid_task[@]} > 0 )); do
       code="$?"
       queue_status=1
     fi
-    dataset="${task%%:*}"
-    seed="${task##*:}"
-    printf '%s_dual_view_seed%s\tfinished\tgpu=%s\tpid=%s\texit=%s\n' \
-      "$dataset" "$seed" "$gpu" "$pid" "$code" \
+    IFS=':' read -r dataset seed variant <<< "$task"
+    printf '%s_%s_seed%s\tfinished\tgpu=%s\tpid=%s\texit=%s\n' \
+      "$dataset" "$variant" "$seed" "$gpu" "$pid" "$code" \
       >> "$root/queue_status.tsv"
     unset 'pid_task[$pid]' 'pid_gpu[$pid]' 'busy_gpu[$gpu]'
   done
@@ -163,6 +165,7 @@ done
   --phase1-root "$phase1_root" \
   --phase2-root "$phase2_root" \
   --phase3-root "$root" \
+  --ablation-root "$ablation_root" \
   --allow-incomplete \
   --write \
   > "$root/phase3_summary.stdout" 2>&1 || queue_status=1

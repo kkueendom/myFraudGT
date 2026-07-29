@@ -18,11 +18,17 @@ cpu_threads=8
 read -r -a gpus <<< "${CDVT_GPUS:-0 1 2 3 4 5 6}"
 tasks=(
   'phase3|Small-LI|43|dual_view'
-  'phase3|Small-LI|44|dual_view'
+  'phase3|Small-LI|43|account_only'
   'phase3|Medium-LI|43|dual_view'
-  'phase3|Medium-LI|44|dual_view'
+  'phase3|Medium-LI|43|account_only'
   'phase3|Large-LI|43|dual_view'
+  'phase3|Large-LI|43|account_only'
+  'phase3|Small-LI|44|dual_view'
+  'phase3|Small-LI|44|account_only'
+  'phase3|Medium-LI|44|dual_view'
+  'phase3|Medium-LI|44|account_only'
   'phase3|Large-LI|44|dual_view'
+  'phase3|Large-LI|44|account_only'
   'ablation|Medium-LI|42|account_only'
   'ablation|Medium-LI|42|event_only'
   'ablation|Small-LI|42|dual_view_no_relation'
@@ -52,8 +58,10 @@ mkdir -p "$phase3_root/configs" "$ablation_root/configs"
 printf '%s\n' "$gate" > "$root/phase2_gate.json"
 printf '{"commit":"%s","sampling_protocol":"dynamic_random",' "$commit" \
   > "$root/queue_manifest.json"
-printf '"training_tasks":14,"runtime_tasks":6,"phase2_root":"%s"}\n' \
-  "$phase2_root" >> "$root/queue_manifest.json"
+printf '"training_tasks":20,"phase3_tasks":12,"ablation_tasks":8,' \
+  >> "$root/queue_manifest.json"
+printf '"runtime_tasks":6,"phase2_root":"%s"}\n' "$phase2_root" \
+  >> "$root/queue_manifest.json"
 
 base_config() {
   local dataset="$1"
@@ -82,7 +90,7 @@ architecture_variant() {
 for task in "${tasks[@]}"; do
   IFS='|' read -r phase dataset seed variant <<< "$task"
   if [[ "$phase" == "phase3" ]]; then
-    config="$phase3_root/configs/AML-${dataset}-seed${seed}.yaml"
+    config="$phase3_root/configs/AML-${dataset}-${variant}-seed${seed}.yaml"
   else
     config="$ablation_root/configs/AML-${dataset}-${variant}-seed${seed}.yaml"
   fi
@@ -121,7 +129,7 @@ start_task() {
   name="${dataset}_${variant}_seed${seed}"
   if [[ "$phase" == "phase3" ]]; then
     output="$phase3_root/$name"
-    config="$phase3_root/configs/AML-${dataset}-seed${seed}.yaml"
+    config="$phase3_root/configs/AML-${dataset}-${variant}-seed${seed}.yaml"
     runner_phase="CDVT_phase3"
   else
     output="$ablation_root/$name"
@@ -194,6 +202,7 @@ done
   --phase1-root "$phase1_root" \
   --phase2-root "$phase2_root" \
   --phase3-root "$phase3_root" \
+  --ablation-root "$ablation_root" \
   --allow-incomplete \
   --write \
   > "$phase3_root/phase3_summary.stdout" 2>&1 || queue_status=1

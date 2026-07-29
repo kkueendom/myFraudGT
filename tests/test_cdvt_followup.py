@@ -140,35 +140,82 @@ class CDVTFollowupTest(unittest.TestCase):
     def test_phase3_summary_uses_real_seed_rows_and_sample_std(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            phase1, phase2, phase3 = (
-                root / "phase1", root / "phase2", root / "phase3")
-            for path in (phase1, phase2, phase3):
+            phase1, phase2, phase3, ablation = (
+                root / "phase1",
+                root / "phase2",
+                root / "phase3",
+                root / "ablation",
+            )
+            for path in (phase1, phase2, phase3, ablation):
                 path.mkdir()
             for dataset in ("Small-LI", "Medium-LI", "Large-LI"):
-                baseline = INITIAL_A2[dataset]
-                seed42_root = (
+                dual_seed42_root = (
                     phase1 if dataset in {"Small-LI", "Large-LI"}
                     else phase2)
-                for seed, delta in ((42, 0.00), (43, 0.01), (44, 0.02)):
-                    target = seed42_root if seed == 42 else phase3
+                account_seed42_root = (
+                    phase1 if dataset in {"Small-LI", "Large-LI"}
+                    else ablation)
+                for seed, account_f1 in (
+                    (42, 0.50), (43, 0.51), (44, 0.52)
+                ):
+                    account_target = (
+                        account_seed42_root if seed == 42 else phase3)
+                    dual_target = (
+                        dual_seed42_root if seed == 42 else phase3)
+                    seed42_phase = (
+                        "CDVT_phase1"
+                        if dataset in {"Small-LI", "Large-LI"}
+                        else "CDVT_phase2"
+                    )
+                    account_seed42_phase = (
+                        "CDVT_phase1"
+                        if dataset in {"Small-LI", "Large-LI"}
+                        else "CDVT_ablation"
+                    )
                     write_manifest(
-                        target, dataset, "dual_view", seed,
-                        baseline["val_selected_test_f1"] + delta,
-                        baseline["raw_best_test_f1"] + delta,
+                        account_target,
+                        dataset,
+                        "account_only",
+                        seed,
+                        account_f1,
+                        phase=(
+                            "CDVT_phase3"
+                            if seed != 42
+                            else account_seed42_phase
+                        ),
+                    )
+                    write_manifest(
+                        dual_target,
+                        dataset,
+                        "dual_view",
+                        seed,
+                        account_f1 + 0.02,
                         phase=(
                             "CDVT_phase3" if seed != 42
-                            else "CDVT_phase1"),
+                            else seed42_phase),
                     )
-            summary = build_phase3(phase1, phase2, phase3)
+            summary = build_phase3(
+                phase1, phase2, phase3, ablation)
             self.assertTrue(summary["complete"])
-            self.assertEqual(len(summary["rows"]), 9)
+            self.assertEqual(len(summary["rows"]), 18)
+            self.assertEqual(len(summary["paired_rows"]), 9)
             for group in summary["datasets"]:
                 self.assertEqual(group["seeds"], [42, 43, 44])
                 self.assertTrue(math.isclose(
-                    group["val_selected"]["sample_std"], 0.01))
-                self.assertTrue(math.isclose(
-                    group["val_selected"]["delta_mean_vs_initial_a2"],
+                    group["fraudgt"]["val_selected"]["sample_std"],
                     0.01,
+                ))
+                self.assertTrue(math.isclose(
+                    group["cdvt"]["val_selected"]["sample_std"],
+                    0.01,
+                ))
+                self.assertTrue(math.isclose(
+                    group["paired_delta"]["val_selected"]["mean"],
+                    0.02,
+                ))
+                self.assertTrue(math.isclose(
+                    group["paired_delta"]["val_selected"]["sample_std"],
+                    0.0,
                 ))
 
     def test_ablation_summary_reuses_final_and_extracts_interventions(self):
@@ -225,9 +272,12 @@ class CDVTFollowupTest(unittest.TestCase):
         ablation = Path("run/cdvt_ablation_queue.sh").read_text()
         self.assertLess(
             phase3.index("cdvt_phase3_gate.py"), phase3.index("mkdir -p"))
-        self.assertEqual(phase3.count("Small-LI:43"), 1)
-        self.assertEqual(phase3.count("Large-LI:44"), 1)
+        self.assertEqual(phase3.count("Small-LI:43:"), 2)
+        self.assertEqual(phase3.count("Large-LI:44:"), 2)
+        self.assertIn("Small-LI:43:account_only", phase3)
+        self.assertIn("Large-LI:44:dual_view", phase3)
         self.assertNotIn("Small-LI:42", phase3)
+        self.assertIn('"tasks":12', phase3)
         self.assertIn("CDVT_POLL_SECONDS:-300", phase3)
         self.assertLess(
             ablation.index("cdvt_phase3_gate.py"), ablation.index("mkdir -p"))
@@ -270,13 +320,15 @@ class CDVTFollowupTest(unittest.TestCase):
             line.strip() for line in source.splitlines()
             if line.strip().startswith(("'phase3|", "'ablation|"))
         ]
-        self.assertEqual(len(task_rows), 14)
-        self.assertEqual(len(set(task_rows)), 14)
-        self.assertIn('"training_tasks":14', source)
+        self.assertEqual(len(task_rows), 20)
+        self.assertEqual(len(set(task_rows)), 20)
+        self.assertIn('"training_tasks":20', source)
+        self.assertIn('"phase3_tasks":12', source)
         self.assertIn('"runtime_tasks":6', source)
         self.assertIn("gpu_is_idle", source)
         self.assertIn("cdvt_runtime_queue.sh", source)
         self.assertNotIn("Small-LI|42|dual_view'", source)
+        self.assertNotIn("Small-LI|42|account_only'", source)
 
 
 if __name__ == "__main__":
