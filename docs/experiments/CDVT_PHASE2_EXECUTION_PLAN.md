@@ -72,6 +72,6 @@ The portable Phase 2 deployment uses:
 - worktree `/e/yky/FraudGT_cdvt_phase2_2fb3333`; and
 - result root `/e/yky/FraudGT_cdvt_results/phase2_2fb3333`.
 
-Only complete `result_manifest.json` files are authoritative. Progress logs and
+Only complete `manifest.json` files are authoritative. Progress logs and
 intermediate best checkpoints may be inspected operationally but cannot be
 reported as final Phase 2 results.
