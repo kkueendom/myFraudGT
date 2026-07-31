@@ -141,10 +141,10 @@ remain supplementary rather than being presented as part of final CDVT.
 
 | Variant | Account view | Causal event view | Cross-view fusion | Consistency loss | Small-LI F1 | Medium-LI F1 | Large-LI F1 | Mean |
 |---|:---:|:---:|:---:|:---:|---:|---:|---:|---:|
-| A0: FraudGT / account-only | Yes | No | No | No | 0.47893 | TBD | 0.21287 | TBD |
-| A1: event-only | No | Yes | No | No | 0.33826 | TBD | 0.30530 | TBD |
-| A2: final CDVT dual-view | Yes | Yes | Yes | No | 0.43798 | 0.44711 | 0.33803 | 0.40771 |
-| A3: dual-view + consistency | Yes | Yes | Yes | Yes | TBD | TBD | TBD | TBD |
+| V0: FraudGT / account-only | Yes | No | No | No | 0.47893 | TBD | 0.21287 | TBD |
+| V1: event-only | No | Yes | No | No | 0.33826 | TBD | 0.30530 | TBD |
+| V2: final CDVT dual-view | Yes | Yes | Yes | No | 0.43798 | 0.44711 | 0.33803 | 0.40771 |
+| V3: dual-view + consistency | Yes | Yes | Yes | Yes | TBD | TBD | TBD | TBD |
 
 ## Table 6. Event-Graph Mechanism Controls
 
