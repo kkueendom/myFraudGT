@@ -20,6 +20,12 @@ VARIANTS = {
         "history_k": 4,
         "use_relation_types": True,
     },
+    "causal_event_add": {
+        "model_type": "CDVTModel",
+        "architecture": "additive_view",
+        "history_k": 4,
+        "use_relation_types": True,
+    },
     "dual_view": {
         "model_type": "CDVTModel",
         "architecture": "dual_view",

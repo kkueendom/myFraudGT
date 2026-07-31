@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from run.cdvt_additive_summary import build_summary as build_additive
 from run.cdvt_ablation_summary import build_summary as build_ablation
 from run.cdvt_phase3_gate import require_phase2_gate
 from run.cdvt_phase3_summary import build_summary as build_phase3
@@ -144,6 +145,7 @@ class CDVTFollowupTest(unittest.TestCase):
         scripts = (
             repository / "run" / "cdvt_phase3_gate.py",
             repository / "run" / "cdvt_phase3_summary.py",
+            repository / "run" / "cdvt_additive_summary.py",
         )
         with tempfile.TemporaryDirectory() as directory:
             for script in scripts:
@@ -325,6 +327,53 @@ class CDVTFollowupTest(unittest.TestCase):
                 and row["memory_ratio_cdvt_vs_account"] == 2.0
                 and row["latency_ratio_cdvt_vs_account"] == 2.0
                 for row in summary["comparisons"]))
+
+    def test_additive_summary_isolates_cross_attention(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            phase1, phase2, additive = (
+                root / "phase1", root / "phase2", root / "additive")
+            for path in (phase1, phase2, additive):
+                path.mkdir()
+            for dataset in ("Small-LI", "Medium-LI", "Large-LI"):
+                final_root = (
+                    phase1 if dataset in {"Small-LI", "Large-LI"}
+                    else phase2)
+                write_manifest(
+                    final_root, dataset, "dual_view", 42, 0.60,
+                    phase=(
+                        "CDVT_phase1" if final_root == phase1
+                        else "CDVT_phase2"),
+                )
+                write_manifest(
+                    additive,
+                    dataset,
+                    "causal_event_add",
+                    42,
+                    0.58,
+                    architecture="additive_view",
+                    phase="CDVT_ablation",
+                )
+            summary = build_additive(phase1, phase2, additive)
+            self.assertTrue(summary["complete"])
+            self.assertEqual(summary["cross_attention_win_count"], 3)
+            self.assertTrue(math.isclose(
+                summary["mean_delta_cross_attention_minus_additive"],
+                0.02,
+            ))
+
+    def test_additive_queue_waits_for_followup_and_has_three_tasks(self):
+        source = Path("run/cdvt_additive_queue.sh").read_text()
+        self.assertIn("CDVT_FOLLOWUP_ROOT", source)
+        self.assertLess(
+            source.index("queue_complete.json"),
+            source.index("mkdir -p \"$root/configs\""),
+        )
+        self.assertIn("tasks=(Small-LI Medium-LI Large-LI)", source)
+        self.assertIn('"tasks":3', source)
+        self.assertIn("--variant additive_view", source)
+        self.assertIn("--experiment-label causal_event_add", source)
+        self.assertIn("CDVT_POLL_SECONDS:-300", source)
 
     def test_runtime_queue_requires_complete_ablation_and_uses_six_tasks(self):
         source = Path("run/cdvt_runtime_queue.sh").read_text()

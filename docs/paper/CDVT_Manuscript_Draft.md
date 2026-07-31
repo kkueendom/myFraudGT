@@ -637,6 +637,7 @@ The core ablation variants isolate the two graph views and their fusion:
 |---|---|---|---|
 | Account-only | FraudGT | No | Original FraudGT head |
 | Event-only | No | Causal event Transformer | Target-event MLP |
+| Additive dual-view | FraudGT | Causal event Transformer | Projected-state addition |
 | CDVT | FraudGT | Causal event Transformer | Cross-attention |
 | CDVT + consistency | FraudGT | Causal event Transformer | Cross-attention plus JS loss |
 
@@ -742,9 +743,11 @@ The paired follow-up uses independent seeds 42, 43, and 44 for both
 FraudGT/account-only and CDVT on Small-LI, Medium-LI, and Large-LI. It also
 completes account-only and event-only controls, removes relation types,
 evaluates \(K=2\) against the frozen \(K=4\), and benchmarks normal-only
-inference. The follow-up is running from portable commit `f7209f2`. Mean,
-sample standard deviation, same-seed paired deltas, and computational overhead
-will be inserted only from final manifests.
+inference. A separate three-dataset additive-fusion control is staged to test
+whether cross-attention contributes beyond exposing the classifier to both
+projected views. The follow-up is running from portable commit `f7209f2`.
+Mean, sample standard deviation, same-seed paired deltas, and computational
+overhead will be inserted only from final manifests.
 
 ## 5. Discussion
 
@@ -884,7 +887,8 @@ the paired follow-up is complete. The remaining evidence package is:
 1. real seeds 42, 43, and 44 on Small-LI, Medium-LI, and Large-LI;
    FraudGT/account-only and CDVT are both run at each seed so that the
    robustness table reports same-seed paired deltas;
-2. account-only, event-only, and CDVT ablations on representative scales;
+2. account-only, event-only, additive-fusion, and CDVT ablations on
+   representative scales;
 3. a no-relation test and one alternative \(K\);
 4. parameter, memory, training-time, and inference-time measurements; and
 5. an explicit limitation that all six AML settings share one simulator

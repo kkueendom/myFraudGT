@@ -51,6 +51,17 @@ class CDVTFollowupConfigTest(unittest.TestCase):
             self.assertEqual(account["model"]["type"], "GTModel")
             self.assertEqual(account["cdvt"]["variant"], "account_only")
 
+    def test_additive_config_disables_cross_attention_by_architecture(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            payload = materialize(
+                self.write_base(root), root / "additive.yaml", 42,
+                "causal_event_add")
+            self.assertEqual(payload["model"]["type"], "CDVTModel")
+            self.assertEqual(payload["cdvt"]["variant"], "additive_view")
+            self.assertEqual(payload["cdvt"]["history_k"], 4)
+            self.assertTrue(payload["cdvt"]["use_relation_types"])
+
     def test_refuses_to_overwrite_a_materialized_config(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
