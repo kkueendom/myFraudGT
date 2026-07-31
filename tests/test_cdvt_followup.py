@@ -1,5 +1,7 @@
 import json
 import math
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -136,6 +138,27 @@ class CDVTFollowupTest(unittest.TestCase):
                 phase1, phase2, (0.01, 0.01, 0.01, 0.01, -0.002, -0.002))
             summary = require_phase2_gate(phase1, phase2)
             self.assertTrue(summary["phase2_gate"]["advance_to_phase3"])
+
+    def test_importing_cli_scripts_does_not_depend_on_working_directory(self):
+        repository = Path(__file__).resolve().parents[1]
+        scripts = (
+            repository / "run" / "cdvt_phase3_gate.py",
+            repository / "run" / "cdvt_phase3_summary.py",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            for script in scripts:
+                completed = subprocess.run(
+                    [sys.executable, str(script), "--help"],
+                    cwd=directory,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(
+                    completed.returncode,
+                    0,
+                    msg=f"{script.name}: {completed.stderr}",
+                )
 
     def test_phase3_summary_uses_real_seed_rows_and_sample_std(self):
         with tempfile.TemporaryDirectory() as directory:
