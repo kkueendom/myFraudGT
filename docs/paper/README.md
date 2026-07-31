@@ -1,6 +1,6 @@
 # CDVT Paper Artifacts
 
-Status date: 2026-07-31
+Status date: 2026-08-01
 
 Read in this order:
 
@@ -19,6 +19,9 @@ Read in this order:
 6. `CDVT_Followup_Deployment_Record.md`
    Records the exact follow-up source, portable commit, remote paths, gate,
    and workload.
+7. `CDVT_Code_Method_Alignment_Audit.md`
+   Maps every substantive method claim to the frozen implementation and lists
+   the remaining experimental evidence gates.
 
 Architecture assets:
 
@@ -27,6 +30,7 @@ Architecture assets:
 
 The manuscript is not final. Paired three-seed results, missing core
 ablations, no-relation and K sensitivity, and normal-only runtime benchmarks
-are running from portable commit `f7209f2`. Do not replace a `TBD` cell with a
-trajectory or log value; only final manifests and generated summaries are
-authoritative.
+are running from portable commit `f7209f2`. A three-dataset additive-fusion
+control is staged at source commit `dac3c7b` and will start only after the
+current unified queue completes. Do not replace a `TBD` cell with a trajectory
+or log value; only final manifests and generated summaries are authoritative.
