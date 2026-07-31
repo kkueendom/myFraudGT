@@ -21,24 +21,28 @@ Current read order:
    Records the 42-test remote audit, real GPU gradients, event coverage,
    intervention differences, and mixed-class fixed-batch trainability check.
 
-2. `CDVT_BASELINE_POLICY_AMENDMENT.md`
+2. `CDVT_PHASE2_RESULTS.md`
+   Records the completed six-dataset main table, formal PE-FraudGT gate,
+   Multi-FraudGT and A2 comparisons, mechanism interventions, and provenance.
+
+3. `CDVT_BASELINE_POLICY_AMENDMENT.md`
    Defines PE-FraudGT as the primary published baseline, Multi-FraudGT as the
    strong published reference, A2 as an internal comparator, and account-only
    as the matched multi-seed control.
 
-3. `CDVT_FINAL_MODEL_FREEZE.md`
+4. `CDVT_FINAL_MODEL_FREEZE.md`
    Records the validation-only selection of dual-view without consistency and
    the frozen Phase 2 architecture. Its historical A2 gate is superseded by
    the baseline amendment.
 
-4. `CDVT_PHASE0_PHASE1_PREREGISTRATION.md`
+5. `CDVT_PHASE0_PHASE1_PREREGISTRATION.md`
    Defines causal event construction, fusion, sampling protocol, Phase 0
    checks, Phase 1 variants, and the pre-execution seed amendment.
 
-5. `CDVT_PHASE2_EXECUTION_PLAN.md`
+6. `CDVT_PHASE2_EXECUTION_PLAN.md`
    Defines the six-dataset seed-42 evaluation and immutable result manifests.
 
-6. `CDVT_PHASE3_ABLATION_PLAN.md`
+7. `CDVT_PHASE3_ABLATION_PLAN.md`
    Defines paired CDVT/account-only seeds, module ablations, relation and
    history-size controls, and runtime benchmarks.
 
