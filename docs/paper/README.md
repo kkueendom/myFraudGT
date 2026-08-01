@@ -26,6 +26,9 @@ Read in this order:
 8. `CDVT_Code_Method_Alignment_Audit.md`
    Maps every substantive method claim to the frozen implementation and lists
    the remaining experimental evidence gates.
+9. `CDVT_Additive_Control_Deployment_Record.md`
+   Records the portable additive-fusion control and its hard dependency on a
+   successfully completed unified follow-up queue.
 
 Architecture assets:
 
