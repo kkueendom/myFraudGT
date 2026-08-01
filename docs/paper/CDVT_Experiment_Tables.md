@@ -112,7 +112,7 @@ validation. Report wins, losses, mean delta, and the number of values within the
 | AML Small-LI | 42 | 163 | 0.47893 | 75 | 0.43798 | -0.04094 | 0.47985 | 0.47687 | -0.00299 |
 | AML Small-LI | 43 | 151 | 0.43515 | 75 | 0.48805 | +0.05291 | 0.46377 | 0.48805 | +0.02429 |
 | AML Small-LI | 44 | 151 | 0.46320 | TBD | TBD | TBD | 0.47638 | TBD | TBD |
-| AML Medium-LI | 42 | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| AML Medium-LI | 42 | 123 | 0.41723 | 95 | 0.44711 | +0.02987 | 0.45064 | 0.51029 | +0.05964 |
 | AML Medium-LI | 43 | 87 | 0.36598 | 39 | 0.36957 | +0.00359 | 0.48260 | 0.46113 | -0.02147 |
 | AML Medium-LI | 44 | 95 | 0.37642 | TBD | TBD | TBD | 0.43882 | TBD | TBD |
 | AML Large-LI | 42 | 99 | 0.21287 | 27 | 0.33803 | +0.12516 | 0.29126 | 0.44816 | +0.15690 |
@@ -141,7 +141,7 @@ remain supplementary rather than being presented as part of final CDVT.
 
 | Variant | Account view | Causal event view | Fusion rule | Consistency loss | Small-LI F1 | Medium-LI F1 | Large-LI F1 | Mean |
 |---|:---:|:---:|:---:|:---:|---:|---:|---:|---:|
-| V0: FraudGT / account-only | Yes | No | None | No | 0.47893 | TBD | 0.21287 | TBD |
+| V0: FraudGT / account-only | Yes | No | None | No | 0.47893 | 0.41723 | 0.21287 | 0.36968 |
 | V1: event-only | No | Yes | None | No | 0.33826 | TBD | 0.30530 | TBD |
 | V2: additive dual-view | Yes | Yes | Addition | No | TBD | TBD | TBD | TBD |
 | V3: final CDVT dual-view | Yes | Yes | Cross-attention | No | 0.43798 | 0.44711 | 0.33803 | 0.40771 |
