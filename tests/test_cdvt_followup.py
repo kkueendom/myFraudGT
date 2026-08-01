@@ -9,7 +9,10 @@ from pathlib import Path
 from run.cdvt_additive_summary import build_summary as build_additive
 from run.cdvt_ablation_summary import build_summary as build_ablation
 from run.cdvt_phase3_gate import require_phase2_gate
-from run.cdvt_phase3_summary import build_summary as build_phase3
+from run.cdvt_phase3_summary import (
+    build_summary as build_phase3,
+    markdown as phase3_markdown,
+)
 from run.cdvt_protocol import INITIAL_A2, PE_FRAUDGT_PAPER
 from run.cdvt_runtime_summary import build_summary as build_runtime
 
@@ -242,6 +245,38 @@ class CDVTFollowupTest(unittest.TestCase):
                     group["paired_delta"]["val_selected"]["sample_std"],
                     0.0,
                 ))
+
+    def test_incomplete_phase3_omits_unmatched_seed_aggregates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            phase1, phase2, phase3, ablation = (
+                root / "phase1",
+                root / "phase2",
+                root / "phase3",
+                root / "ablation",
+            )
+            for path in (phase1, phase2, phase3, ablation):
+                path.mkdir()
+            write_manifest(
+                phase1, "Small-LI", "account_only", 42, 0.40)
+            write_manifest(
+                phase1, "Small-LI", "dual_view", 42, 0.45)
+            write_manifest(
+                phase3, "Small-LI", "account_only", 43, 0.90,
+                phase="CDVT_phase3")
+            summary = build_phase3(
+                phase1, phase2, phase3, ablation,
+                allow_incomplete=True)
+            small = summary["datasets"][0]
+            self.assertEqual(small["seeds"], [42])
+            self.assertEqual(
+                small["available_seeds"]["account_only"], [42, 43])
+            self.assertEqual(
+                small["available_seeds"]["dual_view"], [42])
+            self.assertEqual(
+                small["fraudgt"]["val_selected"]["mean"], 0.40)
+            self.assertNotIn(
+                "## Three-seed aggregate", phase3_markdown(summary))
 
     def test_ablation_summary_reuses_final_and_extracts_interventions(self):
         with tempfile.TemporaryDirectory() as directory:

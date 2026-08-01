@@ -160,10 +160,6 @@ def distribution(values):
     }
 
 
-def metric_distribution(rows, metric):
-    return distribution([float(row[metric]) for row in rows])
-
-
 def build_summary(
     phase1_root,
     phase2_root,
@@ -216,11 +212,18 @@ def build_summary(
             })
         dataset_pairs = [
             row for row in paired_rows if row["dataset"] == dataset]
-        account_val = metric_distribution(
-            account_rows, "val_selected_test_f1")
-        cdvt_val = metric_distribution(cdvt_rows, "val_selected_test_f1")
-        account_raw = metric_distribution(account_rows, "raw_best_test_f1")
-        cdvt_raw = metric_distribution(cdvt_rows, "raw_best_test_f1")
+        account_val = distribution([
+            row["fraudgt_val_selected_test_f1"] for row in dataset_pairs
+        ])
+        cdvt_val = distribution([
+            row["cdvt_val_selected_test_f1"] for row in dataset_pairs
+        ])
+        account_raw = distribution([
+            row["fraudgt_raw_best_test_f1"] for row in dataset_pairs
+        ])
+        cdvt_raw = distribution([
+            row["cdvt_raw_best_test_f1"] for row in dataset_pairs
+        ])
         if cdvt_val is not None:
             cdvt_val["delta_mean_vs_pe_fraudgt_paper"] = (
                 cdvt_val["mean"] - PE_FRAUDGT_PAPER[dataset])
@@ -234,7 +237,12 @@ def build_summary(
                 cdvt_raw["mean"] - INITIAL_A2[dataset]["raw_best_test_f1"])
         groups.append({
             "dataset": dataset,
-            "seeds": sorted({row["seed"] for row in dataset_rows}),
+            "seeds": [row["seed"] for row in dataset_pairs],
+            "available_seeds": {
+                "account_only": sorted(row["seed"] for row in account_rows),
+                "dual_view": sorted(row["seed"] for row in cdvt_rows),
+            },
+            "pair_complete": len(dataset_pairs) == len(SEEDS),
             "published_references": {
                 "pe_fraudgt": PE_FRAUDGT_PAPER[dataset],
                 "multi_fraudgt": MULTI_FRAUDGT_PAPER[dataset],
@@ -316,48 +324,51 @@ def markdown(summary):
             f"| {row['fraudgt_raw_best_test_f1']:.5f} "
             f"| {row['cdvt_raw_best_test_f1']:.5f} "
             f"| {row['delta_raw_best']:+.5f} |")
-    lines.extend([
-        "",
-        "## Three-seed aggregate",
-        "",
-        "| Dataset | FraudGT val mean +/- std | CDVT val mean +/- std | "
-        "Paired delta mean +/- std | Delta vs PE paper | "
-        "Delta vs Multi paper |",
-        "|---|---:|---:|---:|---:|---:|",
-    ])
-    for group in summary["datasets"]:
-        account = group["fraudgt"]["val_selected"]
-        cdvt = group["cdvt"]["val_selected"]
-        paired = group["paired_delta"]["val_selected"]
-        if account is None or cdvt is None or paired is None:
-            continue
-        lines.append(
-            f"| {group['dataset']} "
-            f"| {fmt_mean_std(account)} "
-            f"| {fmt_mean_std(cdvt)} "
-            f"| {fmt_mean_std(paired)} "
-            f"| {cdvt['delta_mean_vs_pe_fraudgt_paper']:+.5f} "
-            f"| {cdvt['delta_mean_vs_multi_fraudgt_paper']:+.5f} |")
-    lines.extend([
-        "",
-        "## Supplementary raw-best aggregate",
-        "",
-        "| Dataset | FraudGT raw mean +/- std | CDVT raw mean +/- std | "
-        "Paired delta mean +/- std | Delta vs A2 raw-best |",
-        "|---|---:|---:|---:|---:|",
-    ])
-    for group in summary["datasets"]:
-        account = group["fraudgt"]["raw_best"]
-        cdvt = group["cdvt"]["raw_best"]
-        paired = group["paired_delta"]["raw_best"]
-        if account is None or cdvt is None or paired is None:
-            continue
-        lines.append(
-            f"| {group['dataset']} "
-            f"| {fmt_mean_std(account)} "
-            f"| {fmt_mean_std(cdvt)} "
-            f"| {fmt_mean_std(paired)} "
-            f"| {cdvt['delta_mean_vs_initial_a2']:+.5f} |")
+    if summary["complete"]:
+        lines.extend([
+            "",
+            "## Three-seed aggregate",
+            "",
+            "| Dataset | FraudGT val mean +/- std | CDVT val mean +/- std | "
+            "Paired delta mean +/- std | Delta vs PE paper | "
+            "Delta vs Multi paper |",
+            "|---|---:|---:|---:|---:|---:|",
+        ])
+        for group in summary["datasets"]:
+            account = group["fraudgt"]["val_selected"]
+            cdvt = group["cdvt"]["val_selected"]
+            paired = group["paired_delta"]["val_selected"]
+            lines.append(
+                f"| {group['dataset']} "
+                f"| {fmt_mean_std(account)} "
+                f"| {fmt_mean_std(cdvt)} "
+                f"| {fmt_mean_std(paired)} "
+                f"| {cdvt['delta_mean_vs_pe_fraudgt_paper']:+.5f} "
+                f"| {cdvt['delta_mean_vs_multi_fraudgt_paper']:+.5f} |")
+        lines.extend([
+            "",
+            "## Supplementary raw-best aggregate",
+            "",
+            "| Dataset | FraudGT raw mean +/- std | CDVT raw mean +/- std | "
+            "Paired delta mean +/- std | Delta vs A2 raw-best |",
+            "|---|---:|---:|---:|---:|",
+        ])
+        for group in summary["datasets"]:
+            account = group["fraudgt"]["raw_best"]
+            cdvt = group["cdvt"]["raw_best"]
+            paired = group["paired_delta"]["raw_best"]
+            lines.append(
+                f"| {group['dataset']} "
+                f"| {fmt_mean_std(account)} "
+                f"| {fmt_mean_std(cdvt)} "
+                f"| {fmt_mean_std(paired)} "
+                f"| {cdvt['delta_mean_vs_initial_a2']:+.5f} |")
+    else:
+        lines.extend([
+            "",
+            "Aggregate mean and standard deviation tables are intentionally "
+            "omitted until all three matched seeds are complete.",
+        ])
     if summary["missing_manifests"]:
         lines.extend([
             "",

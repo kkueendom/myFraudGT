@@ -14,12 +14,16 @@ Read in this order:
    Gives the concise six-dataset gate decision and authoritative provenance.
 4. `../experiments/results/CDVT_Phase2_Six_Dataset_Summary.json`
    Is the machine-readable Phase 2 record generated from final manifests.
-5. `CDVT_Citation_Metadata_Audit.md`
+5. `../experiments/results/CDVT_Phase3_Interim_8of12.md`
+   Records only completed same-seed Phase 3 pairs. It intentionally withholds
+   aggregate mean and standard deviation values while five manifests are
+   missing.
+6. `CDVT_Citation_Metadata_Audit.md`
    Tracks bibliographic verification and remaining claim-alignment work.
-6. `CDVT_Followup_Deployment_Record.md`
+7. `CDVT_Followup_Deployment_Record.md`
    Records the exact follow-up source, portable commit, remote paths, gate,
    and workload.
-7. `CDVT_Code_Method_Alignment_Audit.md`
+8. `CDVT_Code_Method_Alignment_Audit.md`
    Maps every substantive method claim to the frozen implementation and lists
    the remaining experimental evidence gates.
 

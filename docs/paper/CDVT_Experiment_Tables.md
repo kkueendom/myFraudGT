@@ -110,13 +110,13 @@ validation. Report wins, losses, mean delta, and the number of values within the
 | Dataset | Seed | FraudGT val epoch | FraudGT test F1 | CDVT val epoch | CDVT test F1 | Paired val delta | FraudGT raw-best | CDVT raw-best | Paired raw delta |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | AML Small-LI | 42 | 163 | 0.47893 | 75 | 0.43798 | -0.04094 | 0.47985 | 0.47687 | -0.00299 |
-| AML Small-LI | 43 | 151 | 0.43515 | TBD | TBD | TBD | 0.46377 | TBD | TBD |
+| AML Small-LI | 43 | 151 | 0.43515 | 75 | 0.48805 | +0.05291 | 0.46377 | 0.48805 | +0.02429 |
 | AML Small-LI | 44 | 151 | 0.46320 | TBD | TBD | TBD | 0.47638 | TBD | TBD |
 | AML Medium-LI | 42 | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| AML Medium-LI | 43 | 87 | 0.36598 | TBD | TBD | TBD | 0.48260 | TBD | TBD |
+| AML Medium-LI | 43 | 87 | 0.36598 | 39 | 0.36957 | +0.00359 | 0.48260 | 0.46113 | -0.02147 |
 | AML Medium-LI | 44 | 95 | 0.37642 | TBD | TBD | TBD | 0.43882 | TBD | TBD |
 | AML Large-LI | 42 | 99 | 0.21287 | 27 | 0.33803 | +0.12516 | 0.29126 | 0.44816 | +0.15690 |
-| AML Large-LI | 43 | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| AML Large-LI | 43 | 167 | 0.28221 | 83 | 0.34909 | +0.06688 | 0.34659 | 0.48447 | +0.13788 |
 | AML Large-LI | 44 | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
 
 ## Table 4. Three-Seed Mean and Standard Deviation
