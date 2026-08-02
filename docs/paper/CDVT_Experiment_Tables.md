@@ -7,7 +7,7 @@ Portable execution commit: `2fb3333` (tree-identical to `df12ea6`)
 Follow-up source commit: `34456ab`  
 Phase 0 audit portable commit: `9be1737`  
 Final self-contained follow-up portable commit: `f7209f2`  
-Multi-CDVT screen implementation commit: `2d9dc11`
+Multi-CDVT screen execution commit: `8dac98d`
 Sampling protocol: `dynamic_random`
 
 This document is the single paper-facing template for CDVT results. `TBD` means

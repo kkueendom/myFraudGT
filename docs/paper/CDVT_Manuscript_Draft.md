@@ -17,7 +17,7 @@
 - Phase 2 portable execution commit: `2fb3333`, with a Git tree identical to
   source commit `df12ea6`
 - Follow-up source commit: `34456ab`; portable execution commit: `f7209f2`
-- Multi-CDVT screen implementation commit: `2d9dc11`; execution is gated on
+- Multi-CDVT screen execution commit: `8dac98d`; execution is gated on
   successful completion of the existing follow-up queue
 - Result status: six-dataset Phase 2 passed its preregistered gate; paired
   representative multi-seed, ablation, sensitivity, and runtime experiments
