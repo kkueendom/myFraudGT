@@ -35,7 +35,19 @@ from run.tier_phase1_evidence_qualification import (
 
 
 TASK = ("node", "to", "node")
+REVERSE_TASK = ("node", "rev_to", "node")
 CONDITIONS = ("normal", "shuffled", "off")
+EXPERIMENTS = {
+    "account_only": ("account_only", False, False),
+    "event_only": ("event_only", False, False),
+    "causal_event_add": ("additive_view", False, False),
+    "dual_view": ("dual_view", False, False),
+    "full_cdvt": ("dual_view", True, False),
+    "dual_view_no_relation": ("dual_view", False, False),
+    "dual_view_k2": ("dual_view", False, False),
+    "multi_account_only": ("account_only", False, True),
+    "multi_cdvt": ("dual_view", False, True),
+}
 
 
 def parse_args():
@@ -51,11 +63,7 @@ def parse_args():
     )
     parser.add_argument(
         "--experiment-label",
-        choices=(
-            "account_only", "event_only", "causal_event_add",
-            "dual_view", "full_cdvt", "dual_view_no_relation",
-            "dual_view_k2"
-        ),
+        choices=tuple(EXPERIMENTS),
         required=True,
     )
     parser.add_argument("--lambda-cons", type=float, required=True)
@@ -65,7 +73,10 @@ def parse_args():
     parser.add_argument("--early-stop-patience-evals", type=int, default=10)
     parser.add_argument(
         "--phase",
-        choices=("CDVT_phase1", "CDVT_phase2", "CDVT_phase3", "CDVT_ablation"),
+        choices=(
+            "CDVT_phase1", "CDVT_phase2", "CDVT_phase3",
+            "CDVT_ablation", "CDVT_multi_screen",
+        ),
         default="CDVT_phase1",
     )
     return parser.parse_args()
@@ -78,6 +89,8 @@ def git_output(*args):
 
 def configure(args):
     config = yaml.safe_load(args.config.read_text())
+    expected_variant, requires_consistency, requires_multi = EXPERIMENTS[
+        args.experiment_label]
     if config["train"]["sampler"] != "link_neighbor":
         raise RuntimeError("Phase 1 requires LinkNeighborLoader")
     if config["val"].get("fixed_target_panel") is not False:
@@ -104,16 +117,6 @@ def configure(args):
             and args.lambda_cons != 0:
         raise ValueError(
             "account-only and event-only do not use view consistency")
-    expected = {
-        "account_only": ("account_only", False),
-        "event_only": ("event_only", False),
-        "causal_event_add": ("additive_view", False),
-        "dual_view": ("dual_view", False),
-        "full_cdvt": ("dual_view", True),
-        "dual_view_no_relation": ("dual_view", False),
-        "dual_view_k2": ("dual_view", False),
-    }
-    expected_variant, requires_consistency = expected[args.experiment_label]
     if args.variant != expected_variant:
         raise ValueError("experiment label and architecture variant differ")
     if requires_consistency != (args.lambda_cons > 0):
@@ -125,11 +128,64 @@ def configure(args):
     expected_k = 2 if args.experiment_label == "dual_view_k2" else 4
     if int(cfg.cdvt.history_k) != expected_k:
         raise ValueError("experiment label and history K differ")
+    if requires_multi:
+        multi_components = {
+            "dataset.reverse_mp": config.get("dataset", {}).get("reverse_mp"),
+            "dataset.add_ports": config.get("dataset", {}).get("add_ports"),
+            "train.add_ego_id": config.get("train", {}).get("add_ego_id"),
+            "cfg.dataset.reverse_mp": bool(cfg.dataset.reverse_mp),
+            "cfg.dataset.add_ports": bool(cfg.dataset.add_ports),
+            "cfg.train.add_ego_id": bool(cfg.train.add_ego_id),
+        }
+        disabled = [
+            name for name, enabled in multi_components.items()
+            if enabled is not True
+        ]
+        if disabled:
+            raise ValueError(
+                "Multi-FraudGT requires RMP, Ports, and Ego ID; disabled: "
+                + ", ".join(disabled))
+        expected_model = (
+            "GTModel" if expected_variant == "account_only" else "CDVTModel")
+        if config.get("model", {}).get("type") != expected_model:
+            raise ValueError(
+                f"Multi variant {args.experiment_label} requires "
+                f"model.type={expected_model}")
     if args.variant == "account_only":
         cfg.model.type = "GTModel"
     if args.lambda_cons < 0:
         raise ValueError("lambda_cons must be non-negative")
     return config
+
+
+def audit_multi_dataset(dataset):
+    rows = []
+    for split in ("train", "val", "test"):
+        data = dataset[split]
+        edge_types = set(data.edge_types)
+        if TASK not in edge_types:
+            raise RuntimeError(f"{split} data is missing the target relation")
+        if REVERSE_TASK not in edge_types:
+            raise RuntimeError(
+                f"{split} data is missing Multi-FraudGT reverse relation")
+        reverse_store = data[REVERSE_TASK]
+        target_store = data[TASK]
+        if reverse_store.edge_index.size(1) != target_store.edge_index.size(1):
+            raise RuntimeError(
+                f"{split} forward/reverse relation edge counts differ")
+        if not torch.equal(
+            reverse_store.edge_index,
+            target_store.edge_index.flip(0),
+        ):
+            raise RuntimeError(
+                f"{split} reverse relation is not the target relation reversal")
+        rows.append({
+            "split": split,
+            "forward_edges": int(target_store.edge_index.size(1)),
+            "reverse_edges": int(reverse_store.edge_index.size(1)),
+            "reverse_relation": list(REVERSE_TASK),
+        })
+    return rows
 
 
 def seed_everything(seed):
@@ -439,6 +495,9 @@ def main():
     args.output_dir.mkdir(parents=True, exist_ok=True)
     seed_everything(int(cfg.seed))
     dataset = create_dataset()
+    requires_multi = EXPERIMENTS[args.experiment_label][2]
+    multi_dataset_audit = (
+        audit_multi_dataset(dataset) if requires_multi else None)
     loaders = create_loader(dataset=dataset, shuffle=True)
     loader_audit = audit_loaders(loaders)
     device = torch.device(args.device)
@@ -476,6 +535,11 @@ def main():
             "git_commit": commit,
             "lambda_cons": float(args.lambda_cons),
             "history_k": int(cfg.cdvt.history_k),
+            "account_backbone": (
+                "Multi-FraudGT" if requires_multi else "PE-FraudGT"),
+            "reverse_mp": bool(cfg.dataset.reverse_mp),
+            "add_ports": bool(cfg.dataset.add_ports),
+            "add_ego_id": bool(cfg.train.add_ego_id),
             "sampling_protocol": "dynamic_random",
             "seed": int(cfg.seed),
             "train": train,
@@ -530,6 +594,11 @@ def main():
         "lambda_cons": float(args.lambda_cons),
         "history_k": int(cfg.cdvt.history_k),
         "use_relation_types": bool(cfg.cdvt.use_relation_types),
+        "account_backbone": (
+            "Multi-FraudGT" if requires_multi else "PE-FraudGT"),
+        "reverse_mp": bool(cfg.dataset.reverse_mp),
+        "add_ports": bool(cfg.dataset.add_ports),
+        "add_ego_id": bool(cfg.train.add_ego_id),
         "seed": int(cfg.seed),
         "git_commit": commit,
         "config": str(args.config.resolve()),
@@ -555,6 +624,7 @@ def main():
             if device.type == "cuda" else 0
         ),
         "loader_audit": loader_audit,
+        "multi_dataset_audit": multi_dataset_audit,
         "config_snapshot": config_snapshot,
     }
     (args.output_dir / "manifest.json").write_text(

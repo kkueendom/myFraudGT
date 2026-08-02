@@ -44,6 +44,20 @@ VARIANTS = {
         "history_k": 2,
         "use_relation_types": True,
     },
+    "multi_account_only": {
+        "model_type": "GTModel",
+        "architecture": "account_only",
+        "history_k": 4,
+        "use_relation_types": True,
+        "reverse_mp": True,
+    },
+    "multi_cdvt": {
+        "model_type": "CDVTModel",
+        "architecture": "dual_view",
+        "history_k": 4,
+        "use_relation_types": True,
+        "reverse_mp": True,
+    },
 }
 
 
@@ -56,6 +70,12 @@ def materialize(base_path, output_path, seed, variant):
         raise FileExistsError(f"refusing to overwrite config: {output_path}")
     payload = yaml.safe_load(base_path.read_text())
     settings = VARIANTS[variant]
+    if "reverse_mp" in settings:
+        if payload.get("dataset", {}).get("add_ports") is not True:
+            raise ValueError("Multi-FraudGT requires dataset.add_ports=True")
+        if payload.get("train", {}).get("add_ego_id") is not True:
+            raise ValueError("Multi-FraudGT requires train.add_ego_id=True")
+        payload["dataset"]["reverse_mp"] = settings["reverse_mp"]
     payload["seed"] = int(seed)
     payload["model"]["type"] = settings["model_type"]
     payload["cdvt"]["variant"] = settings["architecture"]
