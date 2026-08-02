@@ -25,11 +25,12 @@ shallow clone. Its tree is byte-identical to source commit `34456ab` and its
 commit message records the source and architecture-freeze identities.
 
 The source includes the validation-cost optimization and the revised baseline
-policy. PE-FraudGT from FraudGT Table 2 is the formal primary baseline because
-it is the direct parent architecture used by CDVT's account view.
-Multi-FraudGT is reported as the strongest published FraudGT reference, and A2
-is retained as an internal strong comparator. Raw-best remains supplementary
-and is compared only with A2 raw-best.
+policy. PE-FraudGT from FraudGT Table 2 is the architecture-matched baseline
+and was the registered Phase 2 advancement reference because it is the direct
+parent architecture used by CDVT's account view. Multi-FraudGT is the strongest
+published FraudGT baseline and appears in the main table; A2 is retained only
+as an internal strong comparator. Raw-best remains supplementary and is
+compared only with A2 raw-best.
 
 The source also includes a dated baseline-policy amendment, corrected Phase 2
 and follow-up execution documents, and a Phase 0 GPU smoke that now verifies

@@ -17,9 +17,11 @@
 - Phase 2 portable execution commit: `2fb3333`, with a Git tree identical to
   source commit `df12ea6`
 - Follow-up source commit: `34456ab`; portable execution commit: `f7209f2`
+- Multi-CDVT screen implementation commit: `2d9dc11`; execution is gated on
+  successful completion of the existing follow-up queue
 - Result status: six-dataset Phase 2 passed its preregistered gate; paired
   representative multi-seed, ablation, sensitivity, and runtime experiments
-  are active
+  are active; no Multi-CDVT result is yet available
 
 ## Claim Boundary
 
@@ -607,13 +609,13 @@ primary reported value is the test F1 from that epoch. The maximum test F1
 observed over epochs is recorded only as a supplementary raw-best diagnostic
 and is compared only with the corresponding raw-best baseline column.
 
-PE-FraudGT is the primary published baseline because CDVT retains the same
-Ports + Ego ID account-view architecture without reverse message passing.
-Multi-FraudGT, the strongest overall variant in FraudGT Table 2, is reported as
-a stricter published reference. The previously developed A2 decoder is
-reported as an internal strong comparator. Published FraudGT results contain
-only validation-selected five-run means, so raw-best CDVT results are compared
-only with the A2 raw-best column and never across selection rules.
+PE-FraudGT is the architecture-matched published baseline because CDVT retains
+the same Ports + Ego ID account view without reverse message passing.
+Multi-FraudGT is the strongest published FraudGT configuration and appears
+alongside PE-FraudGT in the main table. The previously developed A2 decoder is
+reported only as an internal strong comparator. Published FraudGT results
+contain only validation-selected five-run means, so raw-best CDVT results are
+compared only with the A2 raw-best column and never across selection rules.
 
 Because dynamic sampling introduces evaluation variation, an absolute F1
 change smaller than 0.005 is labeled as potentially within sampling variation.
@@ -680,11 +682,12 @@ time from experiment manifests rather than relying only on asymptotic cost.
 ### 4.1 Six-Dataset Main Results
 
 Table 2 reports the frozen CDVT model with seed 42 under the public
-dynamic-random sampling protocol. PE-FraudGT is the primary comparison because
-it is the direct account-view parent of CDVT. Multi-FraudGT is included as the
-stronger published FraudGT reference. The published FraudGT entries are
-five-run means, whereas the CDVT entries in this table are seed-42 results;
-paired multi-seed comparisons are reported separately once complete.
+dynamic-random sampling protocol. PE-FraudGT is the architecture-matched
+comparison because it is the direct account-view parent of CDVT, while
+Multi-FraudGT is the strongest published FraudGT comparison. Both are main
+baselines rather than interchangeable references. The published FraudGT
+entries are five-run means, whereas the CDVT entries in this table are seed-42
+results; paired multi-seed comparisons are reported separately once complete.
 
 | Dataset | PE-FraudGT | Multi-FraudGT | CDVT | Delta vs PE | Delta vs Multi |
 |---|---:|---:|---:|---:|---:|

@@ -7,6 +7,7 @@ Portable execution commit: `2fb3333` (tree-identical to `df12ea6`)
 Follow-up source commit: `34456ab`  
 Phase 0 audit portable commit: `9be1737`  
 Final self-contained follow-up portable commit: `f7209f2`  
+Multi-CDVT screen implementation commit: `2d9dc11`  
 Sampling protocol: `dynamic_random`
 
 This document is the single paper-facing template for CDVT results. `TBD` means
@@ -18,17 +19,18 @@ automatic summary output.
 
 1. Formal conclusions use val-selected test F1, where the checkpoint is chosen
    by validation F1.
-2. PE-FraudGT is the primary published baseline because its Ports + Ego account
-   view is the direct parent architecture used by CDVT.
-3. Multi-FraudGT is the strongest published FraudGT reference; A2 is a strong
-   internal comparator. Neither replaces PE-FraudGT as the formal gate.
+2. PE-FraudGT is the architecture-matched published baseline because its Ports
+   + Ego account view is the direct parent architecture used by PE-CDVT.
+3. Multi-FraudGT is the strongest published FraudGT baseline and must appear
+   with PE-FraudGT in the main table. A2 is only an internal strong comparator.
 4. Raw-best test F1 is supplementary and is compared only with the A2 raw-best
    column because the FraudGT paper does not report raw-best.
 5. Every delta names its reference and is computed within the same metric
    column. Never compare raw-best with a published val-selected result.
 6. Mark `abs(delta) < 0.005` as possible dynamic-sampling variation.
-7. Phase 2 passes only when CDVT beats PE-FraudGT on at least 4/6 datasets and
-   the six-dataset mean val-selected delta against PE-FraudGT is positive.
+7. The historical PE-CDVT Phase 2 gate passes only when CDVT beats PE-FraudGT
+   on at least 4/6 datasets and its six-dataset mean val-selected delta is
+   positive. This advancement rule does not make PE the sole paper baseline.
 8. Multi-seed entries must come from independent seeds 42, 43, and 44. Never
    duplicate the best seed.
 
@@ -208,7 +210,27 @@ machine-readable registry.
 | Small-LI | Phase 3 | account_only | 44 | `f7209f2` | `AML-Small-LI-account_only-seed44.yaml` | `Small-LI_account_only_seed44/best_val.ckpt` | 151 | 0.46320 | 0.47638 | +0.00510 | -0.00690 | +0.00073 | -0.03029 | 182,569 | 1.81 GB | 11,187.52 s | dynamic_random |
 | Medium-LI | Phase 3 | account_only | 44 | `f7209f2` | `AML-Medium-LI-account_only-seed44.yaml` | `Medium-LI_account_only_seed44/best_val.ckpt` | 95 | 0.37642 | 0.43882 | -0.05888 | -0.06418 | -0.13521 | -0.15149 | 182,569 | 3.00 GB | 14,711.16 s | dynamic_random |
 
-## Manuscript Claim Gate
+## Table 10. Matched Multi-CDVT Three-Scale Screen
+
+This table must use same-seed manifests produced by the Multi screen. Raw-best
+is supplementary and cannot open the Gate.
+
+| Dataset | Seed | Multi-FraudGT val-selected F1 | Multi-CDVT val-selected F1 | Paired delta | Status | Multi-FraudGT raw-best | Multi-CDVT raw-best | Raw delta |
+|---|---:|---:|---:|---:|---|---:|---:|---:|
+| Small-LI | 42 | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| Medium-LI | 42 | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| Large-LI | 42 | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| Mean | - | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+
+The Multi-CDVT screen advances only if all criteria pass: at least two of three
+paired Val-selected deltas are positive; mean delta is greater than `+0.005`;
+at least one delta is at least `+0.010`; no delta is below `-0.020`; and all
+protocol audits pass. An absolute delta below `0.005` is marked as possible
+sampling variation.
+
+## Manuscript Claim Gates
+
+### Historical PE-CDVT Phase 2 Gate
 
 The automatic protocol audit passed on 2026-07-31: CDVT achieved 5/6 wins
 against PE-FraudGT and a mean val-selected delta of +0.02716. Follow-up
@@ -222,3 +244,11 @@ multi-seed, ablation, sensitivity, and runtime experiments are active.
   residual logits, prototypes, support coefficients, or rule evidence.
 - `FAIL`: fewer than 3/6 wins or an unexplained severe collapse. Diagnose event
   construction, relation encoding, and cross-view fusion before further claims.
+
+### Multi-CDVT Gate
+
+- `PASS`: all five preregistered criteria under Table 10 pass. Proceed only to
+  the remaining three HI datasets at seed 42.
+- `FAIL`: stop Multi-CDVT without architecture or hyperparameter search. Keep
+  PE-CDVT as the application-paper model, retain Multi-FraudGT as the strongest
+  published baseline, and narrow the claim to the architecture-matched parent.
