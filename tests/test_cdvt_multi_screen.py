@@ -219,6 +219,13 @@ class CDVTMultiScreenTest(unittest.TestCase):
             )
             self.assertEqual(completed.returncode, 0, completed.stderr)
 
+    def test_gpu_smoke_records_multi_backbone_and_reverse_relation_audit(self):
+        source = Path("run/cdvt_phase0_smoke.py").read_text()
+        self.assertIn("audit_multi_dataset(dataset)", source)
+        self.assertIn('"account_backbone"', source)
+        self.assertIn('"multi_dataset_audit"', source)
+        self.assertIn("Multi smoke requires RMP, Ports, and Ego ID", source)
+
     def test_post_followup_is_the_only_allocator_and_has_nine_tasks(self):
         source = Path("run/cdvt_post_followup_queue.sh").read_text()
         self.assertIn("queue_complete.json", source)

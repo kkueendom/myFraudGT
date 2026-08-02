@@ -18,6 +18,7 @@ from fraudGT.graphgym.config import cfg, load_cfg, set_cfg
 from fraudGT.graphgym.loader import create_dataset, create_loader
 from fraudGT.graphgym.loss import compute_loss
 from fraudGT.graphgym.model_builder import create_model
+from run.cdvt_phase1_screen import audit_multi_dataset
 
 
 def parse_args():
@@ -78,9 +79,16 @@ def target_labels(raw_batch):
 def main():
     args = parse_args()
     raw_config = configure(args.config.resolve(), args.device)
+    requires_multi = bool(cfg.dataset.reverse_mp)
+    if requires_multi and not (
+        bool(cfg.dataset.add_ports) and bool(cfg.train.add_ego_id)
+    ):
+        raise RuntimeError("Multi smoke requires RMP, Ports, and Ego ID")
     torch.manual_seed(int(cfg.seed))
     torch.cuda.manual_seed_all(int(cfg.seed))
     dataset = create_dataset()
+    multi_dataset_audit = (
+        audit_multi_dataset(dataset) if requires_multi else None)
     loaders = create_loader(dataset=dataset, shuffle=True)
     for split, wrapped in zip(("train", "val", "test"), loaders):
         loader = wrapped.loader
@@ -169,6 +177,11 @@ def main():
         "sampling_protocol": "dynamic_random",
         "dataset": str(cfg.dataset.name),
         "variant": str(cfg.cdvt.variant),
+        "account_backbone": (
+            "Multi-FraudGT" if requires_multi else "PE-FraudGT"),
+        "reverse_mp": bool(cfg.dataset.reverse_mp),
+        "add_ports": bool(cfg.dataset.add_ports),
+        "add_ego_id": bool(cfg.train.add_ego_id),
         "seed": int(cfg.seed),
         "git_commit": git_commit(),
         "config": str(args.config.resolve()),
@@ -200,6 +213,7 @@ def main():
         "overfit_training_losses": overfit_losses,
         "fixed_target_panel": False,
         "loader_shuffle": True,
+        "multi_dataset_audit": multi_dataset_audit,
         "config_snapshot": raw_config,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
