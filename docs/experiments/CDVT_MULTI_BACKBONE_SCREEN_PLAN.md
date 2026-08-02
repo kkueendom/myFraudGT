@@ -9,6 +9,10 @@ existing CDVT evidence package.
 
 ## Component Audit
 
+Audit source: public FraudGT commit
+`f88db9dc003a6f521a90631c4741541686043119`, comparing each dataset's
+`SparseNodeGT+ports+Ego.yaml` and `Multi-SparseNodeGT.yaml` configurations.
+
 | Variant | Account view | Reverse message passing | Ports | Ego ID | Event view | Fusion |
 |---|---|---:|---:|---:|---|---|
 | PE-FraudGT | SparseNodeGT | No | Yes | Yes | None | Original FraudGT head |
@@ -16,10 +20,12 @@ existing CDVT evidence package.
 | PE-CDVT | PE-FraudGT account view | No | Yes | Yes | Causal relation-aware event graph | Cross-attention |
 | Multi-CDVT | Multi-FraudGT account view | Yes | Yes | Yes | Same frozen CDVT event graph | Same frozen cross-attention |
 
-The public Multi configuration differs from the PE configuration by
-`dataset.reverse_mp=True`; the published Multi configuration retains Ports and
-Ego ID. The screen materializer rejects a Multi configuration if any of these
-three components is disabled.
+The only account-model/data-path difference is `dataset.reverse_mp=True`; the
+published Multi configuration retains Ports and Ego ID. Medium and Large also
+change `ckpt_period` from 100 to 50, which affects periodic file saving rather
+than model structure, optimization, evaluation frequency or checkpoint
+selection in the custom CDVT runner. The screen materializer rejects a Multi
+configuration if RMP, Ports or Ego ID is disabled.
 
 ## Fixed Settings
 
