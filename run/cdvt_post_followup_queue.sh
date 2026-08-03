@@ -6,6 +6,8 @@ python="${CDVT_PYTHON:-/d/miniconda3/envs/fraudGT/bin/python}"
 phase1_root="${CDVT_PHASE1_ROOT:-/e/yky/FraudGT_cdvt_results/phase1_formal_9c18cfdd}"
 phase2_root="${CDVT_PHASE2_ROOT:?CDVT_PHASE2_ROOT is required}"
 followup_root="${CDVT_FOLLOWUP_ROOT:?CDVT_FOLLOWUP_ROOT is required}"
+runtime_root="${CDVT_RUNTIME_ROOT:-$followup_root/runtime}"
+followup_completion="${CDVT_FOLLOWUP_COMPLETION:-$followup_root/queue_complete.json}"
 commit="$(git -C "$repo" rev-parse --short=8 HEAD)"
 branch="$(git -C "$repo" branch --show-current)"
 root="${CDVT_OUTPUT_ROOT:-/e/yky/FraudGT_cdvt_results/post_followup_${commit}}"
@@ -40,11 +42,11 @@ if [[ -e "$root" ]]; then
   echo "refusing to reuse post-followup result root: $root" >&2
   exit 2
 fi
-if [[ ! -f "$followup_root/queue_complete.json" ]]; then
-  echo "follow-up queue is not complete: $followup_root" >&2
+if [[ ! -f "$followup_completion" ]]; then
+  echo "follow-up completion record is missing: $followup_completion" >&2
   exit 2
 fi
-"$python" - "$followup_root/queue_complete.json" <<'PY'
+"$python" - "$followup_completion" <<'PY'
 import json
 import sys
 
@@ -64,7 +66,7 @@ ablation_audit="$("$python" "$repo/run/cdvt_ablation_summary.py" \
   --phase2-root "$phase2_root" \
   --ablation-root "$followup_root/ablation")"
 runtime_audit="$("$python" "$repo/run/cdvt_runtime_summary.py" \
-  --runtime-root "$followup_root/runtime")"
+  --runtime-root "$runtime_root")"
 
 mkdir -p "$additive_root/configs" "$multi_root/configs"
 printf '%s\n' "$phase3_audit" > "$root/followup_phase3_audit.json"
@@ -74,8 +76,10 @@ printf '{"commit":"%s","sampling_protocol":"dynamic_random",' "$commit" \
   > "$root/queue_manifest.json"
 printf '"training_tasks":9,"additive_tasks":3,"multi_tasks":6,' \
   >> "$root/queue_manifest.json"
-printf '"seed":42,"single_gpu_allocator":true,"followup_root":"%s"}\n' \
+printf '"seed":42,"single_gpu_allocator":true,"followup_root":"%s",' \
   "$followup_root" >> "$root/queue_manifest.json"
+printf '"runtime_root":"%s","followup_completion":"%s"}\n' \
+  "$runtime_root" "$followup_completion" >> "$root/queue_manifest.json"
 
 base_config() {
   local dataset="$1"

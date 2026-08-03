@@ -228,6 +228,9 @@ class CDVTMultiScreenTest(unittest.TestCase):
 
     def test_post_followup_is_the_only_allocator_and_has_nine_tasks(self):
         source = Path("run/cdvt_post_followup_queue.sh").read_text()
+        self.assertIn("CDVT_RUNTIME_ROOT", source)
+        self.assertIn("CDVT_FOLLOWUP_COMPLETION", source)
+        self.assertIn('--runtime-root "$runtime_root"', source)
         self.assertIn("queue_complete.json", source)
         self.assertLess(
             source.index("queue_complete.json"),
