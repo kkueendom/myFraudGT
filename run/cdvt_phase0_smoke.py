@@ -29,6 +29,7 @@ def parse_args():
     parser.add_argument("--overfit-steps", type=int, default=24)
     parser.add_argument("--min-relative-loss-drop", type=float, default=0.05)
     parser.add_argument("--max-batch-search", type=int, default=64)
+    parser.add_argument("--single-batch-only", action="store_true")
     return parser.parse_args()
 
 
@@ -100,6 +101,8 @@ def main():
 
     device = torch.device(args.device)
     model = create_model(dataset=dataset).to(device)
+    if device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats(device)
     model.train()
     raw_batch = None
     batch_search_index = None
@@ -126,6 +129,46 @@ def main():
     fusion_gradient = gradient_norm(model.dual_view.cross_attention)
     if min(account_gradient, event_gradient, fusion_gradient) <= 0:
         raise AssertionError("both encoders and fusion must receive gradients")
+
+    if args.single_batch_only:
+        row = {
+            "phase": "phase0_single_batch_gpu_smoke",
+            "sampling_protocol": "dynamic_random",
+            "dataset": str(cfg.dataset.name),
+            "variant": str(cfg.cdvt.variant),
+            "account_backbone": (
+                "Multi-FraudGT" if requires_multi else "PE-FraudGT"),
+            "reverse_mp": bool(cfg.dataset.reverse_mp),
+            "add_ports": bool(cfg.dataset.add_ports),
+            "add_ego_id": bool(cfg.train.add_ego_id),
+            "seed": int(cfg.seed),
+            "git_commit": git_commit(),
+            "config": str(args.config.resolve()),
+            "checkpoint": None,
+            "device": args.device,
+            "batch_targets": int(labels.numel()),
+            "positive_targets": int(labels.long().sum().cpu()),
+            "negative_targets": int(
+                labels.numel() - labels.long().sum().cpu()),
+            "batch_search_index": batch_search_index,
+            "max_batch_search": args.max_batch_search,
+            "loss": float(loss.detach().cpu()),
+            "account_gradient_norm": account_gradient,
+            "event_gradient_norm": event_gradient,
+            "fusion_gradient_norm": fusion_gradient,
+            "peak_gpu_memory_bytes": (
+                int(torch.cuda.max_memory_allocated(device))
+                if device.type == "cuda" else 0),
+            "fixed_target_panel": False,
+            "loader_shuffle": True,
+            "multi_dataset_audit": multi_dataset_audit,
+            "config_snapshot": raw_config,
+        }
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(
+            json.dumps(row, indent=2, sort_keys=True) + "\n")
+        print(json.dumps(row, sort_keys=True))
+        return
 
     model.eval()
     with torch.no_grad():

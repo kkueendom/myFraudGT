@@ -170,6 +170,12 @@ class CDVTMultiPublishedTest(unittest.TestCase):
         self.assertIn('"training_seconds"', source)
         self.assertIn('"inference_seconds"', source)
 
+    def test_gpu_smoke_has_a_non_repeating_single_batch_mode(self):
+        source = Path("run/cdvt_phase0_smoke.py").read_text()
+        self.assertIn("--single-batch-only", source)
+        self.assertIn('"phase0_single_batch_gpu_smoke"', source)
+        self.assertIn('"peak_gpu_memory_bytes"', source)
+
 
 if __name__ == "__main__":
     unittest.main()
