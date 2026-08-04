@@ -91,8 +91,9 @@ def materialize(
     if edge_ff_checkpoint and edge_ff_chunk_size <= 0:
         raise ValueError(
             "edge FF checkpointing requires a positive chunk size")
-    payload["gt"]["edge_ff_chunk_size"] = edge_ff_chunk_size
-    payload["gt"]["edge_ff_checkpoint"] = bool(edge_ff_checkpoint)
+    gt = payload.setdefault("gt", {})
+    gt["edge_ff_chunk_size"] = edge_ff_chunk_size
+    gt["edge_ff_checkpoint"] = bool(edge_ff_checkpoint)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(yaml.safe_dump(payload, sort_keys=False))
     return payload
