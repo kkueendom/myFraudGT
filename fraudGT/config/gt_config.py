@@ -71,6 +71,12 @@ def set_cfg_gt(cfg):
 
     cfg.gt.ffn = 'none'
 
+    # Memory-only execution controls for typed edge FFNs. A positive chunk
+    # size computes the same FFN in row blocks; checkpointing recomputes each
+    # block during backward instead of retaining its intermediate activation.
+    cfg.gt.edge_ff_chunk_size = 0
+    cfg.gt.edge_ff_checkpoint = False
+
     # Attention masking, options: "none", "Edge", "kHop"
     cfg.gt.attn_mask = 'Edge'
 

@@ -1,4 +1,5 @@
 import json
+import copy
 import subprocess
 import sys
 import tempfile
@@ -6,11 +7,16 @@ import unittest
 from pathlib import Path
 
 import torch
+import torch.nn as nn
 import yaml
 from torch_geometric.data import HeteroData
 
 from fraudGT.cdvt.event_graph import CausalEventGraphIndex
 from fraudGT.cdvt.fusion import DualViewFusionClassifier
+from fraudGT.layer.gt_layer import (
+    memory_efficient_chunked_forward,
+    memory_efficient_masked_forward,
+)
 from run.cdvt_materialize_config import materialize
 from run.cdvt_multi_summary import build_summary
 from run.cdvt_phase1_screen import audit_multi_dataset
@@ -49,7 +55,9 @@ def multi_base_config():
     }
 
 
-def write_multi_manifest(root, dataset, variant, f1):
+def write_multi_manifest(
+        root, dataset, variant, f1,
+        edge_ff_chunk_size=0, edge_ff_checkpoint=False):
     task = root / f"{dataset}_{variant}_seed42"
     task.mkdir(parents=True)
     architecture = "account_only" if variant == "multi_account_only" else "dual_view"
@@ -58,6 +66,10 @@ def write_multi_manifest(root, dataset, variant, f1):
     config["dataset"]["reverse_mp"] = True
     config["model"]["type"] = "GTModel" if architecture == "account_only" else "CDVTModel"
     config["cdvt"]["variant"] = architecture
+    config["gt"] = {
+        "edge_ff_chunk_size": edge_ff_chunk_size,
+        "edge_ff_checkpoint": edge_ff_checkpoint,
+    }
     payload = {
         "phase": "CDVT_multi_screen",
         "sampling_protocol": "dynamic_random",
@@ -72,6 +84,8 @@ def write_multi_manifest(root, dataset, variant, f1):
         "lambda_cons": 0.0,
         "history_k": 4,
         "use_relation_types": True,
+        "edge_ff_chunk_size": edge_ff_chunk_size,
+        "edge_ff_checkpoint": edge_ff_checkpoint,
         "git_commit": "abc1234",
         "config": str(task / "config.yaml"),
         "checkpoint": str(task / "best_val.ckpt"),
@@ -122,6 +136,61 @@ class CDVTMultiScreenTest(unittest.TestCase):
             base.write_text(yaml.safe_dump(payload, sort_keys=False))
             with self.assertRaises(ValueError):
                 materialize(base, root / "multi.yaml", 42, "multi_cdvt")
+
+    def test_materializer_records_memory_only_execution_controls(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base = root / "base.yaml"
+            output = root / "multi.yaml"
+            base.write_text(yaml.safe_dump(multi_base_config(), sort_keys=False))
+            payload = materialize(
+                base, output, 42, "multi_cdvt",
+                edge_ff_chunk_size=3,
+                edge_ff_checkpoint=True)
+            self.assertEqual(payload["gt"]["edge_ff_chunk_size"], 3)
+            self.assertTrue(payload["gt"]["edge_ff_checkpoint"])
+
+    def test_checkpointed_edge_ff_chunks_match_full_output_and_gradients(self):
+        torch.manual_seed(7)
+        full = nn.Sequential(nn.Linear(4, 8), nn.GELU(), nn.Linear(8, 4))
+        chunked = copy.deepcopy(full)
+        full_input = torch.randn(11, 4, requires_grad=True)
+        chunked_input = full_input.detach().clone().requires_grad_(True)
+
+        full_output = full(full_input)
+        chunked_output = memory_efficient_chunked_forward(
+            chunked, chunked_input, chunk_size=3, use_checkpoint=True)
+        torch.testing.assert_close(chunked_output, full_output)
+
+        full_output.square().sum().backward()
+        chunked_output.square().sum().backward()
+        torch.testing.assert_close(chunked_input.grad, full_input.grad)
+        for full_parameter, chunked_parameter in zip(
+                full.parameters(), chunked.parameters()):
+            torch.testing.assert_close(
+                chunked_parameter.grad, full_parameter.grad)
+
+    def test_checkpointed_masked_projection_matches_full_gradients(self):
+        torch.manual_seed(11)
+        full = nn.Linear(4, 3)
+        chunked = copy.deepcopy(full)
+        mask = torch.tensor([
+            True, False, True, True, False, False, True, False, True,
+        ])
+        full_input = torch.randn(9, 4, requires_grad=True)
+        chunked_input = full_input.detach().clone().requires_grad_(True)
+
+        full_output = full(full_input[mask, :])
+        chunked_output = memory_efficient_masked_forward(
+            chunked, chunked_input, mask,
+            chunk_size=2, use_checkpoint=True)
+        torch.testing.assert_close(chunked_output, full_output)
+
+        full_output.square().sum().backward()
+        chunked_output.square().sum().backward()
+        torch.testing.assert_close(chunked_input.grad, full_input.grad)
+        torch.testing.assert_close(chunked.weight.grad, full.weight.grad)
+        torch.testing.assert_close(chunked.bias.grad, full.bias.grad)
 
     def test_reverse_relation_audit_requires_exact_forward_reversal(self):
         data = HeteroData()
@@ -206,6 +275,21 @@ class CDVTMultiScreenTest(unittest.TestCase):
             summary = build_summary(root)
             self.assertFalse(summary["advance_to_six_dataset_screen"])
             self.assertFalse(summary["gate_criteria"]["mean_delta_gt_0_005"])
+
+    def test_multi_summary_rejects_unmatched_memory_execution(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for dataset in ("Small-LI", "Medium-LI"):
+                write_multi_manifest(
+                    root, dataset, "multi_account_only", 0.40)
+                write_multi_manifest(root, dataset, "multi_cdvt", 0.41)
+            write_multi_manifest(
+                root, "Large-LI", "multi_account_only", 0.40,
+                edge_ff_chunk_size=3, edge_ff_checkpoint=True)
+            write_multi_manifest(
+                root, "Large-LI", "multi_cdvt", 0.41)
+            with self.assertRaisesRegex(ValueError, "different memory"):
+                build_summary(root)
 
     def test_multi_cli_works_from_an_arbitrary_working_directory(self):
         script = Path(__file__).resolve().parents[1] / "run" / "cdvt_multi_summary.py"

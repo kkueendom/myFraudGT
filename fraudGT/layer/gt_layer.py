@@ -6,6 +6,7 @@ from torch_scatter import scatter_max
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import Parameter
+from torch.utils.checkpoint import checkpoint
 import fraudGT.graphgym.register as register
 from fraudGT.graphgym.config import cfg
 from torch_geometric.data import HeteroData
@@ -15,6 +16,58 @@ from torch_geometric.nn import (Linear, MLP, HeteroConv, GraphConv, SAGEConv, GI
 from torch_geometric.utils import softmax as pyg_softmax
 from fraudGT.timer import runtime_stats_cuda, is_performance_stats_enabled, enable_runtime_stats, disable_runtime_stats
 from fraudGT.transform.motif_stats import compute_motif_edge_features, MOTIF_EDGE_DIM
+
+
+def memory_efficient_chunked_forward(
+        function, x, chunk_size=0, use_checkpoint=False):
+    """Apply a row-wise function in checkpointed chunks without changing shape."""
+    chunk_size = int(chunk_size)
+    chunks = (
+        x.split(chunk_size, dim=0)
+        if chunk_size > 0 and x.shape[0] > chunk_size
+        else (x,)
+    )
+    outputs = []
+    for chunk in chunks:
+        if (
+            use_checkpoint
+            and torch.is_grad_enabled()
+            and chunk.requires_grad
+        ):
+            outputs.append(checkpoint(
+                function, chunk, use_reentrant=False,
+                preserve_rng_state=True))
+        else:
+            outputs.append(function(chunk))
+    return outputs[0] if len(outputs) == 1 else torch.cat(outputs, dim=0)
+
+
+def memory_efficient_masked_forward(
+        function, x, mask, chunk_size=0, use_checkpoint=False):
+    """Apply a function to masked rows without materializing one large copy."""
+    chunk_size = int(chunk_size)
+    if chunk_size <= 0:
+        return function(x[mask, :])
+    indices = mask.nonzero(as_tuple=False).flatten()
+    if indices.numel() == 0:
+        return function(x[:0, :])
+
+    def indexed(values, positions):
+        return function(values.index_select(0, positions))
+
+    outputs = []
+    for positions in indices.split(chunk_size, dim=0):
+        if (
+            use_checkpoint
+            and torch.is_grad_enabled()
+            and x.requires_grad
+        ):
+            outputs.append(checkpoint(
+                indexed, x, positions, use_reentrant=False,
+                preserve_rng_state=True))
+        else:
+            outputs.append(indexed(x, positions))
+    return outputs[0] if len(outputs) == 1 else torch.cat(outputs, dim=0)
 
 
 class GTLayer(nn.Module):
@@ -1858,7 +1911,18 @@ class GTLayer(nn.Module):
                     for idx, edge_type_tuple in enumerate(batch.edge_types):
                         edge_type = '__'.join(edge_type_tuple)
                         mask = edge_type_tensor == idx
-                        out_type = self.oe_lin[edge_type](edge_state[mask, :])
+                        out_type = memory_efficient_masked_forward(
+                            self.oe_lin[edge_type],
+                            edge_state,
+                            mask,
+                            chunk_size=getattr(
+                                cfg.gt, 'edge_ff_chunk_size', 0),
+                            use_checkpoint=(
+                                self.training
+                                and bool(getattr(
+                                    cfg.gt, 'edge_ff_checkpoint', False))
+                            ),
+                        )
                         edge_attr_dict[edge_type_tuple] = out_type
 
             h_attn_dict = {}
@@ -1986,8 +2050,21 @@ class GTLayer(nn.Module):
         """Feed Forward block.
         """
         edge_type = "__".join(edge_type)
-        x = self.ff_dropout1(self.activation(self.ff_linear1_edge_type[edge_type](x)))
-        return self.ff_dropout2(self.ff_linear2_edge_type[edge_type](x))
+        def block(chunk):
+            hidden = self.ff_linear1_edge_type[edge_type](chunk)
+            hidden = self.ff_dropout1(self.activation(hidden))
+            return self.ff_dropout2(
+                self.ff_linear2_edge_type[edge_type](hidden))
+
+        return memory_efficient_chunked_forward(
+            block,
+            x,
+            chunk_size=getattr(cfg.gt, 'edge_ff_chunk_size', 0),
+            use_checkpoint=(
+                self.training
+                and bool(getattr(cfg.gt, 'edge_ff_checkpoint', False))
+            ),
+        )
 
     # def __repr__(self):
     #     return '{}({}, {})'.format(self.__class__.__name__, self.dim_h,

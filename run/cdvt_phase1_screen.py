@@ -544,6 +544,8 @@ def main():
             "seed": int(cfg.seed),
             "train": train,
             "use_relation_types": bool(cfg.cdvt.use_relation_types),
+            "edge_ff_chunk_size": int(cfg.gt.edge_ff_chunk_size),
+            "edge_ff_checkpoint": bool(cfg.gt.edge_ff_checkpoint),
             "variant": args.experiment_label,
         }
         progress_tmp = progress_path.with_suffix(".tmp")
@@ -594,6 +596,8 @@ def main():
         "lambda_cons": float(args.lambda_cons),
         "history_k": int(cfg.cdvt.history_k),
         "use_relation_types": bool(cfg.cdvt.use_relation_types),
+        "edge_ff_chunk_size": int(cfg.gt.edge_ff_chunk_size),
+        "edge_ff_checkpoint": bool(cfg.gt.edge_ff_checkpoint),
         "account_backbone": (
             "Multi-FraudGT" if requires_multi else "PE-FraudGT"),
         "reverse_mp": bool(cfg.dataset.reverse_mp),

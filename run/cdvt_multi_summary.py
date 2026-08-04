@@ -57,11 +57,21 @@ def validate_manifest(payload, path, dataset, variant):
     if payload.get("use_relation_types") is not True:
         raise ValueError(f"{path}: relation-aware event encoder is required")
 
+    edge_ff_chunk_size = int(payload.get("edge_ff_chunk_size", 0))
+    edge_ff_checkpoint = bool(payload.get("edge_ff_checkpoint", False))
+    if edge_ff_chunk_size < 0:
+        raise ValueError(f"{path}: edge_ff_chunk_size must be non-negative")
+    if edge_ff_checkpoint != (edge_ff_chunk_size > 0):
+        raise ValueError(
+            f"{path}: edge FF chunking and checkpointing must be enabled "
+            "together")
+
     snapshot = payload.get("config_snapshot", {})
     dataset_cfg = snapshot.get("dataset", {})
     train = snapshot.get("train", {})
     val = snapshot.get("val", {})
     cdvt = snapshot.get("cdvt", {})
+    gt = snapshot.get("gt", {})
     protocol_ok = (
         dataset_cfg.get("reverse_mp") is True
         and dataset_cfg.get("add_ports") is True
@@ -74,6 +84,8 @@ def validate_manifest(payload, path, dataset, variant):
         and val.get("fixed_target_panel") is False
         and int(cdvt.get("history_k", -1)) == 4
         and float(cdvt.get("lambda_cons", -1)) == 0.0
+        and int(gt.get("edge_ff_chunk_size", 0)) == edge_ff_chunk_size
+        and bool(gt.get("edge_ff_checkpoint", False)) == edge_ff_checkpoint
     )
     if not protocol_ok:
         raise ValueError(f"{path}: Multi config/protocol audit failed")
@@ -118,6 +130,8 @@ def compact(payload, path):
         "parameter_count": int(payload["parameter_count"]),
         "peak_gpu_memory_bytes": int(payload["peak_gpu_memory_bytes"]),
         "elapsed_seconds": float(payload["elapsed_seconds"]),
+        "edge_ff_chunk_size": int(payload.get("edge_ff_chunk_size", 0)),
+        "edge_ff_checkpoint": bool(payload.get("edge_ff_checkpoint", False)),
         "manifest": str(path.resolve()),
     }
 
@@ -144,6 +158,17 @@ def build_summary(multi_root, allow_incomplete=False):
             pair[variant] = compact(payload, path)
         if len(pair) != len(VARIANTS):
             continue
+        memory_profiles = {
+            (
+                row["edge_ff_chunk_size"],
+                row["edge_ff_checkpoint"],
+            )
+            for row in pair.values()
+        }
+        if len(memory_profiles) != 1:
+            raise ValueError(
+                f"{dataset}: matched Multi pair uses different memory "
+                "execution settings")
         val_delta = (
             pair["multi_cdvt"]["val_selected_test_f1"]
             - pair["multi_account_only"]["val_selected_test_f1"]

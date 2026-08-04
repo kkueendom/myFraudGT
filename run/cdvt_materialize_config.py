@@ -61,7 +61,9 @@ VARIANTS = {
 }
 
 
-def materialize(base_path, output_path, seed, variant):
+def materialize(
+        base_path, output_path, seed, variant,
+        edge_ff_chunk_size=0, edge_ff_checkpoint=False):
     base_path = Path(base_path)
     output_path = Path(output_path)
     if variant not in VARIANTS:
@@ -83,6 +85,14 @@ def materialize(base_path, output_path, seed, variant):
     payload["cdvt"]["history_k"] = settings["history_k"]
     payload["cdvt"]["use_relation_types"] = settings[
         "use_relation_types"]
+    edge_ff_chunk_size = int(edge_ff_chunk_size)
+    if edge_ff_chunk_size < 0:
+        raise ValueError("edge_ff_chunk_size must be non-negative")
+    if edge_ff_checkpoint and edge_ff_chunk_size <= 0:
+        raise ValueError(
+            "edge FF checkpointing requires a positive chunk size")
+    payload["gt"]["edge_ff_chunk_size"] = edge_ff_chunk_size
+    payload["gt"]["edge_ff_checkpoint"] = bool(edge_ff_checkpoint)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(yaml.safe_dump(payload, sort_keys=False))
     return payload
@@ -94,12 +104,17 @@ def parse_args():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--variant", choices=tuple(VARIANTS), required=True)
+    parser.add_argument("--edge-ff-chunk-size", type=int, default=0)
+    parser.add_argument("--edge-ff-checkpoint", action="store_true")
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
-    materialize(args.base, args.output, args.seed, args.variant)
+    materialize(
+        args.base, args.output, args.seed, args.variant,
+        edge_ff_chunk_size=args.edge_ff_chunk_size,
+        edge_ff_checkpoint=args.edge_ff_checkpoint)
 
 
 if __name__ == "__main__":
