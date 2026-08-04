@@ -25,6 +25,7 @@ from fraudGT.graphgym.loader import create_dataset, create_loader
 from fraudGT.graphgym.loss import compute_loss
 from fraudGT.graphgym.model_builder import create_model
 from fraudGT.sampler.custom_sampler import AddEgoIdsForLinkNeighbor
+from run.cdvt_protocol import MULTI_FRAUDGT_PAPER
 from run.tier_phase1_evidence_qualification import (
     INITIAL_A2,
     aggregate_unique,
@@ -71,11 +72,13 @@ def parse_args():
     parser.add_argument("--max-epochs", type=int, default=500)
     parser.add_argument("--early-stop-min-epoch", type=int, default=80)
     parser.add_argument("--early-stop-patience-evals", type=int, default=10)
+    parser.add_argument("--disable-early-stop", action="store_true")
     parser.add_argument(
         "--phase",
         choices=(
             "CDVT_phase1", "CDVT_phase2", "CDVT_phase3",
             "CDVT_ablation", "CDVT_multi_screen",
+            "CDVT_multi_published_screen",
         ),
         default="CDVT_phase1",
     )
@@ -93,6 +96,13 @@ def configure(args):
         args.experiment_label]
     if config["train"]["sampler"] != "link_neighbor":
         raise RuntimeError("Phase 1 requires LinkNeighborLoader")
+    if int(args.max_epochs) <= 0:
+        raise ValueError("max_epochs must be positive")
+    if not args.disable_early_stop:
+        if int(args.early_stop_min_epoch) <= 0:
+            raise ValueError("early_stop_min_epoch must be positive")
+        if int(args.early_stop_patience_evals) <= 0:
+            raise ValueError("early_stop_patience_evals must be positive")
     if config["val"].get("fixed_target_panel") is not False:
         raise RuntimeError("fixed target panel is forbidden")
     if config["dataset"].get("tier_evidence") is not True:
@@ -521,11 +531,17 @@ def main():
     best_event = None
     stale_evals = 0
     events = []
+    train_seconds = 0.0
+    inference_seconds = 0.0
+    epochs_completed = 0
     started = time.monotonic()
     for epoch in range(int(args.max_epochs)):
+        train_started = time.monotonic()
         train = train_epoch(
             model, loaders[0], dataset["train"], optimizer, device,
             float(args.lambda_cons))
+        train_seconds += time.monotonic() - train_started
+        epochs_completed = epoch + 1
         scheduler.step()
         progress = {
             "architecture_variant": args.variant,
@@ -546,6 +562,8 @@ def main():
             "use_relation_types": bool(cfg.cdvt.use_relation_types),
             "edge_ff_chunk_size": int(cfg.gt.edge_ff_chunk_size),
             "edge_ff_checkpoint": bool(cfg.gt.edge_ff_checkpoint),
+            "early_stopping_enabled": not args.disable_early_stop,
+            "max_epochs": int(args.max_epochs),
             "variant": args.experiment_label,
         }
         progress_tmp = progress_path.with_suffix(".tmp")
@@ -553,7 +571,9 @@ def main():
         progress_tmp.replace(progress_path)
         if (epoch + 1) % int(cfg.train.eval_period):
             continue
+        inference_started = time.monotonic()
         event = evaluation_event(model, loaders, device, epoch, train)
+        inference_seconds += time.monotonic() - inference_started
         events.append(event)
         with trajectory_path.open("a") as handle:
             handle.write(json.dumps(event, sort_keys=True) + "\n")
@@ -576,7 +596,8 @@ def main():
             "paired_retention": train["paired_retention"],
         }, sort_keys=True), flush=True)
         if (
-            epoch + 1 >= int(args.early_stop_min_epoch)
+            not args.disable_early_stop
+            and epoch + 1 >= int(args.early_stop_min_epoch)
             and stale_evals >= int(args.early_stop_patience_evals)
         ):
             break
@@ -587,6 +608,7 @@ def main():
     raw_best_event = max(
         events, key=lambda event: event["test"]["normal"]["f1"])
     raw_best = raw_best_event["test"]["normal"]["f1"]
+    published_multi = MULTI_FRAUDGT_PAPER.get(str(cfg.dataset.name))
     manifest = {
         "phase": args.phase,
         "sampling_protocol": "dynamic_random",
@@ -598,6 +620,11 @@ def main():
         "use_relation_types": bool(cfg.cdvt.use_relation_types),
         "edge_ff_chunk_size": int(cfg.gt.edge_ff_chunk_size),
         "edge_ff_checkpoint": bool(cfg.gt.edge_ff_checkpoint),
+        "early_stopping_enabled": not args.disable_early_stop,
+        "early_stop_min_epoch": int(args.early_stop_min_epoch),
+        "early_stop_patience_evals": int(
+            args.early_stop_patience_evals),
+        "max_epochs": int(args.max_epochs),
         "account_backbone": (
             "Multi-FraudGT" if requires_multi else "PE-FraudGT"),
         "reverse_mp": bool(cfg.dataset.reverse_mp),
@@ -618,8 +645,12 @@ def main():
         "initial_a2": baseline,
         "best_event": best_event,
         "events": len(events),
-        "epochs_completed": int(events[-1]["epoch"] + 1),
+        "epochs_completed": int(epochs_completed),
         "elapsed_seconds": time.monotonic() - started,
+        "training_seconds": train_seconds,
+        "inference_seconds": inference_seconds,
+        "inference_time_scope": (
+            "all scheduled validation and test evaluation events"),
         "parameter_count": int(parameter_count),
         "cpu_threads": torch.get_num_threads(),
         "interop_threads": torch.get_num_interop_threads(),
@@ -631,16 +662,29 @@ def main():
         "multi_dataset_audit": multi_dataset_audit,
         "config_snapshot": config_snapshot,
     }
+    if published_multi is not None:
+        manifest.update({
+            "published_multi_fraudgt_val_selected_test_f1": published_multi,
+            "delta_val_selected_vs_published_multi_fraudgt": (
+                selected_test - published_multi),
+            "primary_baseline": (
+                "published_multi_fraudgt"
+                if args.experiment_label == "multi_cdvt"
+                else "initial_a2"
+            ),
+        })
     (args.output_dir / "manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n")
-    print(json.dumps({
-        key: manifest[key]
-        for key in (
-            "dataset", "variant", "lambda_cons",
-            "val_selected_test_f1", "delta_val_selected_vs_initial_a2",
-            "raw_best_test_f1", "delta_raw_best_vs_initial_a2",
-        )
-    }, sort_keys=True), flush=True)
+    report_keys = [
+        "dataset", "variant", "lambda_cons", "val_selected_test_f1",
+        "delta_val_selected_vs_initial_a2", "raw_best_test_f1",
+        "delta_raw_best_vs_initial_a2",
+    ]
+    if "delta_val_selected_vs_published_multi_fraudgt" in manifest:
+        report_keys.append(
+            "delta_val_selected_vs_published_multi_fraudgt")
+    print(json.dumps({key: manifest[key] for key in report_keys},
+                     sort_keys=True), flush=True)
 
 
 if __name__ == "__main__":
