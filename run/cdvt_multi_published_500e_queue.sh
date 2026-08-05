@@ -9,7 +9,8 @@ root="${CDVT_OUTPUT_ROOT:-/e/yky/FraudGT_cdvt_results/multi_published_500e_${com
 completion="${CDVT_COMPLETION:-$root/queue_complete.json}"
 poll_seconds="${CDVT_POLL_SECONDS:-300}"
 max_idle_memory_mib="${CDVT_MAX_IDLE_MEMORY_MIB:-512}"
-chunk_size="${CDVT_EDGE_FF_CHUNK_SIZE:-65536}"
+large_li_chunk_size="${CDVT_LARGE_LI_EDGE_FF_CHUNK_SIZE:-65536}"
+large_hi_chunk_size="${CDVT_LARGE_HI_EDGE_FF_CHUNK_SIZE:-32768}"
 cpu_threads=8
 
 read -r -a gpus <<< "${CDVT_GPUS:-0 1 2 3 4 5 6}"
@@ -34,8 +35,8 @@ if [[ -e "$root" ]]; then
   echo "refusing to reuse formal result root: $root" >&2
   exit 2
 fi
-if (( chunk_size != 65536 )); then
-  echo "formal Large runs require edge_ff_chunk_size=65536" >&2
+if (( large_li_chunk_size != 65536 || large_hi_chunk_size != 32768 )); then
+  echo "unexpected formal Large edge FF chunk sizes" >&2
   exit 2
 fi
 
@@ -83,8 +84,10 @@ payload = {
         "Large-HI": 0.73340,
     },
     "large_memory_execution": {
-        "edge_ff_chunk_size": 65536,
+        "Large-LI": 65536,
+        "Large-HI": 32768,
         "edge_ff_checkpoint": True,
+        "preallocated_chunk_output": True,
         "mathematical_definition_changed": False,
     },
 }
@@ -103,9 +106,14 @@ for task in "${tasks[@]}"; do
     --seed "$seed"
     --variant multi_cdvt
   )
-  if [[ "$dataset" == Large-* ]]; then
+  if [[ "$dataset" == "Large-LI" ]]; then
     materialize+=(
-      --edge-ff-chunk-size "$chunk_size"
+      --edge-ff-chunk-size "$large_li_chunk_size"
+      --edge-ff-checkpoint
+    )
+  elif [[ "$dataset" == "Large-HI" ]]; then
+    materialize+=(
+      --edge-ff-chunk-size "$large_hi_chunk_size"
       --edge-ff-checkpoint
     )
   fi

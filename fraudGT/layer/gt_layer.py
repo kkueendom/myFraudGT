@@ -27,19 +27,28 @@ def memory_efficient_chunked_forward(
         if chunk_size > 0 and x.shape[0] > chunk_size
         else (x,)
     )
-    outputs = []
+    output = None
+    offset = 0
     for chunk in chunks:
         if (
             use_checkpoint
             and torch.is_grad_enabled()
             and chunk.requires_grad
         ):
-            outputs.append(checkpoint(
+            chunk_output = checkpoint(
                 function, chunk, use_reentrant=False,
-                preserve_rng_state=True))
+                preserve_rng_state=True)
         else:
-            outputs.append(function(chunk))
-    return outputs[0] if len(outputs) == 1 else torch.cat(outputs, dim=0)
+            chunk_output = function(chunk)
+        if len(chunks) == 1:
+            return chunk_output
+        if output is None:
+            output = chunk_output.new_empty(
+                (x.shape[0], *chunk_output.shape[1:]))
+        next_offset = offset + chunk_output.shape[0]
+        output[offset:next_offset] = chunk_output
+        offset = next_offset
+    return output
 
 
 def memory_efficient_masked_forward(
@@ -55,19 +64,29 @@ def memory_efficient_masked_forward(
     def indexed(values, positions):
         return function(values.index_select(0, positions))
 
-    outputs = []
-    for positions in indices.split(chunk_size, dim=0):
+    positions_chunks = indices.split(chunk_size, dim=0)
+    output = None
+    offset = 0
+    for positions in positions_chunks:
         if (
             use_checkpoint
             and torch.is_grad_enabled()
             and x.requires_grad
         ):
-            outputs.append(checkpoint(
+            chunk_output = checkpoint(
                 indexed, x, positions, use_reentrant=False,
-                preserve_rng_state=True))
+                preserve_rng_state=True)
         else:
-            outputs.append(indexed(x, positions))
-    return outputs[0] if len(outputs) == 1 else torch.cat(outputs, dim=0)
+            chunk_output = indexed(x, positions)
+        if len(positions_chunks) == 1:
+            return chunk_output
+        if output is None:
+            output = chunk_output.new_empty(
+                (indices.numel(), *chunk_output.shape[1:]))
+        next_offset = offset + chunk_output.shape[0]
+        output[offset:next_offset] = chunk_output
+        offset = next_offset
+    return output
 
 
 class GTLayer(nn.Module):

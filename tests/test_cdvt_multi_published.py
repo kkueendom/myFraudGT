@@ -13,9 +13,11 @@ DATASETS = tuple(MULTI_FRAUDGT_PAPER)
 def write_manifest(root, dataset, delta, *, epochs=500, early_stop=False):
     task = root / f"{dataset}_multi_cdvt_seed42"
     task.mkdir(parents=True)
-    large = dataset.startswith("Large-")
-    chunk_size = 65536 if large else 0
-    checkpointed = large
+    chunk_size = {
+        "Large-LI": 65536,
+        "Large-HI": 32768,
+    }.get(dataset, 0)
+    checkpointed = chunk_size > 0
     selected = MULTI_FRAUDGT_PAPER[dataset] + delta
     payload = {
         "phase": "CDVT_multi_published_screen",
@@ -161,6 +163,29 @@ class CDVTMultiPublishedTest(unittest.TestCase):
         self.assertIn("--edge-ff-chunk-size", source)
         self.assertIn("--edge-ff-checkpoint", source)
 
+    def test_large_hi_recovery_is_from_epoch_zero_and_memory_only(self):
+        source = Path(
+            "run/cdvt_multi_published_large_hi_recovery.sh").read_text()
+        self.assertIn("torch.OutOfMemoryError", source)
+        self.assertIn("CDVT_EDGE_FF_CHUNK_SIZE:-32768", source)
+        self.assertIn("--disable-early-stop", source)
+        self.assertIn('"restart_epoch": 0', source)
+        self.assertIn('"mathematical_definition_changed": False', source)
+
+    def test_summary_can_read_large_hi_from_a_recovery_root(self):
+        with tempfile.TemporaryDirectory() as main_directory, \
+                tempfile.TemporaryDirectory() as recovery_directory:
+            main_root = Path(main_directory)
+            recovery_root = Path(recovery_directory)
+            for dataset in DATASETS:
+                target = recovery_root if dataset == "Large-HI" else main_root
+                write_manifest(target, dataset, 0.01)
+            summary = build_summary(
+                main_root, large_hi_root=recovery_root)
+            self.assertTrue(summary["complete"])
+            self.assertEqual(
+                Path(summary["large_hi_root"]), recovery_root.resolve())
+
     def test_runner_records_published_baseline_and_runtime(self):
         source = Path("run/cdvt_phase1_screen.py").read_text()
         self.assertIn("--disable-early-stop", source)
@@ -175,6 +200,13 @@ class CDVTMultiPublishedTest(unittest.TestCase):
         self.assertIn("--single-batch-only", source)
         self.assertIn('"phase0_single_batch_gpu_smoke"', source)
         self.assertIn('"peak_gpu_memory_bytes"', source)
+
+    def test_chunked_execution_avoids_a_full_output_cat(self):
+        source = Path("fraudGT/layer/gt_layer.py").read_text()
+        start = source.index("def memory_efficient_chunked_forward")
+        end = source.index("\ndef memory_efficient_masked_forward", start)
+        self.assertNotIn("torch.cat(outputs", source[start:end])
+        self.assertIn("output[offset:next_offset]", source[start:end])
 
 
 if __name__ == "__main__":
