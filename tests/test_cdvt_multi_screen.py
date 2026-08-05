@@ -170,6 +170,30 @@ class CDVTMultiScreenTest(unittest.TestCase):
             torch.testing.assert_close(
                 chunked_parameter.grad, full_parameter.grad)
 
+    def test_checkpointed_chunk_residual_matches_full_output_and_gradients(self):
+        torch.manual_seed(13)
+        full = nn.Sequential(nn.Linear(4, 8), nn.GELU(), nn.Linear(8, 4))
+        chunked = copy.deepcopy(full)
+        full_input = torch.randn(11, 4, requires_grad=True)
+        chunked_input = full_input.detach().clone().requires_grad_(True)
+
+        full_output = full_input + full(full_input)
+
+        def residual(values):
+            return values + chunked(values)
+
+        chunked_output = memory_efficient_chunked_forward(
+            residual, chunked_input, chunk_size=3, use_checkpoint=True)
+        torch.testing.assert_close(chunked_output, full_output)
+
+        full_output.square().sum().backward()
+        chunked_output.square().sum().backward()
+        torch.testing.assert_close(chunked_input.grad, full_input.grad)
+        for full_parameter, chunked_parameter in zip(
+                full.parameters(), chunked.parameters()):
+            torch.testing.assert_close(
+                chunked_parameter.grad, full_parameter.grad)
+
     def test_checkpointed_masked_projection_matches_full_gradients(self):
         torch.manual_seed(11)
         full = nn.Linear(4, 3)

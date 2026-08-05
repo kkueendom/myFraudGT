@@ -77,6 +77,7 @@ payload = {
     "edge_ff_chunk_size": int(chunk_size),
     "edge_ff_checkpoint": True,
     "preallocated_chunk_output": True,
+    "chunkwise_ff_residual": True,
     "mathematical_definition_changed": False,
     "restart_epoch": 0,
 }

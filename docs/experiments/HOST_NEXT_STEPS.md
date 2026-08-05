@@ -86,8 +86,9 @@ output during the final `torch.cat`. This is an execution-memory failure, not a
 scientific result.
 
 Commit `c76df05` and the failed directory must remain unchanged. The recovery
-implementation preallocates the chunk output buffer, uses
-`edge_ff_chunk_size=32768`, and preserves the model definition and gradients.
+implementation preallocates the chunk output buffer, performs the FFN residual
+addition inside each chunk, uses `edge_ff_chunk_size=32768`, and preserves the
+model definition and gradients.
 Run `run/cdvt_multi_published_large_hi_recovery.sh` from a newer clean commit;
 it verifies the source OOM and restarts Large-HI from epoch 0 in a new result
 root. Do not resume from `best_val.ckpt`, because it lacks optimizer, scheduler,

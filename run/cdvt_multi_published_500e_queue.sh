@@ -88,6 +88,7 @@ payload = {
         "Large-HI": 32768,
         "edge_ff_checkpoint": True,
         "preallocated_chunk_output": True,
+        "chunkwise_ff_residual": True,
         "mathematical_definition_changed": False,
     },
 }

@@ -207,6 +207,11 @@ class CDVTMultiPublishedTest(unittest.TestCase):
         end = source.index("\ndef memory_efficient_masked_forward", start)
         self.assertNotIn("torch.cat(outputs", source[start:end])
         self.assertIn("output[offset:next_offset]", source[start:end])
+        self.assertIn("add_residual=True", source)
+        self.assertIn(
+            "return chunk + transformed if add_residual else transformed",
+            source,
+        )
 
 
 if __name__ == "__main__":

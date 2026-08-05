@@ -2012,7 +2012,9 @@ class GTLayer(nn.Module):
                 }
                 if has_edge_attr:
                     edge_attr_dict = {
-                        edge_type: edge_attr_dict[edge_type] + self._ff_block_edge_type(edge_attr_dict[edge_type], edge_type)
+                        edge_type: self._ff_block_edge_type(
+                            edge_attr_dict[edge_type], edge_type,
+                            add_residual=True)
                         for edge_type in batch.edge_types
                     }
             elif cfg.gt.ffn == 'Single':
@@ -2065,15 +2067,16 @@ class GTLayer(nn.Module):
         x = self.ff_dropout1(self.activation(self.ff_linear1(x)))
         return self.ff_dropout2(self.ff_linear2(x))
     
-    def _ff_block_edge_type(self, x, edge_type):
+    def _ff_block_edge_type(self, x, edge_type, add_residual=False):
         """Feed Forward block.
         """
         edge_type = "__".join(edge_type)
         def block(chunk):
             hidden = self.ff_linear1_edge_type[edge_type](chunk)
             hidden = self.ff_dropout1(self.activation(hidden))
-            return self.ff_dropout2(
+            transformed = self.ff_dropout2(
                 self.ff_linear2_edge_type[edge_type](hidden))
+            return chunk + transformed if add_residual else transformed
 
         return memory_efficient_chunked_forward(
             block,
