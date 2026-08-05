@@ -129,6 +129,10 @@ def main():
     fusion_gradient = gradient_norm(model.dual_view.cross_attention)
     if min(account_gradient, event_gradient, fusion_gradient) <= 0:
         raise AssertionError("both encoders and fusion must receive gradients")
+    batch_targets = int(labels.numel())
+    positive_targets = int(labels.long().sum().cpu())
+    negative_targets = batch_targets - positive_targets
+    batch_loss = float(loss.detach().cpu())
 
     if args.single_batch_only:
         row = {
@@ -146,13 +150,12 @@ def main():
             "config": str(args.config.resolve()),
             "checkpoint": None,
             "device": args.device,
-            "batch_targets": int(labels.numel()),
-            "positive_targets": int(labels.long().sum().cpu()),
-            "negative_targets": int(
-                labels.numel() - labels.long().sum().cpu()),
+            "batch_targets": batch_targets,
+            "positive_targets": positive_targets,
+            "negative_targets": negative_targets,
             "batch_search_index": batch_search_index,
             "max_batch_search": args.max_batch_search,
-            "loss": float(loss.detach().cpu()),
+            "loss": batch_loss,
             "account_gradient_norm": account_gradient,
             "event_gradient_norm": event_gradient,
             "fusion_gradient_norm": fusion_gradient,
@@ -170,6 +173,10 @@ def main():
         print(json.dumps(row, sort_keys=True))
         return
 
+    model.zero_grad(set_to_none=True)
+    del batch, logits, labels, diagnostics, loss
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
     model.eval()
     with torch.no_grad():
         initial_logits, initial_labels, _ = model.forward_details(
@@ -230,13 +237,12 @@ def main():
         "config": str(args.config.resolve()),
         "checkpoint": None,
         "device": args.device,
-        "batch_targets": int(labels.numel()),
-        "positive_targets": int(labels.long().sum().cpu()),
-        "negative_targets": int(
-            labels.numel() - labels.long().sum().cpu()),
+        "batch_targets": batch_targets,
+        "positive_targets": positive_targets,
+        "negative_targets": negative_targets,
         "batch_search_index": batch_search_index,
         "max_batch_search": args.max_batch_search,
-        "loss": float(loss.detach().cpu()),
+        "loss": batch_loss,
         "account_gradient_norm": account_gradient,
         "event_gradient_norm": event_gradient,
         "fusion_gradient_norm": fusion_gradient,

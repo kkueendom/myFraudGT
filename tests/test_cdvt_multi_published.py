@@ -200,6 +200,7 @@ class CDVTMultiPublishedTest(unittest.TestCase):
         self.assertIn("--single-batch-only", source)
         self.assertIn('"phase0_single_batch_gpu_smoke"', source)
         self.assertIn('"peak_gpu_memory_bytes"', source)
+        self.assertIn("del batch, logits, labels, diagnostics, loss", source)
 
     def test_chunked_execution_avoids_a_full_output_cat(self):
         source = Path("fraudGT/layer/gt_layer.py").read_text()
