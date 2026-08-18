@@ -14,7 +14,10 @@ def write_manifest(root, dataset, delta, *, epochs=500, early_stop=False):
     task = root / f"{dataset}_multi_cdvt_seed42"
     task.mkdir(parents=True)
     large = dataset.startswith("Large-")
-    chunk_size = 65536 if large else 0
+    chunk_size = {
+        "Large-LI": 65536,
+        "Large-HI": 32768,
+    }.get(dataset, 0)
     checkpointed = large
     selected = MULTI_FRAUDGT_PAPER[dataset] + delta
     payload = {
@@ -147,6 +150,29 @@ class CDVTMultiPublishedTest(unittest.TestCase):
             bad.write_text(json.dumps(payload))
             with self.assertRaises(ValueError):
                 build_summary(root)
+
+    def test_summary_accepts_declared_large_hi_recovery_root(self):
+        with tempfile.TemporaryDirectory() as main_directory, \
+                tempfile.TemporaryDirectory() as recovery_directory:
+            main_root = Path(main_directory)
+            recovery_root = Path(recovery_directory)
+            for dataset in DATASETS:
+                target = (
+                    recovery_root if dataset == "Large-HI" else main_root)
+                write_manifest(target, dataset, 0.01)
+            recovery_manifest = (
+                recovery_root / "Large-HI_multi_cdvt_seed42" /
+                "manifest.json")
+            payload = json.loads(recovery_manifest.read_text())
+            payload["git_commit"] = "recovery456"
+            recovery_manifest.write_text(json.dumps(payload))
+            summary = build_summary(
+                main_root, large_hi_root=recovery_root)
+        self.assertTrue(summary["complete"])
+        self.assertEqual(
+            summary["git_commits"],
+            {"main": "formal123", "large_hi_recovery": "recovery456"},
+        )
 
     def test_launcher_is_six_dataset_seed42_multi_cdvt_only(self):
         source = Path("run/cdvt_multi_published_500e_queue.sh").read_text()

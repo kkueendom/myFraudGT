@@ -21,18 +21,19 @@ DATASETS = (
 )
 SAMPLING_BAND = 0.005
 MAX_EPOCHS = 500
-LARGE_EDGE_FF_CHUNK_SIZE = 65536
-
-
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--result-root", type=Path, required=True)
+    parser.add_argument("--large-hi-root", type=Path)
+    parser.add_argument("--output-root", type=Path)
     parser.add_argument("--allow-incomplete", action="store_true")
     parser.add_argument("--write", action="store_true")
     return parser.parse_args()
 
 
-def manifest_path(root, dataset):
+def manifest_path(root, dataset, large_hi_root=None):
+    if dataset == "Large-HI" and large_hi_root is not None:
+        root = Path(large_hi_root)
     return root / f"{dataset}_multi_cdvt_seed42" / "manifest.json"
 
 
@@ -76,8 +77,10 @@ def validate_manifest(payload, path, dataset):
     if payload.get("use_relation_types") is not True:
         raise ValueError(f"{path}: relation-aware event encoder is required")
 
-    expected_chunk = (
-        LARGE_EDGE_FF_CHUNK_SIZE if dataset.startswith("Large-") else 0)
+    expected_chunk = {
+        "Large-LI": 65536,
+        "Large-HI": 32768,
+    }.get(dataset, 0)
     expected_checkpoint = dataset.startswith("Large-")
     if int(payload.get("edge_ff_chunk_size", -1)) != expected_chunk:
         raise ValueError(f"{path}: unexpected edge FF chunk size")
@@ -214,12 +217,15 @@ def compact(payload, path, dataset):
     }
 
 
-def build_summary(result_root, allow_incomplete=False):
+def build_summary(
+        result_root, allow_incomplete=False, large_hi_root=None):
     result_root = Path(result_root)
+    large_hi_root = (
+        Path(large_hi_root) if large_hi_root is not None else None)
     rows = []
     missing = []
     for dataset in DATASETS:
-        path = manifest_path(result_root, dataset)
+        path = manifest_path(result_root, dataset, large_hi_root)
         if not path.is_file():
             missing.append(str(path))
             continue
@@ -232,8 +238,26 @@ def build_summary(result_root, allow_incomplete=False):
             "Multi-CDVT published screen is incomplete: "
             + ", ".join(missing))
     commits = {row["git_commit"] for row in rows}
+    commit_audit = {"all": sorted(commits)}
     if len(commits) > 1:
-        raise ValueError("formal tasks were run from different Git commits")
+        recovery_rows = [
+            row for row in rows if row["dataset"] == "Large-HI"
+        ]
+        main_rows = [
+            row for row in rows if row["dataset"] != "Large-HI"
+        ]
+        main_commits = {row["git_commit"] for row in main_rows}
+        if (
+                large_hi_root is None
+                or len(recovery_rows) != 1
+                or len(main_commits) != 1
+                or recovery_rows[0]["git_commit"] in main_commits):
+            raise ValueError(
+                "formal tasks were run from different Git commits")
+        commit_audit = {
+            "main": next(iter(main_commits)),
+            "large_hi_recovery": recovery_rows[0]["git_commit"],
+        }
 
     complete = not missing and len(rows) == len(DATASETS)
     deltas = [row["delta_val_selected"] for row in rows]
@@ -248,6 +272,10 @@ def build_summary(result_root, allow_incomplete=False):
         "seed": 42,
         "max_epochs": MAX_EPOCHS,
         "early_stopping_enabled": False,
+        "result_root": str(result_root.resolve()),
+        "large_hi_root": (
+            str(large_hi_root.resolve())
+            if large_hi_root is not None else None),
         "rows": rows,
         "mean_multi_cdvt_val_selected_test_f1": (
             statistics.fmean(
@@ -287,6 +315,7 @@ def build_summary(result_root, allow_incomplete=False):
             "incomplete": "wait for all six final manifests",
         }[verdict],
         "git_commit": next(iter(commits)) if len(commits) == 1 else None,
+        "git_commits": commit_audit,
         "missing_manifests": sorted(missing),
         "complete": complete,
     }
@@ -337,12 +366,16 @@ def markdown(summary):
 def main():
     args = parse_args()
     summary = build_summary(
-        args.result_root, allow_incomplete=args.allow_incomplete)
+        args.result_root,
+        allow_incomplete=args.allow_incomplete,
+        large_hi_root=args.large_hi_root,
+    )
     if args.write:
-        args.result_root.mkdir(parents=True, exist_ok=True)
-        (args.result_root / "published_summary.json").write_text(
+        output_root = args.output_root or args.result_root
+        output_root.mkdir(parents=True, exist_ok=True)
+        (output_root / "published_summary.json").write_text(
             json.dumps(summary, indent=2, sort_keys=True) + "\n")
-        (args.result_root / "published_summary.md").write_text(
+        (output_root / "published_summary.md").write_text(
             markdown(summary))
     print(json.dumps(summary, indent=2, sort_keys=True))
 
