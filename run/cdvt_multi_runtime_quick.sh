@@ -43,14 +43,16 @@ fi
 mkdir -p "$root/configs"
 for variant in multi_account_only multi_cdvt; do
   config="$root/configs/AML-Small-LI-${variant}-seed42.yaml"
-  "$python" "$repo/run/cdvt_materialize_config.py" \
+  env PYTHONDONTWRITEBYTECODE=1 \
+    "$python" "$repo/run/cdvt_materialize_config.py" \
     --base "$source_config" \
     --output "$config" \
     --seed 42 \
     --variant "$variant"
 done
 
-"$python" - "$root/queue_manifest.json" "$commit" "$gpu" \
+env PYTHONDONTWRITEBYTECODE=1 \
+  "$python" - "$root/queue_manifest.json" "$commit" "$gpu" \
   "$warmup_batches" "$batches_per_repeat" "$repeats" <<'PY'
 import json
 import sys
@@ -92,7 +94,8 @@ for variant in multi_account_only multi_cdvt; do
       > "$output/stdout.log" 2>&1
 done
 
-"$python" "$repo/run/cdvt_multi_runtime_summary.py" \
+env PYTHONDONTWRITEBYTECODE=1 \
+  "$python" "$repo/run/cdvt_multi_runtime_summary.py" \
   --runtime-root "$root" \
   --datasets Small-LI \
   --write \
