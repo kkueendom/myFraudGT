@@ -4,7 +4,13 @@ set -euo pipefail
 repo="${CDVT_REPO:-/e/yky/FraudGT_cdvt_multi_runtime}"
 python="${CDVT_PYTHON:-/d/miniconda3/envs/fraudGT/bin/python}"
 dataset="${CDVT_DATASET:-Small-LI}"
-source_config="${CDVT_SOURCE_CONFIG:-/e/yky/FraudGT_cdvt_results/multi_published_500e_c76df05/configs/AML-${dataset}-multi_cdvt-seed42.yaml}"
+if [[ -n "${CDVT_SOURCE_CONFIG:-}" ]]; then
+  source_config="$CDVT_SOURCE_CONFIG"
+elif [[ "$dataset" == "Large-HI" ]]; then
+  source_config="/e/yky/FraudGT_cdvt_results/multi_published_500e_large_hi_recovery_decabdb/configs/AML-Large-HI-multi_cdvt-seed42.yaml"
+else
+  source_config="/e/yky/FraudGT_cdvt_results/multi_published_500e_c76df05/configs/AML-${dataset}-multi_cdvt-seed42.yaml"
+fi
 gpu="${CDVT_GPU:-0}"
 warmup_batches="${CDVT_WARMUP_BATCHES:-4}"
 batches_per_repeat="${CDVT_BATCHES_PER_REPEAT:-32}"
@@ -14,7 +20,7 @@ branch="$(git -C "$repo" branch --show-current)"
 root="${CDVT_OUTPUT_ROOT:-/e/yky/FraudGT_cdvt_results/multi_runtime_quick_${dataset}_${commit}}"
 
 case "$dataset" in
-  Small-LI|Medium-LI|Large-LI) ;;
+  Small-LI|Small-HI|Medium-LI|Medium-HI|Large-LI|Large-HI) ;;
   *)
     echo "unsupported runtime dataset: $dataset" >&2
     exit 2

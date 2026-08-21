@@ -44,7 +44,11 @@ class MultiRuntimeSummaryTest(unittest.TestCase):
     def test_quick_launcher_parameterizes_the_li_dataset(self):
         source = Path("run/cdvt_multi_runtime_quick.sh").read_text()
         self.assertIn('dataset="${CDVT_DATASET:-Small-LI}"', source)
-        self.assertIn("Small-LI|Medium-LI|Large-LI", source)
+        self.assertIn(
+            "Small-LI|Small-HI|Medium-LI|Medium-HI|Large-LI|Large-HI",
+            source,
+        )
+        self.assertIn("multi_published_500e_large_hi_recovery_decabdb", source)
         self.assertIn('AML-${dataset}-${variant}-seed42.yaml', source)
         self.assertIn('--datasets "$dataset"', source)
 
