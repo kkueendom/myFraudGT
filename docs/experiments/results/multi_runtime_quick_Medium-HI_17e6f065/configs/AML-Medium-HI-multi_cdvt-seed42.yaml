@@ -1,0 +1,98 @@
+out_dir: /e/yky/FraudGT_cdvt_results/phase2
+metric_best: f1
+seed: 42
+wandb:
+  use: false
+dataset:
+  dir: /e/yyk/data/archive
+  format: AML
+  name: Medium-HI
+  add_ports: true
+  reverse_mp: true
+  tier_evidence: true
+  task: hetero_edge
+  task_type: classification
+  task_entity: ('node', 'to', 'node')
+  transductive: true
+  node_encoder: true
+  node_encoder_name: Hetero_Raw
+  node_encoder_bn: false
+  edge_encoder: true
+  edge_encoder_name: Hetero_Raw
+  edge_encoder_bn: false
+num_threads: 8
+num_workers: 0
+train:
+  mode: custom
+  sampler: link_neighbor
+  neighbor_sizes:
+  - 50
+  - 50
+  add_ego_id: true
+  iter_per_epoch: 256
+  batch_size: 2048
+  eval_period: 4
+  persistent_workers: false
+  pin_memory: false
+  tqdm: false
+val:
+  sampler: link_neighbor
+  iter_per_epoch: 256
+  fixed_target_panel: false
+  tqdm: false
+model:
+  type: CDVTModel
+  loss_fun: weighted_cross_entropy
+  loss_fun_weight:
+  - 1
+  - 6
+  edge_decoding: dot
+  graph_pooling: mean
+  auto_tune_thresh: true
+gt:
+  layer_type: SparseNodeTransformer
+  layers_pre_gt: 0
+  layers: 2
+  layers_post_gt: 2
+  attn_heads: 8
+  dim_hidden: 64
+  input_dropout: 0.0
+  dropout: 0.2
+  attn_dropout: 0.3
+  batch_norm: false
+  layer_norm: true
+  l2_norm: false
+  act: gelu
+  attn_mask: Edge
+  residual: Fixed
+  ffn: Type
+  jumping_knowledge: false
+  temporal_bias: none
+  temporal_gate: false
+  edge_writeback: none
+  edge_ff_chunk_size: 0
+  edge_ff_checkpoint: false
+gnn:
+  dropout: 0.2
+cdvt:
+  variant: dual_view
+  hidden_dim: 64
+  num_heads: 4
+  num_layers: 2
+  dropout: 0.2
+  history_k: 4
+  history_hops: 2
+  max_events: 48
+  time_window: -1
+  event_cache_size: 8192
+  lambda_cons: 0.0
+  use_relation_types: true
+optim:
+  batch_accumulation: 8
+  clip_grad_norm: true
+  optimizer: adamW
+  weight_decay: 1e-5
+  base_lr: 0.001
+  max_epoch: 500
+  scheduler: cosine_with_warmup
+  num_warmup_epochs: 5

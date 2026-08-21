@@ -1,0 +1,239 @@
+{
+  "benchmark_mode": "normal_only_end_to_end_inference",
+  "comparisons": [
+    {
+      "dataset": "Medium-HI",
+      "latency_overhead_percent": 166.90218064027027,
+      "latency_ratio_cdvt_vs_multi_fraudgt": 2.6690218064027027,
+      "memory_ratio_cdvt_vs_multi_fraudgt": 1.0042313351125143,
+      "parameter_ratio_cdvt_vs_multi_fraudgt": 1.4868513431953392,
+      "throughput_ratio_cdvt_vs_multi_fraudgt": 0.3764640944695421
+    }
+  ],
+  "complete": true,
+  "datasets": [
+    "Medium-HI"
+  ],
+  "phase": "CDVT_multi_runtime_quick_summary",
+  "rows": [
+    {
+      "account_backbone": "Multi-FraudGT",
+      "architecture_variant": "account_only",
+      "batches_per_repeat": 32,
+      "benchmark": "/e/yky/FraudGT_cdvt_results/multi_runtime_quick_Medium-HI_17e6f065/Medium-HI_multi_account_only_seed42/benchmark.json",
+      "benchmark_mode": "normal_only_end_to_end_inference",
+      "checkpoint_loaded": false,
+      "config": "/e/yky/FraudGT_cdvt_results/multi_runtime_quick_Medium-HI_17e6f065/Medium-HI_multi_account_only_seed42/benchmark_config.yaml",
+      "config_sha256": "f75f8dc86fce26f04ad969ec3b9e717dab15762ee3d9597cfe05304d6b904ca1",
+      "cuda_version": "11.8",
+      "dataset": "Medium-HI",
+      "device": "cuda:0",
+      "device_name": "NVIDIA GeForce RTX 2080 Ti",
+      "git_commit": "17e6f06517fbfe8e480cfbdca078ee2bdb8cf9e1",
+      "loader_audit": [
+        {
+          "generator": null,
+          "iter_per_epoch": 256,
+          "shuffle": true,
+          "split": "train"
+        },
+        {
+          "generator": null,
+          "iter_per_epoch": 256,
+          "shuffle": true,
+          "split": "val"
+        },
+        {
+          "generator": null,
+          "iter_per_epoch": 256,
+          "shuffle": true,
+          "split": "test"
+        }
+      ],
+      "mean_seconds_per_batch": 1.3583502996577106,
+      "mean_targets_per_second": 1388.844779421008,
+      "multi_dataset_audit": [
+        {
+          "forward_edges": 19487126,
+          "reverse_edges": 19487126,
+          "reverse_relation": [
+            "node",
+            "rev_to",
+            "node"
+          ],
+          "split": "train"
+        },
+        {
+          "forward_edges": 25008009,
+          "reverse_edges": 25008009,
+          "reverse_relation": [
+            "node",
+            "rev_to",
+            "node"
+          ],
+          "split": "val"
+        },
+        {
+          "forward_edges": 31898238,
+          "reverse_edges": 31898238,
+          "reverse_relation": [
+            "node",
+            "rev_to",
+            "node"
+          ],
+          "split": "test"
+        }
+      ],
+      "parameter_count": 243561,
+      "peak_gpu_memory_bytes": 7713272320,
+      "phase": "CDVT_multi_runtime_quick",
+      "repeat_rows": [
+        {
+          "elapsed_seconds": 43.392836194019765,
+          "repeat": 1,
+          "seconds_per_batch": 1.3560261310631176,
+          "steps": 32,
+          "targets": 60386,
+          "targets_per_second": 1391.6121944645363
+        },
+        {
+          "elapsed_seconds": 43.572100033052266,
+          "repeat": 2,
+          "seconds_per_batch": 1.3616281260328833,
+          "steps": 32,
+          "targets": 60354,
+          "targets_per_second": 1385.152424469272
+        },
+        {
+          "elapsed_seconds": 43.43669254006818,
+          "repeat": 3,
+          "seconds_per_batch": 1.3573966418771306,
+          "steps": 32,
+          "targets": 60367,
+          "targets_per_second": 1389.7697193292158
+        }
+      ],
+      "repeats": 3,
+      "sampling_protocol": "dynamic_random",
+      "seed": 42,
+      "std_seconds_per_batch": 0.002384349566396865,
+      "std_targets_per_second": 2.717080844494134,
+      "torch_version": "2.5.1",
+      "total_measured_batches": 96,
+      "total_measured_targets": 181107,
+      "variant": "multi_account_only",
+      "warmup_batches": 4,
+      "weight_note": "fresh initialization; runtime is weight-independent"
+    },
+    {
+      "account_backbone": "Multi-FraudGT",
+      "architecture_variant": "dual_view",
+      "batches_per_repeat": 32,
+      "benchmark": "/e/yky/FraudGT_cdvt_results/multi_runtime_quick_Medium-HI_17e6f065/Medium-HI_multi_cdvt_seed42/benchmark.json",
+      "benchmark_mode": "normal_only_end_to_end_inference",
+      "checkpoint_loaded": false,
+      "config": "/e/yky/FraudGT_cdvt_results/multi_runtime_quick_Medium-HI_17e6f065/Medium-HI_multi_cdvt_seed42/benchmark_config.yaml",
+      "config_sha256": "f237a5492ef903b505815dbe7e02ff6c96d86afb1450cf6062436ef2933e5726",
+      "cuda_version": "11.8",
+      "dataset": "Medium-HI",
+      "device": "cuda:0",
+      "device_name": "NVIDIA GeForce RTX 2080 Ti",
+      "git_commit": "17e6f06517fbfe8e480cfbdca078ee2bdb8cf9e1",
+      "loader_audit": [
+        {
+          "generator": null,
+          "iter_per_epoch": 256,
+          "shuffle": true,
+          "split": "train"
+        },
+        {
+          "generator": null,
+          "iter_per_epoch": 256,
+          "shuffle": true,
+          "split": "val"
+        },
+        {
+          "generator": null,
+          "iter_per_epoch": 256,
+          "shuffle": true,
+          "split": "test"
+        }
+      ],
+      "mean_seconds_per_batch": 3.625466570520075,
+      "mean_targets_per_second": 522.8501922434807,
+      "multi_dataset_audit": [
+        {
+          "forward_edges": 19487126,
+          "reverse_edges": 19487126,
+          "reverse_relation": [
+            "node",
+            "rev_to",
+            "node"
+          ],
+          "split": "train"
+        },
+        {
+          "forward_edges": 25008009,
+          "reverse_edges": 25008009,
+          "reverse_relation": [
+            "node",
+            "rev_to",
+            "node"
+          ],
+          "split": "val"
+        },
+        {
+          "forward_edges": 31898238,
+          "reverse_edges": 31898238,
+          "reverse_relation": [
+            "node",
+            "rev_to",
+            "node"
+          ],
+          "split": "test"
+        }
+      ],
+      "parameter_count": 362139,
+      "peak_gpu_memory_bytes": 7745909760,
+      "phase": "CDVT_multi_runtime_quick",
+      "repeat_rows": [
+        {
+          "elapsed_seconds": 110.03635315364227,
+          "repeat": 1,
+          "seconds_per_batch": 3.438636036051321,
+          "steps": 32,
+          "targets": 60402,
+          "targets_per_second": 548.9276795247977
+        },
+        {
+          "elapsed_seconds": 109.9448928530328,
+          "repeat": 2,
+          "seconds_per_batch": 3.435777901657275,
+          "steps": 32,
+          "targets": 60356,
+          "targets_per_second": 548.9659267818832
+        },
+        {
+          "elapsed_seconds": 128.06354476325214,
+          "repeat": 3,
+          "seconds_per_batch": 4.001985773851629,
+          "steps": 32,
+          "targets": 60274,
+          "targets_per_second": 470.6569704237614
+        }
+      ],
+      "repeats": 3,
+      "sampling_protocol": "dynamic_random",
+      "seed": 42,
+      "std_seconds_per_batch": 0.2662418387996458,
+      "std_targets_per_second": 36.9061843837858,
+      "torch_version": "2.5.1",
+      "total_measured_batches": 96,
+      "total_measured_targets": 181032,
+      "variant": "multi_cdvt",
+      "warmup_batches": 4,
+      "weight_note": "fresh initialization; runtime is weight-independent"
+    }
+  ],
+  "sampling_protocol": "dynamic_random"
+}

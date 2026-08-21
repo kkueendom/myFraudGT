@@ -1,0 +1,15 @@
+{
+  "batches_per_repeat": 32,
+  "benchmark_mode": "normal_only_end_to_end_inference",
+  "commit": "17e6f065",
+  "dataset": "Medium-HI",
+  "gpu": 0,
+  "repeats": 3,
+  "sampling_protocol": "dynamic_random",
+  "seed": 42,
+  "variants": [
+    "multi_account_only",
+    "multi_cdvt"
+  ],
+  "warmup_batches": 4
+}

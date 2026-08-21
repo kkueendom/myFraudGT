@@ -2,12 +2,13 @@
 
 ## Material Passport
 
-- Experiment ID: `multi_runtime_quick_2c31bba3`
+- Experiment ID: `multi_runtime_quick_six_dataset`
 - Type: runtime benchmark
 - Status: completed and audited
 - Git branch: `experiment/multi-cdvt-runtime`
 - Small-LI code commit: `2c31bba35601d3a28d51e3969df6944cf0da5fc7`
 - Medium/Large-LI code commit: `848df40747e6912c6ed352c8f2a937ec0f286872`
+- Small/Medium/Large-HI code commit: `17e6f06517fbfe8e480cfbdca078ee2bdb8cf9e1`
 - Hardware: NVIDIA GeForce RTX 2080 Ti
 - Software: PyTorch 2.5.1, CUDA 11.8
 - Sampling protocol: `dynamic_random`
@@ -22,7 +23,7 @@
 
 | 项目 | 设置 |
 |---|---|
-| 数据集 | AML Small-LI、Medium-LI、Large-LI |
+| 数据集 | AML Small/Medium/Large-LI 和 Small/Medium/Large-HI |
 | 对照模型 | `multi_account_only`，即 Multi-FraudGT |
 | 完整模型 | `multi_cdvt` |
 | Seed | 42 |
@@ -44,45 +45,59 @@
 | Medium-LI | Multi-CDVT | 362,139 | 7.220 GiB | 3.4516 +/- 0.0602 s | 546.55 targets/s |
 | Large-LI | Multi-FraudGT | 243,561 | 11.416 GiB | 3.8387 +/- 0.5172 s | 149.04 targets/s |
 | Large-LI | Multi-CDVT | 362,139 | 11.514 GiB | 3.9849 +/- 0.0929 s | 141.95 targets/s |
+| Small-HI | Multi-FraudGT | 243,561 | 4.740 GiB | 0.5749 +/- 0.0020 s | 3,530.72 targets/s |
+| Small-HI | Multi-CDVT | 362,139 | 4.734 GiB | 2.6939 +/- 0.0250 s | 753.43 targets/s |
+| Medium-HI | Multi-FraudGT | 243,561 | 7.184 GiB | 1.3584 +/- 0.0024 s | 1,388.84 targets/s |
+| Medium-HI | Multi-CDVT | 362,139 | 7.214 GiB | 3.6255 +/- 0.2662 s | 522.85 targets/s |
+| Large-HI | Multi-FraudGT | 243,561 | 11.557 GiB | 3.3555 +/- 0.0269 s | 168.70 targets/s |
+| Large-HI | Multi-CDVT | 362,139 | 11.584 GiB | 4.0239 +/- 0.0418 s | 140.86 targets/s |
 
 | 数据集 | 参数比 | 显存比 | 延迟比 | 吞吐量比 | 延迟判断 |
 |---|---:|---:|---:|---:|---|
 | Small-LI | 1.4869x | 1.0034x | 4.9583x | 0.2017x | 仅边界通过最低标准 |
+| Small-HI | 1.4869x | 0.9987x | 4.6858x | 0.2134x | 通过最低标准，接近边界 |
 | Medium-LI | 1.4869x | 1.0093x | 2.4064x | 0.4161x | 通过最低标准，未达理想目标 |
+| Medium-HI | 1.4869x | 1.0042x | 2.6690x | 0.3765x | 通过最低标准，未达理想目标 |
 | Large-LI | 1.4869x | 1.0086x | 1.0381x | 0.9524x | 达到理想目标 |
-| 三数据集宏平均 | 1.4869x | 1.0071x | 2.8009x | 0.5234x | 仅作补充，不替代逐数据集判断 |
+| Large-HI | 1.4869x | 1.0024x | 1.1992x | 0.8350x | 达到理想目标 |
+| 六数据集宏平均 | 1.4869x | 1.0044x | 2.8261x | 0.4992x | 仅作补充，不替代逐数据集判断 |
 
-三个数据集共 288 个测量 batch 的总时间比为 1.7549x。该 pooled 数值受
-Large-LI 较长的原模型耗时影响，因此论文应优先报告上表中的逐数据集比值。
+六个数据集共 576 个测量 batch 的总时间比为 1.8504x。该 pooled 数值受
+两个 Large 数据集较长的原模型耗时影响，因此论文应优先报告上表中的逐
+数据集比值。LI 和 HI 的宏平均延迟比分别为 2.8009x 和 2.8513x。
 
 ## 4. 初步结论
 
-1. Multi-CDVT 的参数和显存开销可控。参数固定增加约 48.7%，三个数据集
-   的峰值显存仅增加 0.34%-0.93%。
-2. 相对延迟随数据规模增大而明显降低，从 Small-LI 的 4.958x 降到
-   Medium-LI 的 2.406x，再降到 Large-LI 的 1.038x。合理解释是大图中
-   原模型自身的邻居采样和图计算已经占据主要时间，事件分支的边际占比下降。
-3. 三个数据集均满足 <=5x 的最低标准，但只有 Large-LI 达到 <=2x 的理想
-   目标。Small-LI 仍是边界结果，因此不能笼统宣称模型高效。
-4. Large-LI 原模型的三个窗口波动较大，标准差为 0.5172 s/batch；正式
+1. Multi-CDVT 的参数和显存开销可控。参数固定增加约 48.7%，六个数据集
+   的显存比位于 0.9987x-1.0093x，几乎没有额外峰值显存压力。
+2. 相对延迟主要由数据规模决定，而不是 LI/HI 强度决定。Small 的延迟比为
+   4.686x-4.958x，Medium 为 2.406x-2.669x，Large 为 1.038x-1.199x。
+3. 合理解释是大图中原模型自身的邻居采样和图计算已占据主要时间，事件
+   分支的边际占比随规模增大而下降。
+4. 六个数据集均满足 <=5x 的最低标准，两个 Large 数据集达到 <=2x 的理想
+   目标。两个 Small 数据集仍接近边界，因此不能笼统宣称模型高效。
+5. Large-LI 原模型和 Medium-HI Multi-CDVT 的窗口波动相对较大，正式
    结果需要扩大到 256 batches，以降低动态采样造成的不确定性。
-5. 当前准确表述仍是“以有限参数和显存增量换取预测提升，但在 Small 和
-   Medium 规模上存在明显的事件上下文处理延迟”。
+6. 当前准确表述是“以有限参数和显存增量换取预测提升；Large 规模的边际
+   延迟较小，但 Small/Medium 规模仍有明显的事件上下文处理开销”。
 
 ## 5. 下一步正式实验
 
-当前三个 LI 数据集都完成了 96-batch 快测。论文正式效率表仍应把每个模型
-扩大到 256 batches，并保持相同 2080 Ti、batch size、动态随机采样和
-normal-only 条件。正式表格至少报告参数量、峰值显存、秒/batch、targets/s
-和相对开销。当 B0 checkpoint 可用时优先加载 Full/B0 的 Val-selected
-checkpoints；若继续使用新初始化权重，必须保留“runtime 与权重值无关”的
-明确说明。
+当前六个数据集都完成了 96-batch 快测。论文正式效率表最低应把三个 LI
+代表数据集扩大到 256 batches；理想情况下六个数据集全部扩展。正式实验
+应保持相同 2080 Ti、batch size、动态随机采样和 normal-only 条件，并
+报告参数量、峰值显存、秒/batch、targets/s 和相对开销。当 B0 checkpoint
+可用时优先加载 Full/B0 的 Val-selected checkpoints；若继续使用新初始化
+权重，必须保留“runtime 与权重值无关”的明确说明。
 
 ## 6. 证据路径
 
 - Small-LI：`docs/experiments/results/multi_runtime_quick_2c31bba3/`
 - Medium-LI：`docs/experiments/results/multi_runtime_quick_Medium-LI_848df407/`
 - Large-LI：`docs/experiments/results/multi_runtime_quick_Large-LI_848df407/`
+- Small-HI：`docs/experiments/results/multi_runtime_quick_Small-HI_17e6f065/`
+- Medium-HI：`docs/experiments/results/multi_runtime_quick_Medium-HI_17e6f065/`
+- Large-HI：`docs/experiments/results/multi_runtime_quick_Large-HI_17e6f065/`
 - 原始 benchmark：两个模型目录下的 `benchmark.json`
 - 配置：各结果目录下的 `configs/`
 - 完成标记：各结果目录下的 `queue_complete.json`
