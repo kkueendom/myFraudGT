@@ -41,6 +41,13 @@ def write_benchmark(root, variant, latency, parameters, memory):
 
 
 class MultiRuntimeSummaryTest(unittest.TestCase):
+    def test_quick_launcher_parameterizes_the_li_dataset(self):
+        source = Path("run/cdvt_multi_runtime_quick.sh").read_text()
+        self.assertIn('dataset="${CDVT_DATASET:-Small-LI}"', source)
+        self.assertIn("Small-LI|Medium-LI|Large-LI", source)
+        self.assertIn('AML-${dataset}-${variant}-seed42.yaml', source)
+        self.assertIn('--datasets "$dataset"', source)
+
     def test_summary_computes_matched_ratios(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

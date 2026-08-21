@@ -3,15 +3,23 @@ set -euo pipefail
 
 repo="${CDVT_REPO:-/e/yky/FraudGT_cdvt_multi_runtime}"
 python="${CDVT_PYTHON:-/d/miniconda3/envs/fraudGT/bin/python}"
-source_config="${CDVT_SOURCE_CONFIG:-/e/yky/FraudGT_cdvt_results/multi_published_500e_c76df05/configs/AML-Small-LI-multi_cdvt-seed42.yaml}"
+dataset="${CDVT_DATASET:-Small-LI}"
+source_config="${CDVT_SOURCE_CONFIG:-/e/yky/FraudGT_cdvt_results/multi_published_500e_c76df05/configs/AML-${dataset}-multi_cdvt-seed42.yaml}"
 gpu="${CDVT_GPU:-0}"
 warmup_batches="${CDVT_WARMUP_BATCHES:-4}"
 batches_per_repeat="${CDVT_BATCHES_PER_REPEAT:-32}"
 repeats="${CDVT_REPEATS:-3}"
 commit="$(git -C "$repo" rev-parse --short=8 HEAD)"
 branch="$(git -C "$repo" branch --show-current)"
-root="${CDVT_OUTPUT_ROOT:-/e/yky/FraudGT_cdvt_results/multi_runtime_quick_${commit}}"
+root="${CDVT_OUTPUT_ROOT:-/e/yky/FraudGT_cdvt_results/multi_runtime_quick_${dataset}_${commit}}"
 
+case "$dataset" in
+  Small-LI|Medium-LI|Large-LI) ;;
+  *)
+    echo "unsupported runtime dataset: $dataset" >&2
+    exit 2
+    ;;
+esac
 if [[ "$branch" != "experiment/multi-cdvt-runtime" ]]; then
   echo "unexpected branch: $branch" >&2
   exit 2
@@ -42,7 +50,7 @@ fi
 
 mkdir -p "$root/configs"
 for variant in multi_account_only multi_cdvt; do
-  config="$root/configs/AML-Small-LI-${variant}-seed42.yaml"
+  config="$root/configs/AML-${dataset}-${variant}-seed42.yaml"
   env PYTHONDONTWRITEBYTECODE=1 \
     "$python" "$repo/run/cdvt_materialize_config.py" \
     --base "$source_config" \
@@ -53,14 +61,14 @@ done
 
 env PYTHONDONTWRITEBYTECODE=1 \
   "$python" - "$root/queue_manifest.json" "$commit" "$gpu" \
-  "$warmup_batches" "$batches_per_repeat" "$repeats" <<'PY'
+  "$warmup_batches" "$batches_per_repeat" "$repeats" "$dataset" <<'PY'
 import json
 import sys
 
-path, commit, gpu, warmup, batches, repeats = sys.argv[1:]
+path, commit, gpu, warmup, batches, repeats, dataset = sys.argv[1:]
 payload = {
     "commit": commit,
-    "dataset": "Small-LI",
+    "dataset": dataset,
     "variants": ["multi_account_only", "multi_cdvt"],
     "seed": 42,
     "gpu": int(gpu),
@@ -76,7 +84,7 @@ with open(path, "w") as handle:
 PY
 
 for variant in multi_account_only multi_cdvt; do
-  output="$root/Small-LI_${variant}_seed42"
+  output="$root/${dataset}_${variant}_seed42"
   mkdir -p "$output"
   env CUDA_VISIBLE_DEVICES="$gpu" \
     PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
@@ -84,7 +92,7 @@ for variant in multi_account_only multi_cdvt; do
     OMP_NUM_THREADS=8 MKL_NUM_THREADS=8 \
     OPENBLAS_NUM_THREADS=8 NUMEXPR_NUM_THREADS=8 \
     "$python" "$repo/run/cdvt_multi_runtime_benchmark.py" \
-      --config "$root/configs/AML-Small-LI-${variant}-seed42.yaml" \
+      --config "$root/configs/AML-${dataset}-${variant}-seed42.yaml" \
       --device cuda:0 \
       --variant "$variant" \
       --output-dir "$output" \
@@ -97,7 +105,7 @@ done
 env PYTHONDONTWRITEBYTECODE=1 \
   "$python" "$repo/run/cdvt_multi_runtime_summary.py" \
   --runtime-root "$root" \
-  --datasets Small-LI \
+  --datasets "$dataset" \
   --write \
   > "$root/runtime_summary.stdout"
 printf '{"complete":true,"status":0}\n' > "$root/queue_complete.json"
