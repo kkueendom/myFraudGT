@@ -36,6 +36,11 @@ VARIANTS = {
     "multi_cdvt": "dual_view",
 }
 
+PHASES = {
+    "quick": "CDVT_multi_runtime_quick",
+    "formal_256": "CDVT_multi_runtime_formal_256",
+}
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -46,6 +51,8 @@ def parse_args():
     parser.add_argument("--warmup-batches", type=int, default=4)
     parser.add_argument("--batches-per-repeat", type=int, default=32)
     parser.add_argument("--repeats", type=int, default=3)
+    parser.add_argument(
+        "--evidence-tier", choices=tuple(PHASES), default="quick")
     return parser.parse_args()
 
 
@@ -75,6 +82,10 @@ def main():
         raise ValueError("warmup batches must be non-negative")
     if args.batches_per_repeat < 1 or args.repeats < 1:
         raise ValueError("measurement budget must be positive")
+    if args.evidence_tier == "formal_256":
+        if args.batches_per_repeat != 32 or args.repeats != 8:
+            raise ValueError(
+                "formal_256 requires exactly 8 repeats of 32 batches")
     protected = (
         args.output_dir / "benchmark.json",
         args.output_dir / "benchmark_config.yaml",
@@ -87,7 +98,7 @@ def main():
     config = yaml.safe_load(args.config.read_text())
     architecture = VARIANTS[args.variant]
     if int(config.get("seed", -1)) != 42:
-        raise ValueError("quick runtime comparison is frozen to seed 42")
+        raise ValueError("runtime comparison is frozen to seed 42")
     if config.get("dataset", {}).get("reverse_mp") is not True:
         raise ValueError("runtime benchmark requires Multi-FraudGT RMP")
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -149,7 +160,8 @@ def main():
         torch.cuda.get_device_name(device)
         if device.type == "cuda" else "CPU")
     result = {
-        "phase": "CDVT_multi_runtime_quick",
+        "phase": PHASES[args.evidence_tier],
+        "evidence_tier": args.evidence_tier,
         "benchmark_mode": "normal_only_end_to_end_inference",
         "sampling_protocol": "dynamic_random",
         "dataset": str(cfg.dataset.name),

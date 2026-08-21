@@ -7,13 +7,19 @@ from pathlib import Path
 from run.cdvt_multi_runtime_summary import build_summary
 
 
-def write_benchmark(root, variant, latency, parameters, memory):
+def write_benchmark(
+        root, variant, latency, parameters, memory,
+        evidence_tier="quick", repeats=3):
     architecture = (
         "account_only" if variant == "multi_account_only" else "dual_view")
     output = root / f"Small-LI_{variant}_seed42"
     output.mkdir(parents=True)
     payload = {
-        "phase": "CDVT_multi_runtime_quick",
+        "phase": (
+            "CDVT_multi_runtime_formal_256"
+            if evidence_tier == "formal_256"
+            else "CDVT_multi_runtime_quick"),
+        "evidence_tier": evidence_tier,
         "benchmark_mode": "normal_only_end_to_end_inference",
         "sampling_protocol": "dynamic_random",
         "dataset": "Small-LI",
@@ -23,9 +29,11 @@ def write_benchmark(root, variant, latency, parameters, memory):
         "seed": 42,
         "checkpoint_loaded": False,
         "device_name": "NVIDIA GeForce RTX 2080 Ti",
-        "repeats": 3,
+        "repeats": repeats,
         "batches_per_repeat": 32,
-        "repeat_rows": [{"repeat": index + 1} for index in range(3)],
+        "total_measured_batches": repeats * 32,
+        "repeat_rows": [
+            {"repeat": index + 1} for index in range(repeats)],
         "mean_seconds_per_batch": latency,
         "std_seconds_per_batch": 0.01,
         "mean_targets_per_second": 2048 / latency,
@@ -82,6 +90,54 @@ class MultiRuntimeSummaryTest(unittest.TestCase):
                 root, "multi_account_only", 0.5, 200_000, 2_000_000)
             with self.assertRaises(FileNotFoundError):
                 build_summary(root, ["Small-LI"])
+
+    def test_quick_summary_accepts_pre_tier_archives(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for variant, latency in (
+                    ("multi_account_only", 0.5),
+                    ("multi_cdvt", 1.25)):
+                write_benchmark(
+                    root, variant, latency, 200_000, 2_000_000)
+                path = root / f"Small-LI_{variant}_seed42/benchmark.json"
+                payload = json.loads(path.read_text())
+                payload.pop("evidence_tier")
+                path.write_text(json.dumps(payload))
+            result = build_summary(root, ["Small-LI"])
+            self.assertTrue(result["complete"])
+
+    def test_formal_summary_requires_256_batches(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_benchmark(
+                root, "multi_account_only", 0.5, 200_000, 2_000_000,
+                evidence_tier="formal_256", repeats=8)
+            write_benchmark(
+                root, "multi_cdvt", 1.25, 300_000, 3_000_000,
+                evidence_tier="formal_256", repeats=8)
+            result = build_summary(
+                root, ["Small-LI"], evidence_tier="formal_256")
+            self.assertEqual(result["evidence_tier"], "formal_256")
+            self.assertTrue(result["complete"])
+
+            payload_path = (
+                root / "Small-LI_multi_cdvt_seed42" / "benchmark.json")
+            payload = json.loads(payload_path.read_text())
+            payload["total_measured_batches"] = 96
+            payload_path.write_text(json.dumps(payload))
+            with self.assertRaisesRegex(ValueError, "inconsistent"):
+                build_summary(
+                    root, ["Small-LI"], evidence_tier="formal_256")
+
+    def test_formal_launcher_is_six_dataset_serial_256_batch(self):
+        source = Path(
+            "run/cdvt_multi_runtime_formal_256.sh").read_text()
+        self.assertIn("Small-LI Small-HI Medium-LI Medium-HI", source)
+        self.assertIn("Large-LI Large-HI", source)
+        self.assertIn("repeats=8", source)
+        self.assertIn("batches_per_repeat=32", source)
+        self.assertIn("--evidence-tier formal_256", source)
+        self.assertIn('wait_pattern="${CDVT_WAIT_PROCESS_PATTERN', source)
 
 
 if __name__ == "__main__":
