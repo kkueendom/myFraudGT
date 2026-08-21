@@ -46,6 +46,10 @@ Current read order:
    Defines paired CDVT/account-only seeds, module ablations, relation and
    history-size controls, and runtime benchmarks.
 
+8. `MULTI_CDVT_RUNTIME_QUICK_RESULTS.md`
+   Reports the matched Small/Medium/Large-LI runtime pilot, including
+   per-dataset latency, memory, throughput, thresholds, and raw evidence paths.
+
 Current reporting rules:
 
 - Primary: Val-selected Test F1 against architecture-matched PE-FraudGT.
