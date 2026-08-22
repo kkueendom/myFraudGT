@@ -62,18 +62,29 @@ def synchronize(device):
 
 
 @torch.inference_mode()
-def consume(model, loader, device, max_batches):
+def consume(model, loader, device, max_batches, allow_loader_restarts=False):
     steps = 0
     targets = 0
-    for raw_batch in loader:
+    restarts = 0
+    iterator = iter(loader)
+    while steps < max_batches:
+        try:
+            raw_batch = next(iterator)
+        except StopIteration:
+            if not allow_loader_restarts:
+                break
+            if steps == 0:
+                raise RuntimeError("test loader is empty")
+            # LoaderWrapper resets its dynamic sampler after a finite pass.
+            restarts += 1
+            iterator = iter(loader)
+            continue
         raw_batch.split = "test"
         raw_batch.to(device)
         _, labels, _ = normal_forward(model, raw_batch)
         steps += 1
         targets += int(labels.numel())
-        if steps >= max_batches:
-            break
-    return steps, targets
+    return steps, targets, restarts
 
 
 def main():
@@ -86,6 +97,7 @@ def main():
         if args.batches_per_repeat != 32 or args.repeats != 8:
             raise ValueError(
                 "formal_256 requires exactly 8 repeats of 32 batches")
+    allow_loader_restarts = args.evidence_tier == "formal_256"
     protected = (
         args.output_dir / "benchmark.json",
         args.output_dir / "benchmark_config.yaml",
@@ -127,8 +139,13 @@ def main():
     model.eval()
 
     if args.warmup_batches:
-        warmup_steps, _ = consume(
-            model, loaders[2], device, args.warmup_batches)
+        warmup_steps, _, warmup_restarts = consume(
+            model,
+            loaders[2],
+            device,
+            args.warmup_batches,
+            allow_loader_restarts=allow_loader_restarts,
+        )
         if warmup_steps != args.warmup_batches:
             raise RuntimeError("test loader ended during warm-up")
         synchronize(device)
@@ -139,8 +156,13 @@ def main():
     for index in range(args.repeats):
         synchronize(device)
         started = time.monotonic()
-        steps, targets = consume(
-            model, loaders[2], device, args.batches_per_repeat)
+        steps, targets, loader_restarts = consume(
+            model,
+            loaders[2],
+            device,
+            args.batches_per_repeat,
+            allow_loader_restarts=allow_loader_restarts,
+        )
         synchronize(device)
         elapsed = time.monotonic() - started
         if steps != args.batches_per_repeat:
@@ -152,6 +174,7 @@ def main():
             "elapsed_seconds": elapsed,
             "seconds_per_batch": elapsed / steps,
             "targets_per_second": targets / elapsed,
+            "loader_restarts": loader_restarts,
         })
 
     latency = [row["seconds_per_batch"] for row in repeats]
@@ -184,6 +207,12 @@ def main():
         "repeats": args.repeats,
         "total_measured_batches": sum(row["steps"] for row in repeats),
         "total_measured_targets": sum(row["targets"] for row in repeats),
+        "loader_restart_policy": (
+            "continue_dynamic_random_after_loader_exhaustion"
+            if allow_loader_restarts else "none"),
+        "warmup_loader_restarts": warmup_restarts if args.warmup_batches else 0,
+        "total_loader_restarts": sum(
+            row["loader_restarts"] for row in repeats),
         "parameter_count": sum(
             parameter.numel() for parameter in model.parameters()),
         "peak_gpu_memory_bytes": (

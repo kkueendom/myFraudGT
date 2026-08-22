@@ -32,8 +32,13 @@ def write_benchmark(
         "repeats": repeats,
         "batches_per_repeat": 32,
         "total_measured_batches": repeats * 32,
+        "loader_restart_policy": (
+            "continue_dynamic_random_after_loader_exhaustion"
+            if evidence_tier == "formal_256" else "none"),
+        "total_loader_restarts": 0,
         "repeat_rows": [
-            {"repeat": index + 1} for index in range(repeats)],
+            {"repeat": index + 1, "loader_restarts": 0}
+            for index in range(repeats)],
         "mean_seconds_per_batch": latency,
         "std_seconds_per_batch": 0.01,
         "mean_targets_per_second": 2048 / latency,

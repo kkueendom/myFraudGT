@@ -19,6 +19,12 @@ models run serially on the same physical GPU. Timing is normal-only end-to-end
 inference and includes dynamic sampling, CPU data preparation, and GPU forward
 computation.
 
+The public loader has a finite physical pass even when its configured evaluation
+budget is larger. If a 32-batch measurement window reaches that boundary, the
+formal benchmark creates the next dynamic-random loader iterator and continues.
+It neither fixes target edges nor restores sampler RNG. The number of such
+natural loader-pass restarts is retained in every benchmark artifact.
+
 The queue waits until cdvt_phase1_screen.py training processes have exited and
 the selected GPU is idle. This prevents the active Small-LI multi-seed training
 from contaminating the paper-facing latency measurements.
@@ -30,6 +36,7 @@ Each of the 12 model-dataset tasks must produce benchmark.json with:
 - phase=CDVT_multi_runtime_formal_256;
 - evidence_tier=formal_256;
 - total_measured_batches=256;
+- loader restart policy and restart count;
 - parameter count, peak GPU memory, latency, throughput, environment metadata;
 - complete dynamic_random loader audit.
 

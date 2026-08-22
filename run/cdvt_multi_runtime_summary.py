@@ -62,6 +62,12 @@ def validate(payload, path, dataset, variant, evidence_tier):
         raise ValueError(f"{path}: measured batch count is inconsistent")
     if evidence_tier == "formal_256" and total != 256:
         raise ValueError(f"{path}: formal runtime must use 256 batches")
+    if evidence_tier == "formal_256":
+        if payload.get("loader_restart_policy") != (
+                "continue_dynamic_random_after_loader_exhaustion"):
+            raise ValueError(f"{path}: formal loader restart policy is missing")
+        if int(payload.get("total_loader_restarts", -1)) < 0:
+            raise ValueError(f"{path}: formal loader restart count is invalid")
     if float(payload.get("mean_seconds_per_batch", 0)) <= 0:
         raise ValueError(f"{path}: latency must be positive")
     if float(payload.get("mean_targets_per_second", 0)) <= 0:
