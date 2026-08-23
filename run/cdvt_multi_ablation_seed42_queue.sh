@@ -79,7 +79,8 @@ finish() { printf '{"complete":true,"status":%s}\n' "$queue_status" > "$root/que
 trap finish EXIT
 
 start_task() {
-  local task="$1" gpu="$2" dataset="${task%%|*}" label="${task##*|}"
+  local task="$1" gpu="$2"
+  local dataset="${task%%|*}" label="${task##*|}"
   local out="$root/${dataset}_${label}_seed42" config="$root/configs/AML-${dataset}-${label}-seed42.yaml"
   mkdir -p "$out"
   env CUDA_VISIBLE_DEVICES="$gpu" PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True PYTHONDONTWRITEBYTECODE=1 \

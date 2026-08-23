@@ -428,6 +428,13 @@ class CDVTFollowupTest(unittest.TestCase):
             if line.strip().startswith(("'phase3|", "'ablation|"))
         ]
         self.assertEqual(len(task_rows), 20)
+
+    def test_multi_ablation_queue_splits_task_before_derived_fields(self):
+        source = Path("run/cdvt_multi_ablation_seed42_queue.sh").read_text()
+        self.assertIn('local task="$1" gpu="$2"', source)
+        self.assertIn('local dataset="${task%%|*}" label="${task##*|}"', source)
+        self.assertIn('"Small-LI|multi_account_only"', source)
+        self.assertIn('"Large-LI|multi_dual_view_no_relation"', source)
         self.assertEqual(len(set(task_rows)), 20)
         self.assertIn('"training_tasks":20', source)
         self.assertIn('"phase3_tasks":12', source)
