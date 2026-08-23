@@ -22,7 +22,7 @@ commit="$(git -C "$repo" rev-parse --short=8 HEAD)"
 branch="$(git -C "$repo" branch --show-current)"
 [[ "$branch" == "experiment/multi-cdvt-ablation" ]] || { echo "unexpected branch" >&2; exit 2; }
 [[ -z "$(git -C "$repo" status --porcelain)" ]] || { echo "dirty worktree" >&2; exit 2; }
-[[ ! -e "$root" ]] || { echo "result root exists: $root" >&2; exit 2; }
+[[ ! -e "$root/queue_status.tsv" ]] || { echo "queue already exists: $root" >&2; exit 2; }
 
 architecture() {
   case "$1" in
