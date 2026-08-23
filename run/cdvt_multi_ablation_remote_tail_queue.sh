@@ -32,13 +32,6 @@ architecture() {
   esac
 }
 
-edge_options() {
-  case "$1" in
-    Large-LI) echo "65536 1" ;;
-    *) echo "0 0" ;;
-  esac
-}
-
 gpu_idle() {
   local line used util
   line="$(nvidia-smi -i "$1" --query-gpu=memory.used,utilization.gpu --format=csv,noheader,nounits)"
@@ -70,13 +63,9 @@ start_task() {
   local dataset="${task%%|*}" label="${task##*|}"
   local out="$root/${dataset}_${label}_seed42"
   local config="$root/configs/AML-${dataset}-${label}-seed42.yaml"
-  local chunk checkpoint
-  read -r chunk checkpoint <<< "$(edge_options "$dataset")"
   local args=(--config "$config" --device cuda:0 --variant "$(architecture "$label")" --experiment-label "$label" --lambda-cons 0.0 --output-dir "$out" --max-epochs 500 --disable-early-stop --phase CDVT_multi_ablation)
-  (( chunk > 0 )) && args+=(--edge-ff-chunk-size "$chunk")
-  (( checkpoint == 1 )) && args+=(--edge-ff-checkpoint)
   mkdir -p "$out"
-  env CUDA_VISIBLE_DEVICES="$gpu" PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True PYTHONDONTWRITEBYTECODE=1 OMP_NUM_THREADS="$cpu_threads" MKL_NUM_THREADS="$cpu_threads" OPENBLAS_NUM_THREADS="$cpu_threads" NUMEXPR_NUM_THREADS="$cpu_threads" "$python" "$repo/run/cdvt_phase1_screen.py" "${args[@]}" > "$out/stdout.log" 2>&1 &
+  env CUDA_VISIBLE_DEVICES="$gpu" PYTHONDONTWRITEBYTECODE=1 OMP_NUM_THREADS="$cpu_threads" MKL_NUM_THREADS="$cpu_threads" OPENBLAS_NUM_THREADS="$cpu_threads" NUMEXPR_NUM_THREADS="$cpu_threads" "$python" "$repo/run/cdvt_phase1_screen.py" "${args[@]}" > "$out/stdout.log" 2>&1 &
   local pid="$!"
   ptask[$pid]="$task"
   pgpu[$pid]="$gpu"
