@@ -116,6 +116,7 @@ class CDVTPhase1ScreenTest(unittest.TestCase):
         source = Path("run/cdvt_phase1_screen.py").read_text()
         self.assertIn('"phase": args.phase', source)
         self.assertIn('default="CDVT_phase1"', source)
+        self.assertIn('"CDVT_multi_ablation"', source)
 
     def test_multi_ablation_labels_are_explicitly_registered(self):
         from run.cdvt_phase1_screen import EXPERIMENTS

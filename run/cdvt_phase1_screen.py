@@ -80,7 +80,7 @@ def parse_args():
         choices=(
             "CDVT_phase1", "CDVT_phase2", "CDVT_phase3",
             "CDVT_ablation", "CDVT_multi_screen",
-            "CDVT_multi_published_screen",
+            "CDVT_multi_published_screen", "CDVT_multi_ablation",
         ),
         default="CDVT_phase1",
     )
