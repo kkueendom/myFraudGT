@@ -73,7 +73,7 @@ for task in "${tasks[@]}"; do
   env PYTHONDONTWRITEBYTECODE=1 "$python" "$repo/run/cdvt_materialize_config.py" "${args[@]}"
 done
 
-declare -A ptask pgpu busy
+declare -A ptask=() pgpu=() busy=()
 next=0; queue_status=1
 finish() { printf '{"complete":true,"status":%s}\n' "$queue_status" > "$root/queue_complete.json"; }
 trap finish EXIT
