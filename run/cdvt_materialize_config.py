@@ -58,6 +58,20 @@ VARIANTS = {
         "use_relation_types": True,
         "reverse_mp": True,
     },
+    "multi_causal_event_add": {
+        "model_type": "CDVTModel",
+        "architecture": "additive_view",
+        "history_k": 4,
+        "use_relation_types": True,
+        "reverse_mp": True,
+    },
+    "multi_dual_view_no_relation": {
+        "model_type": "CDVTModel",
+        "architecture": "dual_view",
+        "history_k": 4,
+        "use_relation_types": False,
+        "reverse_mp": True,
+    },
 }
 
 

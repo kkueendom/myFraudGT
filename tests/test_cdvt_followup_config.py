@@ -18,6 +18,8 @@ class CDVTFollowupConfigTest(unittest.TestCase):
         path.write_text(yaml.safe_dump({
             "seed": 42,
             "model": {"type": "CDVTModel"},
+            "dataset": {"add_ports": True},
+            "train": {"add_ego_id": True},
             "cdvt": {
                 "variant": "dual_view",
                 "lambda_cons": 0.0,
@@ -61,6 +63,20 @@ class CDVTFollowupConfigTest(unittest.TestCase):
             self.assertEqual(payload["cdvt"]["variant"], "additive_view")
             self.assertEqual(payload["cdvt"]["history_k"], 4)
             self.assertTrue(payload["cdvt"]["use_relation_types"])
+
+    def test_multi_ablation_configs_keep_multi_fraudgt_backbone(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base = self.write_base(root)
+            for variant, architecture, relations in (
+                    ("multi_causal_event_add", "additive_view", True),
+                    ("multi_dual_view_no_relation", "dual_view", False)):
+                payload = materialize(
+                    base, root / f"{variant}.yaml", 42, variant)
+                self.assertEqual(payload["model"]["type"], "CDVTModel")
+                self.assertEqual(payload["cdvt"]["variant"], architecture)
+                self.assertEqual(
+                    payload["cdvt"]["use_relation_types"], relations)
 
     def test_refuses_to_overwrite_a_materialized_config(self):
         with tempfile.TemporaryDirectory() as directory:

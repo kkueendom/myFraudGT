@@ -48,6 +48,8 @@ EXPERIMENTS = {
     "dual_view_k2": ("dual_view", False, False),
     "multi_account_only": ("account_only", False, True),
     "multi_cdvt": ("dual_view", False, True),
+    "multi_causal_event_add": ("additive_view", False, True),
+    "multi_dual_view_no_relation": ("dual_view", False, True),
 }
 
 
@@ -132,7 +134,9 @@ def configure(args):
     if requires_consistency != (args.lambda_cons > 0):
         raise ValueError("experiment label and consistency setting differ")
     uses_relations = bool(cfg.cdvt.use_relation_types)
-    expected_relations = args.experiment_label != "dual_view_no_relation"
+    expected_relations = args.experiment_label not in {
+        "dual_view_no_relation", "multi_dual_view_no_relation",
+    }
     if uses_relations != expected_relations:
         raise ValueError("experiment label and relation setting differ")
     expected_k = 2 if args.experiment_label == "dual_view_k2" else 4

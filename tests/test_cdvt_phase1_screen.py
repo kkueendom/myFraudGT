@@ -117,6 +117,17 @@ class CDVTPhase1ScreenTest(unittest.TestCase):
         self.assertIn('"phase": args.phase', source)
         self.assertIn('default="CDVT_phase1"', source)
 
+    def test_multi_ablation_labels_are_explicitly_registered(self):
+        from run.cdvt_phase1_screen import EXPERIMENTS
+        self.assertEqual(
+            EXPERIMENTS["multi_causal_event_add"],
+            ("additive_view", False, True),
+        )
+        self.assertEqual(
+            EXPERIMENTS["multi_dual_view_no_relation"],
+            ("dual_view", False, True),
+        )
+
     def test_formal_launcher_has_eight_seed42_tasks_on_seven_gpus(self):
         source = Path("run/cdvt_phase1_6gpu.sh").read_text()
         launch_rows = [
