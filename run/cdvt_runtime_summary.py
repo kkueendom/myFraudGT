@@ -46,7 +46,8 @@ def build_summary(runtime_root, allow_incomplete=False):
                         f"found {payload.get(key)!r}")
             if int(payload["steps"]) != 256:
                 raise ValueError(f"{path}: runtime pass must use 256 batches")
-            rows.append(payload | {"benchmark": str(path.resolve())})
+            payload["benchmark"] = str(path.resolve())
+            rows.append(payload)
     if missing and not allow_incomplete:
         raise FileNotFoundError(
             "runtime benchmark set is incomplete: " + ", ".join(missing))

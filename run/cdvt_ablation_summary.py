@@ -134,7 +134,9 @@ def build_summary(
                 require_ablation_phase=(
                     dataset == "Medium-LI" and variant != "dual_view"))
             result = compact_result(payload, path)
-            core.append({"dataset": dataset, "variant": variant} | result)
+            result["dataset"] = dataset
+            result["variant"] = variant
+            core.append(result)
             if variant == "dual_view":
                 final_payloads[dataset] = payload
 
@@ -155,8 +157,10 @@ def build_summary(
                 use_relation_types=use_relations,
                 require_ablation_phase=True,
             )
-            target.append({"dataset": dataset, "variant": variant} |
-                          compact_result(payload, path))
+            result = compact_result(payload, path)
+            result["dataset"] = dataset
+            result["variant"] = variant
+            target.append(result)
 
     mechanisms = []
     for dataset, payload in final_payloads.items():

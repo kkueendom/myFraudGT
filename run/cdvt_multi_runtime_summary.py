@@ -99,7 +99,8 @@ def build_summary(runtime_root, datasets, evidence_tier="quick"):
                 raise FileNotFoundError(path)
             payload = json.loads(path.read_text())
             validate(payload, path, dataset, variant, evidence_tier)
-            rows.append(payload | {"benchmark": str(path.resolve())})
+            payload["benchmark"] = str(path.resolve())
+            rows.append(payload)
 
     comparisons = []
     for dataset in datasets:
