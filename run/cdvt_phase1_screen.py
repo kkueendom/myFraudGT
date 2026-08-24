@@ -365,16 +365,18 @@ def train_epoch(model, loader, train_data, optimizer, device, lambda_cons):
         paired_samples += paired
         requested_pairs += requested
         steps += 1
-    return {
+    summary = {
         key: value / max(samples, 1) for key, value in totals.items()
-    } | {
+    }
+    summary.update({
         "samples": samples,
         "steps": steps,
         "paired_samples": paired_samples,
         "requested_pairs": requested_pairs,
         "paired_retention": paired_samples / max(requested_pairs, 1),
         "elapsed_seconds": time.monotonic() - started,
-    }
+    })
+    return summary
 
 
 @torch.no_grad()

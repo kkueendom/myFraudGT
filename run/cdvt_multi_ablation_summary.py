@@ -30,7 +30,8 @@ def read_manifest(path):
             raise ValueError(f"{path}: {key}={payload.get(key)!r}, expected {value!r}")
     if payload.get("epochs_completed") != 500:
         raise ValueError(f"{path}: incomplete 500-epoch run")
-    return payload | {"manifest_path": str(path.resolve())}
+    payload["manifest_path"] = str(path.resolve())
+    return payload
 
 def ablation_manifest(root, dataset, label):
     path = root / f"{dataset}_{label}_seed42" / "manifest.json"
