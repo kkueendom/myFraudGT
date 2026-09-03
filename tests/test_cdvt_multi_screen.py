@@ -17,6 +17,7 @@ from fraudGT.cdvt.fusion import DualViewFusionClassifier
 from fraudGT.layer.gt_layer import (
     memory_efficient_chunked_forward,
     memory_efficient_masked_forward,
+    memory_efficient_residual_add,
 )
 from run.cdvt_materialize_config import materialize
 from run.cdvt_multi_summary import build_summary
@@ -208,6 +209,29 @@ class CDVTMultiScreenTest(unittest.TestCase):
 
         torch.testing.assert_close(output, values.square())
         torch.testing.assert_close(masked_output, values[mask] + 1)
+
+    def test_inplace_residual_matches_allocating_output_and_gradients(self):
+        torch.manual_seed(13)
+        full = nn.Sequential(nn.Linear(4, 8), nn.GELU(), nn.Linear(8, 4))
+        low_memory = copy.deepcopy(full)
+        full_input = torch.randn(11, 4, requires_grad=True)
+        low_memory_input = full_input.detach().clone().requires_grad_(True)
+
+        full_output = full_input + full(full_input)
+        update = memory_efficient_chunked_forward(
+            low_memory, low_memory_input,
+            chunk_size=3, use_checkpoint=True)
+        low_memory_output = memory_efficient_residual_add(
+            low_memory_input, update)
+        torch.testing.assert_close(low_memory_output, full_output)
+
+        full_output.square().sum().backward()
+        low_memory_output.square().sum().backward()
+        torch.testing.assert_close(low_memory_input.grad, full_input.grad)
+        for full_parameter, low_memory_parameter in zip(
+                full.parameters(), low_memory.parameters()):
+            torch.testing.assert_close(
+                low_memory_parameter.grad, full_parameter.grad)
 
     def test_reverse_relation_audit_requires_exact_forward_reversal(self):
         data = HeteroData()

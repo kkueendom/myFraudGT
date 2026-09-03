@@ -37,6 +37,11 @@ def _preallocated_chunk_output(apply, chunks, total_rows):
     return output
 
 
+def memory_efficient_residual_add(residual, update):
+    """Add a residual while reusing the update tensor's storage."""
+    return update.add_(residual)
+
+
 def memory_efficient_chunked_forward(
         function, x, chunk_size=0, use_checkpoint=False):
     """Apply a row-wise function in checkpointed chunks without changing shape."""
@@ -2014,7 +2019,10 @@ class GTLayer(nn.Module):
                 }
                 if has_edge_attr:
                     edge_attr_dict = {
-                        edge_type: edge_attr_dict[edge_type] + self._ff_block_edge_type(edge_attr_dict[edge_type], edge_type)
+                        edge_type: memory_efficient_residual_add(
+                            edge_attr_dict[edge_type],
+                            self._ff_block_edge_type(
+                                edge_attr_dict[edge_type], edge_type))
                         for edge_type in batch.edge_types
                     }
             elif cfg.gt.ffn == 'Single':
