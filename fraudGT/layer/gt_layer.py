@@ -18,6 +18,25 @@ from fraudGT.timer import runtime_stats_cuda, is_performance_stats_enabled, enab
 from fraudGT.transform.motif_stats import compute_motif_edge_features, MOTIF_EDGE_DIM
 
 
+def _preallocated_chunk_output(apply, chunks, total_rows):
+    """Join row-wise chunk outputs without a second full-size allocation."""
+    first_output = apply(chunks[0])
+    if len(chunks) == 1:
+        return first_output
+
+    output = first_output.new_empty(
+        (int(total_rows),) + tuple(first_output.shape[1:]))
+    offset = 0
+    for index, chunk in enumerate(chunks):
+        chunk_output = first_output if index == 0 else apply(chunk)
+        rows = int(chunk_output.shape[0])
+        output.narrow(0, offset, rows).copy_(chunk_output)
+        offset += rows
+    if offset != int(total_rows):
+        raise ValueError("row-wise chunk function changed the row count")
+    return output
+
+
 def memory_efficient_chunked_forward(
         function, x, chunk_size=0, use_checkpoint=False):
     """Apply a row-wise function in checkpointed chunks without changing shape."""
@@ -27,19 +46,19 @@ def memory_efficient_chunked_forward(
         if chunk_size > 0 and x.shape[0] > chunk_size
         else (x,)
     )
-    outputs = []
-    for chunk in chunks:
+
+    def apply(chunk):
         if (
             use_checkpoint
             and torch.is_grad_enabled()
             and chunk.requires_grad
         ):
-            outputs.append(checkpoint(
+            return checkpoint(
                 function, chunk, use_reentrant=False,
-                preserve_rng_state=True))
-        else:
-            outputs.append(function(chunk))
-    return outputs[0] if len(outputs) == 1 else torch.cat(outputs, dim=0)
+                preserve_rng_state=True)
+        return function(chunk)
+
+    return _preallocated_chunk_output(apply, chunks, x.shape[0])
 
 
 def memory_efficient_masked_forward(
@@ -55,19 +74,21 @@ def memory_efficient_masked_forward(
     def indexed(values, positions):
         return function(values.index_select(0, positions))
 
-    outputs = []
-    for positions in indices.split(chunk_size, dim=0):
+    positions_chunks = indices.split(chunk_size, dim=0)
+
+    def apply(positions):
         if (
             use_checkpoint
             and torch.is_grad_enabled()
             and x.requires_grad
         ):
-            outputs.append(checkpoint(
+            return checkpoint(
                 indexed, x, positions, use_reentrant=False,
-                preserve_rng_state=True))
-        else:
-            outputs.append(indexed(x, positions))
-    return outputs[0] if len(outputs) == 1 else torch.cat(outputs, dim=0)
+                preserve_rng_state=True)
+        return indexed(x, positions)
+
+    return _preallocated_chunk_output(
+        apply, positions_chunks, indices.numel())
 
 
 class GTLayer(nn.Module):

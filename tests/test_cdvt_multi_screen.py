@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import torch
 import torch.nn as nn
@@ -191,6 +192,22 @@ class CDVTMultiScreenTest(unittest.TestCase):
         torch.testing.assert_close(chunked_input.grad, full_input.grad)
         torch.testing.assert_close(chunked.weight.grad, full.weight.grad)
         torch.testing.assert_close(chunked.bias.grad, full.bias.grad)
+
+    def test_chunked_helpers_reassemble_without_torch_cat(self):
+        values = torch.arange(24, dtype=torch.float32).reshape(8, 3)
+        mask = torch.tensor([
+            True, False, True, True, False, True, False, True,
+        ])
+        with mock.patch.object(
+                torch, "cat",
+                side_effect=AssertionError("full-size concatenation used")):
+            output = memory_efficient_chunked_forward(
+                lambda chunk: chunk.square(), values, chunk_size=2)
+            masked_output = memory_efficient_masked_forward(
+                lambda chunk: chunk + 1, values, mask, chunk_size=2)
+
+        torch.testing.assert_close(output, values.square())
+        torch.testing.assert_close(masked_output, values[mask] + 1)
 
     def test_reverse_relation_audit_requires_exact_forward_reversal(self):
         data = HeteroData()
