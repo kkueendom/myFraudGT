@@ -37,6 +37,17 @@ def _preallocated_chunk_output(apply, chunks, total_rows):
     return output
 
 
+def _empty_like_with_cuda_cache_retry(reference):
+    """Allocate an output buffer, releasing cached CUDA blocks on OOM once."""
+    try:
+        return torch.empty_like(reference)
+    except torch.OutOfMemoryError:
+        if not reference.is_cuda:
+            raise
+        torch.cuda.empty_cache()
+        return torch.empty_like(reference)
+
+
 def memory_efficient_residual_add(residual, update):
     """Add a residual while reusing the update tensor's storage."""
     return update.add_(residual)
@@ -63,7 +74,19 @@ def memory_efficient_chunked_forward(
                 preserve_rng_state=True)
         return function(chunk)
 
-    return _preallocated_chunk_output(apply, chunks, x.shape[0])
+    if len(chunks) == 1:
+        return apply(chunks[0])
+
+    output = _empty_like_with_cuda_cache_retry(x)
+    offset = 0
+    for chunk in chunks:
+        chunk_output = apply(chunk)
+        rows = int(chunk_output.shape[0])
+        output.narrow(0, offset, rows).copy_(chunk_output)
+        offset += rows
+    if offset != int(x.shape[0]):
+        raise ValueError("row-wise chunk function changed the row count")
+    return output
 
 
 def memory_efficient_masked_forward(

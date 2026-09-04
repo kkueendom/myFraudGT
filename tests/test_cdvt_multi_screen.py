@@ -15,6 +15,7 @@ from torch_geometric.data import HeteroData
 from fraudGT.cdvt.event_graph import CausalEventGraphIndex
 from fraudGT.cdvt.fusion import DualViewFusionClassifier
 from fraudGT.layer.gt_layer import (
+    _empty_like_with_cuda_cache_retry,
     memory_efficient_chunked_forward,
     memory_efficient_masked_forward,
     memory_efficient_residual_add,
@@ -209,6 +210,38 @@ class CDVTMultiScreenTest(unittest.TestCase):
 
         torch.testing.assert_close(output, values.square())
         torch.testing.assert_close(masked_output, values[mask] + 1)
+
+    def test_chunked_output_is_allocated_before_first_chunk(self):
+        values = torch.arange(24, dtype=torch.float32).reshape(8, 3)
+        events = []
+        empty_like = torch.empty_like
+
+        def allocate(reference):
+            events.append("allocate")
+            return empty_like(reference)
+
+        def transform(chunk):
+            events.append("apply")
+            return chunk + 1
+
+        with mock.patch.object(torch, "empty_like", side_effect=allocate):
+            output = memory_efficient_chunked_forward(
+                transform, values, chunk_size=2)
+
+        self.assertEqual(events[0], "allocate")
+        torch.testing.assert_close(output, values + 1)
+
+    def test_cuda_output_allocation_retries_after_cache_release(self):
+        reference = mock.Mock(is_cuda=True)
+        expected = object()
+        error = torch.OutOfMemoryError("allocation failed")
+        with mock.patch.object(
+                torch, "empty_like", side_effect=[error, expected]), \
+                mock.patch.object(torch.cuda, "empty_cache") as empty_cache:
+            output = _empty_like_with_cuda_cache_retry(reference)
+
+        self.assertIs(output, expected)
+        empty_cache.assert_called_once_with()
 
     def test_inplace_residual_matches_allocating_output_and_gradients(self):
         torch.manual_seed(13)
