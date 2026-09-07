@@ -53,8 +53,21 @@ def memory_efficient_residual_add(residual, update):
     return update.add_(residual)
 
 
+def _checkpointed_forward(function, *args, offload_to_cpu=False):
+    if offload_to_cpu:
+        with torch.autograd.graph.save_on_cpu(
+                pin_memory=True, device_type="cuda"):
+            return checkpoint(
+                function, *args, use_reentrant=False,
+                preserve_rng_state=True)
+    return checkpoint(
+        function, *args, use_reentrant=False,
+        preserve_rng_state=True)
+
+
 def memory_efficient_chunked_forward(
-        function, x, chunk_size=0, use_checkpoint=False):
+        function, x, chunk_size=0, use_checkpoint=False,
+        offload_checkpoint=False):
     """Apply a row-wise function in checkpointed chunks without changing shape."""
     chunk_size = int(chunk_size)
     chunks = (
@@ -69,9 +82,9 @@ def memory_efficient_chunked_forward(
             and torch.is_grad_enabled()
             and chunk.requires_grad
         ):
-            return checkpoint(
-                function, chunk, use_reentrant=False,
-                preserve_rng_state=True)
+            return _checkpointed_forward(
+                function, chunk,
+                offload_to_cpu=bool(offload_checkpoint))
         return function(chunk)
 
     if len(chunks) == 1:
@@ -2115,6 +2128,10 @@ class GTLayer(nn.Module):
             use_checkpoint=(
                 self.training
                 and bool(getattr(cfg.gt, 'edge_ff_checkpoint', False))
+            ),
+            offload_checkpoint=(
+                self.training
+                and bool(getattr(cfg.gt, 'edge_ff_offload', False))
             ),
         )
 

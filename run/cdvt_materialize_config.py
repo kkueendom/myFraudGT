@@ -77,7 +77,8 @@ VARIANTS = {
 
 def materialize(
         base_path, output_path, seed, variant,
-        edge_ff_chunk_size=0, edge_ff_checkpoint=False):
+        edge_ff_chunk_size=0, edge_ff_checkpoint=False,
+        edge_ff_offload=False):
     base_path = Path(base_path)
     output_path = Path(output_path)
     if variant not in VARIANTS:
@@ -105,9 +106,13 @@ def materialize(
     if edge_ff_checkpoint and edge_ff_chunk_size <= 0:
         raise ValueError(
             "edge FF checkpointing requires a positive chunk size")
+    if edge_ff_offload and not edge_ff_checkpoint:
+        raise ValueError(
+            "edge FF CPU offload requires edge FF checkpointing")
     gt = payload.setdefault("gt", {})
     gt["edge_ff_chunk_size"] = edge_ff_chunk_size
     gt["edge_ff_checkpoint"] = bool(edge_ff_checkpoint)
+    gt["edge_ff_offload"] = bool(edge_ff_offload)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(yaml.safe_dump(payload, sort_keys=False))
     return payload
@@ -121,6 +126,7 @@ def parse_args():
     parser.add_argument("--variant", choices=tuple(VARIANTS), required=True)
     parser.add_argument("--edge-ff-chunk-size", type=int, default=0)
     parser.add_argument("--edge-ff-checkpoint", action="store_true")
+    parser.add_argument("--edge-ff-offload", action="store_true")
     return parser.parse_args()
 
 
@@ -129,7 +135,8 @@ def main():
     materialize(
         args.base, args.output, args.seed, args.variant,
         edge_ff_chunk_size=args.edge_ff_chunk_size,
-        edge_ff_checkpoint=args.edge_ff_checkpoint)
+        edge_ff_checkpoint=args.edge_ff_checkpoint,
+        edge_ff_offload=args.edge_ff_offload)
 
 
 if __name__ == "__main__":

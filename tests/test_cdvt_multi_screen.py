@@ -149,9 +149,22 @@ class CDVTMultiScreenTest(unittest.TestCase):
             payload = materialize(
                 base, output, 42, "multi_cdvt",
                 edge_ff_chunk_size=3,
-                edge_ff_checkpoint=True)
+                edge_ff_checkpoint=True,
+                edge_ff_offload=True)
             self.assertEqual(payload["gt"]["edge_ff_chunk_size"], 3)
             self.assertTrue(payload["gt"]["edge_ff_checkpoint"])
+            self.assertTrue(payload["gt"]["edge_ff_offload"])
+
+    def test_materializer_rejects_offload_without_checkpointing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base = root / "base.yaml"
+            base.write_text(yaml.safe_dump(multi_base_config(), sort_keys=False))
+            with self.assertRaisesRegex(ValueError, "requires.*checkpointing"):
+                materialize(
+                    base, root / "multi.yaml", 42, "multi_cdvt",
+                    edge_ff_chunk_size=3,
+                    edge_ff_offload=True)
 
     def test_checkpointed_edge_ff_chunks_match_full_output_and_gradients(self):
         torch.manual_seed(7)
@@ -172,6 +185,29 @@ class CDVTMultiScreenTest(unittest.TestCase):
                 full.parameters(), chunked.parameters()):
             torch.testing.assert_close(
                 chunked_parameter.grad, full_parameter.grad)
+
+    @unittest.skipUnless(torch.cuda.is_available(), "CUDA is required")
+    def test_checkpointed_cpu_offload_matches_output_and_gradients(self):
+        torch.manual_seed(17)
+        full = nn.Sequential(
+            nn.Linear(4, 8), nn.GELU(), nn.Linear(8, 4)).cuda()
+        offloaded = copy.deepcopy(full)
+        full_input = torch.randn(11, 4, device="cuda", requires_grad=True)
+        offloaded_input = full_input.detach().clone().requires_grad_(True)
+
+        full_output = full(full_input)
+        offloaded_output = memory_efficient_chunked_forward(
+            offloaded, offloaded_input, chunk_size=3,
+            use_checkpoint=True, offload_checkpoint=True)
+        torch.testing.assert_close(offloaded_output, full_output)
+
+        full_output.square().sum().backward()
+        offloaded_output.square().sum().backward()
+        torch.testing.assert_close(offloaded_input.grad, full_input.grad)
+        for full_parameter, offloaded_parameter in zip(
+                full.parameters(), offloaded.parameters()):
+            torch.testing.assert_close(
+                offloaded_parameter.grad, full_parameter.grad)
 
     def test_checkpointed_masked_projection_matches_full_gradients(self):
         torch.manual_seed(11)

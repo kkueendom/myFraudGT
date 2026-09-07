@@ -76,6 +76,9 @@ def set_cfg_gt(cfg):
     # block during backward instead of retaining its intermediate activation.
     cfg.gt.edge_ff_chunk_size = 0
     cfg.gt.edge_ff_checkpoint = False
+    # Move checkpoint-saved edge tensors to CPU until backward. This changes
+    # storage location only and is intended for memory-constrained execution.
+    cfg.gt.edge_ff_offload = False
 
     # Attention masking, options: "none", "Edge", "kHop"
     cfg.gt.attn_mask = 'Edge'

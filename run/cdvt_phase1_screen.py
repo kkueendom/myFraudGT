@@ -566,6 +566,7 @@ def main():
             "use_relation_types": bool(cfg.cdvt.use_relation_types),
             "edge_ff_chunk_size": int(cfg.gt.edge_ff_chunk_size),
             "edge_ff_checkpoint": bool(cfg.gt.edge_ff_checkpoint),
+            "edge_ff_offload": bool(cfg.gt.edge_ff_offload),
             "early_stopping_enabled": not args.disable_early_stop,
             "max_epochs": int(args.max_epochs),
             "variant": args.experiment_label,
@@ -624,6 +625,7 @@ def main():
         "use_relation_types": bool(cfg.cdvt.use_relation_types),
         "edge_ff_chunk_size": int(cfg.gt.edge_ff_chunk_size),
         "edge_ff_checkpoint": bool(cfg.gt.edge_ff_checkpoint),
+        "edge_ff_offload": bool(cfg.gt.edge_ff_offload),
         "early_stopping_enabled": not args.disable_early_stop,
         "early_stop_min_epoch": int(args.early_stop_min_epoch),
         "early_stop_patience_evals": int(
