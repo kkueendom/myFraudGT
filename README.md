@@ -1,3 +1,18 @@
+# FraudGT Research Workspace
+
+> **Current branch:** `experiment/multi-cdvt-ablation`
+>
+> The active paper line is Multi-CDVT, a causal transaction-event view fused
+> with the Multi-FraudGT account backbone under the original dynamic-random
+> sampling protocol. Start with
+> [`docs/experiments/README.md`](docs/experiments/README.md), then read
+> [`MULTI_CDVT_ABLATION_PROGRESS_AUDIT.md`](docs/experiments/MULTI_CDVT_ABLATION_PROGRESS_AUDIT.md)
+> for the formal 12-task ablation matrix, audited results, missing-task status,
+> and exact reproduction paths.
+
+The Evidence-Gated Edge Decoder section below describes an earlier historical
+branch and is not the current paper mainline.
+
 # FraudGT — Evidence-Gated Edge Decoder (v2)
 
 Branch: `feature/evidence-gate-decoder` (forked from `snapshot/fraudgt-results-20260626`).
