@@ -157,6 +157,8 @@ def validate_loader(test_loader):
 def collect_target_ids(test_loader):
     occurrences = []
     steps = 0
+    requested_occurrences = 0
+    requested_absent_occurrences = 0
     for raw_batch in test_loader:
         store = raw_batch[TASK]
         require(hasattr(store, "e_id"), "sampled test store lacks e_id")
@@ -165,18 +167,34 @@ def collect_target_ids(test_loader):
         mask = torch.isin(store.e_id, store.target_edge_id)
         target_ids = store.e_id[mask].detach().cpu().long()
         requested = store.target_edge_id.detach().cpu().long()
-        require(target_ids.numel() == requested.numel(),
-                "sampled target occurrence count does not match requests")
-        require(torch.equal(
-            torch.sort(target_ids).values,
-            torch.sort(requested).values,
-        ), "sampled target IDs do not match requested target IDs")
+        require(bool(torch.isin(target_ids, requested).all()),
+                "extracted target IDs are not requested target IDs")
+        require(torch.unique(target_ids).numel() == target_ids.numel(),
+                "a target edge occurs more than once in a sampled store")
+        absent = requested[~torch.isin(requested, target_ids)]
+        require(
+            target_ids.numel() + absent.numel() == requested.numel(),
+            "extracted and absent target counts do not cover requests",
+        )
         occurrences.append(target_ids)
+        requested_occurrences += int(requested.numel())
+        requested_absent_occurrences += int(absent.numel())
         steps += 1
     require(steps == EXPECTED_LOADER_STEPS,
             "actual test-loader steps differ from 256")
     require(occurrences, "test loader produced no target IDs")
-    return torch.cat(occurrences), steps
+    sampled = torch.cat(occurrences)
+    require(
+        sampled.numel() + requested_absent_occurrences
+        == requested_occurrences,
+        "full-pass extracted and absent target counts do not cover requests",
+    )
+    return (
+        sampled,
+        steps,
+        requested_occurrences,
+        requested_absent_occurrences,
+    )
 
 
 def query_event_graphs(index, target_ids, query_batch_size):
@@ -321,6 +339,8 @@ def build_readme(summary):
 - Sampling protocol: `{summary['sampling_protocol']}`
 - Scope: one complete shuffled test-loader pass with {summary['loader_steps']} steps
 - Sampled target occurrences: {summary['sampled_target_occurrences']}
+- Loader-requested target occurrences: {summary['loader_requested_target_occurrences']}
+- Requested targets absent from `store.e_id`: {summary['requested_targets_absent_from_store_e_id']}. The exported target scope follows the prescribed `store.e_id[torch.isin(store.e_id, store.target_edge_id)]` extraction exactly; absent requests are recorded but are not silently added.
 - Unique target transactions: {summary['unique_target_count']}
 - Event count includes the target transaction itself; context count is event count minus one.
 - Local event graphs use `history_k=4`, `history_hops=2`, `max_events=48`, and no time window.
@@ -347,6 +367,8 @@ def write_outputs(
     target_identity_checks,
     relation_range_checks,
     query_batch_size,
+    loader_requested_occurrences,
+    requested_absent_occurrences,
 ):
     histogram = histogram_rows(event_counts)
     relations = relation_rows(relation_counts_tensor)
@@ -376,6 +398,14 @@ def write_outputs(
         "sampling_protocol": SAMPLING_PROTOCOL,
         "loader_steps": loader_steps,
         "sampled_target_occurrences": int(sampled_occurrences.numel()),
+        "loader_requested_target_occurrences": int(
+            loader_requested_occurrences),
+        "requested_targets_absent_from_store_e_id": int(
+            requested_absent_occurrences),
+        "sampled_plus_absent_equals_loader_requests": (
+            int(sampled_occurrences.numel())
+            + int(requested_absent_occurrences)
+            == int(loader_requested_occurrences)),
         "unique_target_count": int(unique_target_ids.numel()),
         "duplicate_target_occurrences": (
             int(sampled_occurrences.numel())
@@ -498,7 +528,12 @@ def main():
     test_loader = loaders[2]
     loader_checks = validate_loader(test_loader)
 
-    sampled_occurrences, loader_steps = collect_target_ids(test_loader)
+    (
+        sampled_occurrences,
+        loader_steps,
+        loader_requested_occurrences,
+        requested_absent_occurrences,
+    ) = collect_target_ids(test_loader)
     unique_target_ids = torch.unique(sampled_occurrences, sorted=True)
     require(unique_target_ids.numel() > 0,
             "test pass produced no unique target transactions")
@@ -537,6 +572,8 @@ def main():
         target_identity_checks,
         relation_range_checks,
         args.query_batch_size,
+        loader_requested_occurrences,
+        requested_absent_occurrences,
     )
     print(json.dumps({
         "output_dir": str(args.output_dir.resolve()),
