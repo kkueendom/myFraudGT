@@ -50,6 +50,11 @@ Current read order:
    Reports the matched six-dataset LI/HI runtime pilot, including
    per-dataset latency, memory, throughput, thresholds, and raw evidence paths.
 
+9. `MULTI_CDVT_ABLATION_PROGRESS_AUDIT.md`
+   Tracks the 12-task formal ablation matrix, the 11 audited results already
+   complete, the remaining Large-HI B0 run, and its reproducible memory and
+   runtime acceleration settings.
+
 Current reporting rules:
 
 - Primary: Val-selected Test F1 against architecture-matched PE-FraudGT.
